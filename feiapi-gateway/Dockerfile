@@ -1,0 +1,25 @@
+FROM maven:3.8.8-eclipse-temurin-8 AS builder
+
+WORKDIR /build/feiapi-backend-master
+
+COPY pom.xml ./pom.xml
+COPY feiapi-common ./feiapi-common
+COPY feiapi-client-sdk ./feiapi-client-sdk
+COPY feiapi-backend-server ./feiapi-backend-server
+COPY feiapi-gateway ./feiapi-gateway
+COPY feiapi-interface ./feiapi-interface
+
+RUN mvn -pl feiapi-gateway -am clean package -DskipTests
+
+FROM eclipse-temurin:8-jre
+
+WORKDIR /app
+
+ENV TZ=Asia/Shanghai
+ENV JAVA_OPTS=""
+
+COPY --from=builder /build/feiapi-backend-master/feiapi-gateway/target/feiapi-gateway-0.0.1-SNAPSHOT.jar /app/app.jar
+
+EXPOSE 8090
+
+ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -jar /app/app.jar"]

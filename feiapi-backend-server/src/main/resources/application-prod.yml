@@ -1,0 +1,43 @@
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${FEIAPI_DB_HOST}:${FEIAPI_DB_PORT:3306}/${FEIAPI_DB_NAME}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${FEIAPI_DB_USERNAME}
+    password: ${FEIAPI_DB_PASSWORD}
+  redis:
+    host: ${FEIAPI_REDIS_HOST}
+    port: ${FEIAPI_REDIS_PORT:6379}
+    database: ${FEIAPI_REDIS_DATABASE:0}
+    password: ${FEIAPI_REDIS_PASSWORD}
+
+server:
+  port: 9527
+  servlet:
+    context-path: /api
+    session:
+      cookie:
+        domain: ${FEIAPI_COOKIE_DOMAIN}
+#        same-site: lax
+#        secure: false
+
+
+dubbo:
+  application:
+    name: feiapi-backend
+  #  protocol:
+  #    name: dubbo
+  #    port: -1
+  registry:
+    #    id: zk-registry
+    address: nacos://${FEIAPI_NACOS_HOST}:${FEIAPI_NACOS_PORT:8848}
+  #配置超时时间
+  consumer:
+    timeout: 5000
+  provider:
+    timeout: 10000
+
+feiapi:
+  clint:
+    access-key: ${FEIAPI_CLIENT_ACCESS_KEY}
+    secret-key: ${FEIAPI_CLIENT_SECRET_KEY}
+    gateway-host: ${FEIAPI_CLIENT_GATEWAY_HOST}

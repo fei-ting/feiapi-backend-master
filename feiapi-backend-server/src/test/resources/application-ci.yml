@@ -1,0 +1,12 @@
+# CI 环境测试专用配置（spring.profiles.active=ci）
+# 覆盖 application.yml 中不适合 CI 环境的配置项
+
+spring:
+  datasource:
+    # CI 中 MySQL 容器密码
+    password: testpw
+
+# CI 环境断开 Dubbo 注册中心（测试不涉及 RPC 调用，无需 Nacos）
+dubbo:
+  registry:
+    address: N/A

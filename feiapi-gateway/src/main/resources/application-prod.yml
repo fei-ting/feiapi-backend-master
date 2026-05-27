@@ -1,0 +1,36 @@
+dubbo:
+  application:
+    name: feiapi-gateway
+#  protocol:
+#    name: dubbo
+    #指定 dubbo 服务的 host
+#    host: 10.0.12.11
+#    port: -1
+  registry:
+#    id: zk-registry
+    address: nacos://${FEIAPI_NACOS_HOST}:${FEIAPI_NACOS_PORT:8848}
+  #配置超时时间
+  consumer:
+    timeout: 5000
+  provider:
+    timeout: 10000
+
+
+#请求转发
+spring:
+  redis:
+    host: ${FEIAPI_REDIS_HOST}
+    port: ${FEIAPI_REDIS_PORT:6379}
+    database: ${FEIAPI_REDIS_DATABASE:0}
+    password: ${FEIAPI_REDIS_PASSWORD}
+  cloud:
+    gateway:
+      routes:
+        - id: api_route
+          uri: ${FEIAPI_INTERFACE_ROUTE_URI}
+          predicates:
+            - Path=/api/**
+
+feiapi:
+  gateway:
+    interface-host: ${FEIAPI_INTERFACE_HOST}

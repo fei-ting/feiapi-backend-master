@@ -1,0 +1,9 @@
+spring:
+  application:
+    name: feiapi-interface
+  # DataSource Config
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${FEIAPI_DB_HOST}:${FEIAPI_DB_PORT:3306}/${FEIAPI_DB_NAME}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${FEIAPI_DB_USERNAME}
+    password: ${FEIAPI_DB_PASSWORD}

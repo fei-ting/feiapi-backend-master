@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feiting.feiapiinterface.mapper.LoveWordsMapper">
+
+    <resultMap id="BaseResultMap" type="com.feiting.feiapiinterface.model.LoveWords">
+            <id property="id" column="id" jdbcType="INTEGER"/>
+            <result property="words" column="words" jdbcType="VARCHAR"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,words
+    </sql>
+
+    <select id="selectOneRandom" resultMap="BaseResultMap">
+        SELECT id, words FROM love_words ORDER BY RAND() LIMIT 1
+    </select>
+</mapper>

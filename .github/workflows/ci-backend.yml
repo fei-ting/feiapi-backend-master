@@ -1,0 +1,86 @@
+name: 后端 CI（Maven 构建 + 测试 + 打包）
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+        env:
+          MYSQL_ROOT_PASSWORD: testpw
+          MYSQL_DATABASE: feiapi
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: 缓存 Maven 本地仓库
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: 初始化数据库表结构
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq mysql-client
+          mysql -h 127.0.0.1 -u root -ptestpw < sql/user.sql
+          mysql -h 127.0.0.1 -u root -ptestpw < sql/interface_info.sql
+          mysql -h 127.0.0.1 -u root -ptestpw < sql/user_interface_info.sql
+
+      - name: Maven 编译（跳过测试）
+        run: mvn -B compile -DskipTests
+
+      - name: Maven 单元测试（server 模块，CI 环境）
+        run: |
+          mvn -B test \
+            -pl feiapi-backend-server -am \
+            -Dspring.profiles.active=ci \
+            -Dtest='!com.feiting.feiapi.test.ApiTest' \
+            -DfailIfNoTests=false
+
+      - name: Maven 打包
+        run: mvn -B package -DskipTests
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jars
+          path: |
+            feiapi-backend-server/target/*.jar
+            feiapi-gateway/target/*.jar
+            feiapi-interface/target/*.jar
+          retention-days: 7

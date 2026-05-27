@@ -1,0 +1,46 @@
+server:
+  port: 8090
+
+#请求转发
+spring:
+  redis:
+    host: ${FEIAPI_REDIS_HOST:localhost}
+    port: ${FEIAPI_REDIS_PORT:6379}
+    database: ${FEIAPI_REDIS_DATABASE:0}
+    password: ${FEIAPI_REDIS_PASSWORD:}
+  cloud:
+    gateway:
+      routes:
+        - id: api_route
+          uri: ${FEIAPI_INTERFACE_ROUTE_URI:http://localhost:8123}
+          predicates:
+            - Path=/api/**
+
+
+#打印日志级别：trace
+logging:
+  level:
+    org:
+      springframework:
+        cloud:
+          gateway: trace
+
+
+dubbo:
+  application:
+    name: feiapi-gateway
+#  protocol:
+#    name: dubbo
+#    port: -1
+  registry:
+#    id: zk-registry
+    address: nacos://${FEIAPI_NACOS_HOST:localhost}:${FEIAPI_NACOS_PORT:8848}
+  #配置超时时间
+  consumer:
+    timeout: 5000
+  provider:
+    timeout: 10000
+
+feiapi:
+  gateway:
+    interface-host: ${FEIAPI_INTERFACE_HOST:http://localhost:8123}
