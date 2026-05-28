@@ -1,7 +1,6 @@
 server:
   port: 8090
 
-#请求转发
 spring:
   redis:
     host: ${FEIAPI_REDIS_HOST:localhost}
@@ -16,26 +15,11 @@ spring:
           predicates:
             - Path=/api/**
 
-
-#打印日志级别：trace
-logging:
-  level:
-    org:
-      springframework:
-        cloud:
-          gateway: trace
-
-
 dubbo:
   application:
     name: feiapi-gateway
-#  protocol:
-#    name: dubbo
-#    port: -1
   registry:
-#    id: zk-registry
     address: nacos://${FEIAPI_NACOS_HOST:localhost}:${FEIAPI_NACOS_PORT:8848}
-  #配置超时时间
   consumer:
     timeout: 5000
   provider:
