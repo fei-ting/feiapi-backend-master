@@ -39,22 +39,17 @@ public class FeiApiClient {
     /**
      * 随机获取土味情话
      *
-     * GET 请求没有真实请求体，因此这里传入 null。
-     * 在 SignUtils 中会被统一处理为空字符串，保证和网关验签规则一致。
-     *
-     * @return 响应结果
+     * GET 请求没有请求体，因此签名时传入 null。
      */
     public String getLoveWords() {
-        HttpResponse httpResponse = HttpRequest.get(gatewayHost + "/api/love_words")
-                .addHeaders(getHeaderMap("GET", "/api/love_words", null))
-                .execute();
-        return httpResponse.body();
+        return executeRequest(HttpRequest.get(gatewayHost + "/api/love_words")
+                .addHeaders(getHeaderMap("GET", "/api/love_words", null)));
     }
 
     /**
-     * 获取用户名
+     * 根据用户对象获取用户名
      *
-     * POST 请求的签名必须基于“真实将要发送的请求体”来计算。
+     * POST 请求的签名必须基于真实发送的请求体计算。
      * 所以这里先把业务对象转成 json，再把这份 json 同时用于：
      * 1. 参与签名
      * 2. 作为真实 HTTP Body 发送给网关
@@ -69,21 +64,15 @@ public class FeiApiClient {
         User user = gson.fromJson(requestParam, User.class);
         String json = JSONUtil.toJsonStr(user);
 
-        HttpResponse httpResponse = HttpRequest.post(gatewayHost + "/api/name/user")
+        return executeRequest(HttpRequest.post(gatewayHost + "/api/name/user")
                 .addHeaders(getHeaderMap("POST", "/api/name/user", json))
-                .body(json)
-                .execute();
-
-        System.out.println(httpResponse.getStatus());
-        String result = httpResponse.body();
-        System.out.println(result);
-        return result;
+                .body(json));
     }
 
     /**
      * 构造请求头
-     *
-     * 第二阶段整改后，这里不再把 body 放到 header 中传输。
+     * 
+     * 整改后，这里不再把 body 放到 header 中传输。
      * 原因是：
      * 1. body 属于真正的请求体，不应伪装成 header 参与协议传输
      * 2. 网关现在会读取真实 HTTP Body 参与验签，不再信任 header 中的 body 字段
@@ -119,6 +108,19 @@ public class FeiApiClient {
         headers.put("sign", sign);
         headers.put("timestamp", timestamp);
         return headers;
+    }
+
+    /**
+     * 下游接口返回非 2xx 时，直接抛出异常，避免把失败结果继续包装成成功响应。
+     */
+    private String executeRequest(HttpRequest request) {
+        HttpResponse httpResponse = request.execute();
+        int status = httpResponse.getStatus();
+        String body = httpResponse.body();
+        if (status < 200 || status >= 300) {
+            throw new RuntimeException("调用接口失败，响应状态码：" + status);
+        }
+        return body;
     }
 
     private String normalizeGatewayHost(String gatewayHost) {
