@@ -43,9 +43,9 @@ public class InterfaceInfoController {
     private UserService userService;
 
     @Resource
-    private FeiApiClient feiApiClint;
+    private FeiApiClient feiApiClient;
 
-    @Value("${feiapi.clint.gateway-host}")
+    @Value("${feiapi.client.gateway-host}")
     private String gatewayHost;
 
     // region 增删改查
@@ -228,9 +228,9 @@ public class InterfaceInfoController {
         //判断接口是否可以调用
         Object invoke = null;
         if(StringUtils.isBlank(oldInterfaceInfo.getRequestParams())){
-            invoke = ReflectUtil.invoke(feiApiClint, oldInterfaceInfo.getName());
+            invoke = ReflectUtil.invoke(feiApiClient, oldInterfaceInfo.getName());
         } else{
-            invoke = ReflectUtil.invoke(feiApiClint, oldInterfaceInfo.getName(), oldInterfaceInfo.getRequestParams());
+            invoke = ReflectUtil.invoke(feiApiClient, oldInterfaceInfo.getName(), oldInterfaceInfo.getRequestParams());
         }
         if(invoke == null){
             throw new BusinessException(ErrorCode.SYSTEM_ERROR,"接口验证失败");
@@ -306,13 +306,13 @@ public class InterfaceInfoController {
         String secretKey = loginUser.getSecretKey();
 
         //调用模拟接口
-        FeiApiClient tempClint = new FeiApiClient(accessKey, secretKey, gatewayHost);
+        FeiApiClient tempClient = new FeiApiClient(accessKey, secretKey, gatewayHost);
         //使用 hutool 工具包的反射工具类，根据方法名匹配需要调用的方法
         Object invoke = null;
         if(StringUtils.isBlank(userRequestParams)){
-            invoke = ReflectUtil.invoke(tempClint, oldInterfaceInfo.getName());
+            invoke = ReflectUtil.invoke(tempClient, oldInterfaceInfo.getName());
         } else{
-            invoke = ReflectUtil.invoke(tempClint, oldInterfaceInfo.getName(), userRequestParams);
+            invoke = ReflectUtil.invoke(tempClient, oldInterfaceInfo.getName(), userRequestParams);
         }
         return ResultUtils.success(invoke);
     }

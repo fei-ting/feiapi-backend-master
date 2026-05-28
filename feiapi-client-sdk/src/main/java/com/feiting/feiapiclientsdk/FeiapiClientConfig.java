@@ -8,7 +8,7 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@ConfigurationProperties("feiapi.clint")
+@ConfigurationProperties("feiapi.client")
 @Data
 @ComponentScan
 public class FeiapiClientConfig {
@@ -18,7 +18,7 @@ public class FeiapiClientConfig {
     private String gatewayHost;
 
     @Bean
-    public FeiApiClient feiApiClint(){
+    public FeiApiClient feiApiClient(){
         return new FeiApiClient(accessKey, secretKey, gatewayHost);
     }
 
