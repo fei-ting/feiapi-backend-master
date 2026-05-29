@@ -3,6 +3,7 @@ package com.feiting.feiapiclientsdk.client;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONUtil;
+import com.feiting.feiapiclientsdk.annotation.SdkInvoke;
 import com.feiting.feiapiclientsdk.model.User;
 import com.feiting.feiapiclientsdk.utils.SignUtils;
 import com.google.gson.Gson;
@@ -41,6 +42,7 @@ public class FeiApiClient {
      *
      * GET 请求没有请求体，因此签名时传入 null。
      */
+    @SdkInvoke(needParams = false)
     public String getLoveWords() {
         return executeRequest(HttpRequest.get(gatewayHost + "/api/love_words")
                 .addHeaders(getHeaderMap("GET", "/api/love_words", null)));
@@ -59,6 +61,7 @@ public class FeiApiClient {
      * @param requestParam 请求参数
      * @return 响应结果
      */
+    @SdkInvoke(needParams = true)
     public String getUsernameByPost(String requestParam) {
         Gson gson = new Gson();
         User user = gson.fromJson(requestParam, User.class);

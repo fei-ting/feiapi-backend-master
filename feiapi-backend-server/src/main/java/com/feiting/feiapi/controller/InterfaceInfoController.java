@@ -1,6 +1,5 @@
 package com.feiting.feiapi.controller;
 
-import cn.hutool.core.util.ReflectUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.feiting.feiapi.common.*;
@@ -14,6 +13,7 @@ import com.feiting.feiapi.annotation.AuthCheck;
 import com.feiting.feiapi.constant.CommonConstant;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.service.InterfaceInfoService;
+import com.feiting.feiapi.component.SdkMethodRegistry;
 import com.feiting.feiapiclientsdk.client.FeiApiClient;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.entity.User;
@@ -44,6 +44,9 @@ public class InterfaceInfoController {
 
     @Resource
     private FeiApiClient feiApiClient;
+
+    @Resource
+    private SdkMethodRegistry sdkMethodRegistry;
 
     @Value("${feiapi.client.gateway-host}")
     private String gatewayHost;
@@ -226,12 +229,7 @@ public class InterfaceInfoController {
         }
 
         //判断接口是否可以调用
-        Object invoke = null;
-        if(StringUtils.isBlank(oldInterfaceInfo.getRequestParams())){
-            invoke = ReflectUtil.invoke(feiApiClient, oldInterfaceInfo.getName());
-        } else{
-            invoke = ReflectUtil.invoke(feiApiClient, oldInterfaceInfo.getName(), oldInterfaceInfo.getRequestParams());
-        }
+        Object invoke = sdkMethodRegistry.invoke(feiApiClient, oldInterfaceInfo.getName(), oldInterfaceInfo.getRequestParams());
         if(invoke == null){
             throw new BusinessException(ErrorCode.SYSTEM_ERROR,"接口验证失败");
         }
@@ -307,13 +305,7 @@ public class InterfaceInfoController {
 
         //调用模拟接口
         FeiApiClient tempClient = new FeiApiClient(accessKey, secretKey, gatewayHost);
-        //使用 hutool 工具包的反射工具类，根据方法名匹配需要调用的方法
-        Object invoke = null;
-        if(StringUtils.isBlank(userRequestParams)){
-            invoke = ReflectUtil.invoke(tempClient, oldInterfaceInfo.getName());
-        } else{
-            invoke = ReflectUtil.invoke(tempClient, oldInterfaceInfo.getName(), userRequestParams);
-        }
+        Object invoke = sdkMethodRegistry.invoke(tempClient, oldInterfaceInfo.getName(), userRequestParams);
         return ResultUtils.success(invoke);
     }
 }
