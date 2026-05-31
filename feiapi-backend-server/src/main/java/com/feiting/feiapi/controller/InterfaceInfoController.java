@@ -14,6 +14,7 @@ import com.feiting.feiapi.constant.CommonConstant;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.component.SdkMethodRegistry;
+import com.feiting.feiapi.utils.SortFieldUtils;
 import com.feiting.feiapiclientsdk.client.FeiApiClient;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.entity.User;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.*;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 接口管理
@@ -35,6 +37,11 @@ import java.util.List;
 @RequestMapping("/interfaceInfo")
 @Slf4j
 public class InterfaceInfoController {
+
+    private static final Set<String> ALLOWED_SORT_FIELDS = SortFieldUtils.allowedFields(
+            "id", "name", "description", "url", "requestParams", "requestHeader",
+            "responseHeader", "status", "method", "userId", "createTime", "updateTime"
+    );
 
     @Resource
     private InterfaceInfoService interfaceInfoService;
@@ -187,7 +194,7 @@ public class InterfaceInfoController {
         BeanUtils.copyProperties(interfaceInfoQueryRequest, interfaceInfoQuery);
         long current = interfaceInfoQueryRequest.getCurrent();
         long size = interfaceInfoQueryRequest.getPageSize();
-        String sortField = interfaceInfoQueryRequest.getSortField();
+        String sortField = toDatabaseSortField(interfaceInfoQueryRequest.getSortField());
         String sortOrder = interfaceInfoQueryRequest.getSortOrder();
         String content = interfaceInfoQuery.getDescription();
         // content 需支持模糊搜索
@@ -307,5 +314,9 @@ public class InterfaceInfoController {
         FeiApiClient tempClient = new FeiApiClient(accessKey, secretKey, gatewayHost);
         Object invoke = sdkMethodRegistry.invoke(tempClient, oldInterfaceInfo.getName(), userRequestParams);
         return ResultUtils.success(invoke);
+    }
+
+    private String toDatabaseSortField(String sortField) {
+        return SortFieldUtils.resolveSortField(sortField, ALLOWED_SORT_FIELDS);
     }
 }

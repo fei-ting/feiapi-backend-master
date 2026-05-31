@@ -11,6 +11,7 @@ import com.feiting.feiapi.model.dto.userinterfaceinfo.UserInterfaceInfoQueryRequ
 import com.feiting.feiapi.model.dto.userinterfaceinfo.UserInterfaceInfoUpdateRequest;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapi.service.UserService;
+import com.feiting.feiapi.utils.SortFieldUtils;
 import com.feiting.feiapicommon.model.entity.User;
 import com.feiting.feiapicommon.model.entity.UserInterfaceInfo;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 用户调用接口信息
@@ -29,6 +31,10 @@ import java.util.List;
 @RequestMapping("/userInterfaceInfo")
 @Slf4j
 public class UserInterfaceInfoController {
+    private static final Set<String> ALLOWED_SORT_FIELDS = SortFieldUtils.allowedFields(
+            "id", "userId", "interfaceInfoId", "totalNum", "leftNum", "status", "createTime", "updateTime"
+    );
+
     @Resource
     private UserInterfaceInfoService userInterfaceInfoService;
 
@@ -172,7 +178,7 @@ public class UserInterfaceInfoController {
         BeanUtils.copyProperties(userInterfaceInfoQueryRequest, userInterfaceInfoQuery);
         long current = userInterfaceInfoQueryRequest.getCurrent();
         long size = userInterfaceInfoQueryRequest.getPageSize();
-        String sortField = userInterfaceInfoQueryRequest.getSortField();
+        String sortField = toDatabaseSortField(userInterfaceInfoQueryRequest.getSortField());
         String sortOrder = userInterfaceInfoQueryRequest.getSortOrder();
         // 限制爬虫
         if (size > 50) {
@@ -186,5 +192,9 @@ public class UserInterfaceInfoController {
     }
 
     // endregion
+
+    private String toDatabaseSortField(String sortField) {
+        return SortFieldUtils.resolveSortField(sortField, ALLOWED_SORT_FIELDS);
+    }
 
 }
