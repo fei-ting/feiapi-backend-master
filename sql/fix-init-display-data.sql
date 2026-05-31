@@ -1,8 +1,8 @@
 use feiapi;
 
 update user
-set userName = '管理员'
-where userAccount = 'admin';
+set user_name = '管理员'
+where user_account = 'admin';
 
 update interface_info
 set description = '随机获取一条土味情话'

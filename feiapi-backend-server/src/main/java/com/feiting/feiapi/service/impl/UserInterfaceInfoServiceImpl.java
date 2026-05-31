@@ -43,11 +43,11 @@ public class UserInterfaceInfoServiceImpl extends ServiceImpl<UserInterfaceInfoM
         }
 
         UpdateWrapper<UserInterfaceInfo> updateWrapper = new UpdateWrapper<>();
-        updateWrapper.eq("userId", userId);
-        updateWrapper.eq("interfaceInfoId", interfaceInfoId);
-        updateWrapper.eq("isDelete", 0);
-        updateWrapper.gt("leftNum", 0);
-        updateWrapper.setSql("leftNum = leftNum - 1, totalNum = totalNum + 1");
+        updateWrapper.eq("user_id", userId);
+        updateWrapper.eq("interface_info_id", interfaceInfoId);
+        updateWrapper.eq("is_delete", 0);
+        updateWrapper.gt("left_num", 0);
+        updateWrapper.setSql("left_num = left_num - 1, total_num = total_num + 1");
         return this.update(updateWrapper);
     }
 
@@ -80,9 +80,9 @@ public class UserInterfaceInfoServiceImpl extends ServiceImpl<UserInterfaceInfoM
 
     private UserInterfaceInfo getUserInterfaceInfo(long userId, long interfaceInfoId) {
         QueryWrapper<UserInterfaceInfo> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("userId", userId);
-        queryWrapper.eq("interfaceInfoId", interfaceInfoId);
-        queryWrapper.eq("isDelete", 0);
+        queryWrapper.eq("user_id", userId);
+        queryWrapper.eq("interface_info_id", interfaceInfoId);
+        queryWrapper.eq("is_delete", 0);
         return userInterfaceInfoMapper.selectOne(queryWrapper);
     }
 }
