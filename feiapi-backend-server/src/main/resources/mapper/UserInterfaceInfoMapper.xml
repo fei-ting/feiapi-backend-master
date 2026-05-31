@@ -24,7 +24,19 @@
 
     <!--List<UserInterfaceInfo> listTopInvokeInterfaceInfo(int limit);-->
     <select id="listTopInvokeInterfaceInfo" resultType="com.feiting.feiapicommon.model.entity.UserInterfaceInfo">
-        select interfaceInfoId, sum(totalNum) as totalNum from user_interface_info group by interfaceInfoId
+        select interfaceInfoId, sum(totalNum) as totalNum
+        from user_interface_info
+        where isDelete = 0
+        group by interfaceInfoId
         order by totalNum desc limit #{limit};
     </select>
+
+    <insert id="insertIgnoreIfAbsent">
+        insert into user_interface_info (userId, interfaceInfoId, leftNum, totalNum, isDelete)
+        values (#{userId}, #{interfaceInfoId}, #{leftNum}, #{totalNum}, 0)
+        on duplicate key update
+            isDelete = 0,
+            leftNum = values(leftNum),
+            totalNum = values(totalNum)
+    </insert>
 </mapper>

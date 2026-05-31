@@ -3,6 +3,8 @@ package com.feiting.feiapi.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.feiting.feiapicommon.model.entity.UserInterfaceInfo;
 
+import org.apache.ibatis.annotations.Param;
+
 import java.util.List;
 
 /**
@@ -19,6 +21,20 @@ public interface UserInterfaceInfoMapper extends BaseMapper<UserInterfaceInfo> {
      * @return
      */
     List<UserInterfaceInfo> listTopInvokeInterfaceInfo(int limit);
+
+    /**
+     * 幂等初始化用户与接口的调用关系
+     *
+     * @param userId 用户id
+     * @param interfaceInfoId 接口id
+     * @param leftNum 剩余调用次数
+     * @param totalNum 总调用次数
+     * @return 影响行数
+     */
+    int insertIgnoreIfAbsent(@Param("userId") long userId,
+                             @Param("interfaceInfoId") long interfaceInfoId,
+                             @Param("leftNum") int leftNum,
+                             @Param("totalNum") int totalNum);
 
 }
 
