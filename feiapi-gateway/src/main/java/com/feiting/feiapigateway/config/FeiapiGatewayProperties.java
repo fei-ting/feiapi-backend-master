@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 public class FeiapiGatewayProperties {
 
     private String interfaceHost = "http://localhost:8123";
+    private RateLimit rateLimit = new RateLimit();
 
     public String getNormalizedInterfaceHost() {
         if (interfaceHost == null || interfaceHost.trim().isEmpty()) {
@@ -23,5 +24,22 @@ public class FeiapiGatewayProperties {
             normalizedInterfaceHost = normalizedInterfaceHost.substring(0, normalizedInterfaceHost.length() - 1);
         }
         return normalizedInterfaceHost;
+    }
+
+    /**
+     * 网关限流配置
+     */
+    @Data
+    public static class RateLimit {
+
+        /**
+         * 每个时间窗口最多允许的请求数
+         */
+        private int maxRequests = 20;
+
+        /**
+         * 限流时间窗口，单位：秒
+         */
+        private int windowSeconds = 1;
     }
 }
