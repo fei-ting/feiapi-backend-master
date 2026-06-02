@@ -3,7 +3,7 @@ package com.feiting.feiapiinterface.controller;
 import com.feiting.feiapiclientsdk.model.User;
 import org.springframework.web.bind.annotation.*;
 
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * @Author feiting

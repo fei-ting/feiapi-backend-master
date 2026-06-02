@@ -10,7 +10,7 @@ import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapicommon.model.entity.UserInterfaceInfo;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import java.util.List;
 
 /**

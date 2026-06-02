@@ -1,25 +1,23 @@
 package com.feiting.feiapiclientsdk;
 
 import com.feiting.feiapiclientsdk.client.FeiApiClient;
-import lombok.Data;
-import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.annotation.Configuration;
 
-@Configuration
-@ConfigurationProperties("feiapi.client")
-@Data
-@ComponentScan
+/**
+ * FeiAPI 客户端自动配置。
+ */
+@AutoConfiguration
+@EnableConfigurationProperties(FeiapiClientProperties.class)
 public class FeiapiClientConfig {
 
-    private String accessKey;
-    private String secretKey;
-    private String gatewayHost;
-
     @Bean
-    public FeiApiClient feiApiClient(){
-        return new FeiApiClient(accessKey, secretKey, gatewayHost);
+    public FeiApiClient feiApiClient(FeiapiClientProperties properties) {
+        return new FeiApiClient(
+                properties.getAccessKey(),
+                properties.getSecretKey(),
+                properties.getGatewayHost()
+        );
     }
-
 }

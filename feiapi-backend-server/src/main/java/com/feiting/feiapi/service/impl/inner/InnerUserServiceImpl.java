@@ -9,7 +9,7 @@ import com.feiting.feiapicommon.service.InnerUserService;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.dubbo.config.annotation.DubboService;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 
 /**
  * @Author feiting

@@ -11,7 +11,7 @@ import com.feiting.feiapicommon.service.InnerInterfaceInfoService;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.dubbo.config.annotation.DubboService;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 
 @DubboService
 public class InnerInterfaceInfoServiceImpl implements InnerInterfaceInfoService {

@@ -22,6 +22,7 @@ import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpRequestDecorator;
 import org.springframework.http.server.reactive.ServerHttpResponse;
@@ -199,8 +200,8 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
         try {
             ServerHttpResponse originalResponse = exchange.getResponse();
             DataBufferFactory bufferFactory = originalResponse.bufferFactory();
-            HttpStatus statusCode = originalResponse.getStatusCode();
-            if (statusCode == HttpStatus.OK) {
+            HttpStatusCode statusCode = originalResponse.getStatusCode();
+            if (HttpStatus.OK.equals(statusCode)) {
                 ServerHttpResponseDecorator decoratedResponse = new ServerHttpResponseDecorator(originalResponse) {
                     @Override
                     public Mono<Void> writeWith(Publisher<? extends DataBuffer> body) {
@@ -219,7 +220,7 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
                                         dataBuffer.read(content);
                                         DataBufferUtils.release(dataBuffer);
 
-                                        HttpStatus currentStatusCode = getStatusCode();
+                                        HttpStatusCode currentStatusCode = getStatusCode();
                                         log.info("接口响应完成, status: {}, bodyLength: {} bytes",
                                                 currentStatusCode == null ? "UNKNOWN" : currentStatusCode.value(),
                                                 content.length);

@@ -4,7 +4,7 @@ package com.feiting.feiapi.service;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.feiting.feiapicommon.model.entity.User;
 
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * 用户服务

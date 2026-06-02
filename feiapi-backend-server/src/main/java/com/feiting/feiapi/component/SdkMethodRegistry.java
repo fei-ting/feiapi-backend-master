@@ -6,7 +6,7 @@ import com.feiting.feiapiclientsdk.annotation.SdkInvoke;
 import com.feiting.feiapiclientsdk.client.FeiApiClient;
 import org.springframework.stereotype.Component;
 
-import javax.annotation.PostConstruct;
+import jakarta.annotation.PostConstruct;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Collections;
@@ -56,7 +56,9 @@ public class SdkMethodRegistry {
             }
             return method.invoke(client);
         } catch (IllegalAccessException | InvocationTargetException e) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "接口调用失败：" + methodName);
+            Throwable cause = e.getCause();
+            String errorMsg = cause != null ? cause.getMessage() : e.getMessage();
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "接口调用失败：" + methodName + "，原因：" + errorMsg);
         }
     }
 

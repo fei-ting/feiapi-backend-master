@@ -9,9 +9,9 @@ import com.google.gson.JsonPrimitive;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletResponse;
-import javax.servlet.http.Part;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
+import jakarta.servlet.http.Part;
 import java.lang.reflect.Array;
 import java.util.Arrays;
 import java.util.Collection;

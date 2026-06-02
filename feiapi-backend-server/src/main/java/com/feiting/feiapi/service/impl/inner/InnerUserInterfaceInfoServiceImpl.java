@@ -4,7 +4,7 @@ import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapicommon.service.InnerUserInterfaceInfoService;
 import org.apache.dubbo.config.annotation.DubboService;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 
 /**
  * @Author feiting
