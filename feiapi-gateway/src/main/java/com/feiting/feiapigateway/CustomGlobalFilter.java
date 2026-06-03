@@ -237,14 +237,21 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
                                             });
                                 }
 
-                                // 步骤9：未命中上线接口时，只允许携带内部发布探测签名的请求尝试访问 PUBLISHING 接口。
+                                // 步骤9：未命中上线接口时，检查是否携带发布探测标记。
+                                // 未携带探测标记的普通请求直接返回 404，避免泄露接口存在信息。
+                                if (!hasPublishingProbeHeader(request)) {
+                                    return handleNotFound(response);
+                                }
+
+                                // 步骤10：携带探测标记的请求，需要验证内部探测签名合法性。
                                 return validatePublishingProbe(request, method, requestPath)
                                         .flatMap(valid -> {
                                             if (!valid) {
-                                                return handleInvokeError(response);
+                                                // 探测签名不合法，返回 403 表示鉴权失败。
+                                                return handleNoAuth(response);
                                             }
 
-                                            // 探测签名验证通过，查询发布验证中的接口。
+                                            // 步骤11：探测签名验证通过，查询发布验证中的接口。
                                             InterfaceInfo publishingInterfaceInfo;
                                             try {
                                                 publishingInterfaceInfo = innerInterfaceInfoService.getPublishingInterfaceInfo(path, method);
@@ -253,10 +260,11 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
                                                 return handleInvokeError(response);
                                             }
                                             if (publishingInterfaceInfo == null || !isPublishingInterface(publishingInterfaceInfo)) {
-                                                return handleInvokeError(response);
+                                                // 接口不存在或已不处于发布验证状态，返回 404。
+                                                return handleNotFound(response);
                                             }
 
-                                            // 发布探测只验证接口可调用性，不扣减用户次数，也不记录普通调用统计。
+                                            // 步骤12：发布探测只验证接口可调用性，不扣减用户次数，也不记录普通调用统计。
                                             return chain.filter(decoratedExchange);
                                         });
                             })
@@ -348,6 +356,20 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
     }
 
     /**
+     * 返回 404 响应，表示接口不存在或已下线。
+     *
+     * <p>使用场景：</p>
+     * <ul>
+     *   <li>普通请求未命中上线接口</li>
+     *   <li>发布探测请求未命中发布验证中的接口</li>
+     * </ul>
+     */
+    private Mono<Void> handleNotFound(ServerHttpResponse response) {
+        response.setStatusCode(HttpStatus.NOT_FOUND);
+        return response.setComplete();
+    }
+
+    /**
      * 返回 429 响应，表示当前调用方在窗口期内已经触发限流。
      */
     private Mono<Void> handleTooManyRequests(ServerHttpResponse response) {
@@ -413,6 +435,19 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
      */
     private boolean isPublishingInterface(InterfaceInfo interfaceInfo) {
         return Integer.valueOf(InterfaceInfoStatusEnum.PUBLISHING.getValue()).equals(interfaceInfo.getStatus());
+    }
+
+    /**
+     * 检查请求是否携带发布探测标记 Header。
+     *
+     * <p>只有显式携带 X-FeiAPI-Probe: true 的请求才会进入发布探测链路，
+     * 普通用户请求不会进入此分支。</p>
+     *
+     * @param request 请求对象
+     * @return 是否携带探测标记
+     */
+    private boolean hasPublishingProbeHeader(ServerHttpRequest request) {
+        return "true".equalsIgnoreCase(request.getHeaders().getFirst(PROBE_HEADER));
     }
 
     /**

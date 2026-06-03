@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.Date;
 import java.util.List;
 import java.util.Set;
 
@@ -43,6 +44,9 @@ public class InterfaceInfoController {
             "id", "name", "description", "url", "requestParams", "requestHeader",
             "responseHeader", "status", "method", "userId", "createTime", "updateTime"
     );
+
+    /** 发布验证超时时间（毫秒），超过此时间的 PUBLISHING 状态将被视为超时并自动恢复为 OFFLINE */
+    private static final long PUBLISHING_TIMEOUT_MILLIS = 10 * 60 * 1000L;
 
     @Resource
     private InterfaceInfoService interfaceInfoService;
@@ -236,8 +240,14 @@ public class InterfaceInfoController {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
 
+        // 懒恢复：如果接口处于 PUBLISHING 状态且已超时，先恢复为 OFFLINE，避免残留状态阻塞发布。
+        recoverExpiredPublishingStatus(oldInterfaceInfo);
+
         // 前置检查：只允许 OFFLINE -> PUBLISHING
         if (oldInterfaceInfo.getStatus() != InterfaceInfoStatusEnum.OFFLINE.getValue()) {
+            if (oldInterfaceInfo.getStatus() == InterfaceInfoStatusEnum.PUBLISHING.getValue()) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口正在发布验证中，请稍后重试");
+            }
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口仅支持从下线状态发布");
         }
 
@@ -293,12 +303,15 @@ public class InterfaceInfoController {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
 
-        //更改数据库中接口信息的状态字段
-        InterfaceInfo interfaceInfo = new InterfaceInfo();
-        interfaceInfo.setId(id);
-        interfaceInfo.setStatus(InterfaceInfoStatusEnum.OFFLINE.getValue());
-        boolean result = interfaceInfoService.updateById(interfaceInfo);
-        return ResultUtils.success(result);
+        if (oldInterfaceInfo.getStatus() != InterfaceInfoStatusEnum.ONLINE.getValue()) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口仅支持从上线状态下线");
+        }
+
+        updateInterfaceStatus(id,
+                InterfaceInfoStatusEnum.ONLINE.getValue(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(),
+                "接口下线状态已变化，请刷新后重试");
+        return ResultUtils.success(true);
     }
 
 
@@ -342,6 +355,16 @@ public class InterfaceInfoController {
         return SortFieldUtils.resolveSortField(sortField, ALLOWED_SORT_FIELDS);
     }
 
+    /**
+     * 条件更新接口状态。
+     *
+     * <p>只在当前状态等于 expectedStatus 时才更新为 targetStatus，防止并发操作导致状态错乱。</p>
+     *
+     * @param id             接口 ID
+     * @param expectedStatus 期望的当前状态
+     * @param targetStatus   目标状态
+     * @param errorMessage   更新失败时的错误提示
+     */
     private void updateInterfaceStatus(long id, int expectedStatus, int targetStatus, String errorMessage) {
         InterfaceInfo interfaceInfo = new InterfaceInfo();
         interfaceInfo.setId(id);
@@ -355,6 +378,14 @@ public class InterfaceInfoController {
         }
     }
 
+    /**
+     * 回滚发布验证中的接口状态为 OFFLINE。
+     *
+     * <p>只在当前状态仍为 PUBLISHING 时才回滚，避免覆盖其他并发操作的结果。</p>
+     * <p>回滚失败时仅记录日志，不抛出异常，避免掩盖原始错误。</p>
+     *
+     * @param id 接口 ID
+     */
     private void rollbackPublishingStatus(long id) {
         try {
             updateInterfaceStatus(id,
@@ -364,5 +395,29 @@ public class InterfaceInfoController {
         } catch (Exception e) {
             log.error("接口发布验证失败后回滚状态失败，interfaceInfoId={}", id, e);
         }
+    }
+
+    /**
+     * 懒恢复超时的 PUBLISHING 状态为 OFFLINE。
+     *
+     * <p>如果接口处于 PUBLISHING 状态且距离上次更新已超过 10 分钟，说明发布流程可能因进程崩溃等原因中断，
+     * 此时将状态恢复为 OFFLINE，允许管理员重新发布。</p>
+     *
+     * @param interfaceInfo 接口信息
+     */
+    private void recoverExpiredPublishingStatus(InterfaceInfo interfaceInfo) {
+        if (interfaceInfo == null || interfaceInfo.getStatus() != InterfaceInfoStatusEnum.PUBLISHING.getValue()) {
+            return;
+        }
+        Date updateTime = interfaceInfo.getUpdateTime();
+        if (updateTime == null || System.currentTimeMillis() - updateTime.getTime() <= PUBLISHING_TIMEOUT_MILLIS) {
+            return;
+        }
+
+        updateInterfaceStatus(interfaceInfo.getId(),
+                InterfaceInfoStatusEnum.PUBLISHING.getValue(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(),
+                "接口发布验证状态恢复失败，请刷新后重试");
+        interfaceInfo.setStatus(InterfaceInfoStatusEnum.OFFLINE.getValue());
     }
 }
