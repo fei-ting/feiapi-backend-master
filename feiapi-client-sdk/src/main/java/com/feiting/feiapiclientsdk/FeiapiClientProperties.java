@@ -24,4 +24,9 @@ public class FeiapiClientProperties {
      * 网关基础地址。
      */
     private String gatewayHost;
+
+    /**
+     * 发布探测内部签名密钥。
+     */
+    private String probeSecret;
 }

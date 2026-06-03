@@ -12,7 +12,8 @@ import java.util.stream.Collectors;
 public enum InterfaceInfoStatusEnum {
 
     OFFLINE("关闭", 0),
-    ONLINE("上线", 1);
+    ONLINE("上线", 1),
+    PUBLISHING("发布验证中", 2);
 
     private final String text;
 

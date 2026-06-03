@@ -15,7 +15,8 @@ create table if not exists feiapi.`interface_info`
     `user_id` bigint not null comment '创建人',
     `create_time` datetime default CURRENT_TIMESTAMP not null comment '创建时间',
     `update_time` datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
-    `is_delete` tinyint default 0 not null comment '是否删除 0-未删除 1-已删除'
+    `is_delete` tinyint default 0 not null comment '是否删除 0-未删除 1-已删除',
+    unique key `uk_interface_info_url_method_delete` (`url`(191), `method`, `is_delete`)
     ) comment '接口信息';
 
 -- 初始化土味情话接口

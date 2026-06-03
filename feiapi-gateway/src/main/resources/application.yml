@@ -28,6 +28,7 @@ dubbo:
 feiapi:
   gateway:
     interface-host: ${FEIAPI_INTERFACE_HOST:http://localhost:8123}
+    probe-secret: ${FEIAPI_PROBE_SECRET:}
     rate-limit:
       max-requests: ${FEIAPI_RATE_LIMIT_MAX_REQUESTS:20}
       window-seconds: ${FEIAPI_RATE_LIMIT_WINDOW_SECONDS:1}
