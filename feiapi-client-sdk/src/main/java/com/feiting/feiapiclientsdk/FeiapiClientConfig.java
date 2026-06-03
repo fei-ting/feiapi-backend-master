@@ -17,7 +17,8 @@ public class FeiapiClientConfig {
         return new FeiApiClient(
                 properties.getAccessKey(),
                 properties.getSecretKey(),
-                properties.getGatewayHost()
+                properties.getGatewayHost(),
+                properties.getProbeSecret()
         );
     }
 }

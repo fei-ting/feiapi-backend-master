@@ -5,6 +5,7 @@ import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONUtil;
 import com.feiting.feiapiclientsdk.annotation.SdkInvoke;
 import com.feiting.feiapiclientsdk.model.User;
+import com.feiting.feiapiclientsdk.utils.ProbeSignUtils;
 import com.feiting.feiapiclientsdk.utils.SignUtils;
 import com.google.gson.Gson;
 
@@ -22,6 +23,17 @@ public class FeiApiClient {
     private String accessKey;
     private String secretKey;
     private String gatewayHost = DEFAULT_GATEWAY_HOST;
+    private String probeSecret;
+
+    /**
+     * 发布探测模式标记。
+     *
+     * FeiApiClient 作为 Spring 单例 Bean 时会被多个请求线程共享，因此这里使用 ThreadLocal
+     * 隔离每个线程的探测状态，避免并发发布时互相污染。调用方必须使用 try/finally 成对调用
+     * enableProbeMode() 和 disableProbeMode()，disableProbeMode() 内部使用 remove() 清理状态，
+     * 防止线程池复用线程时残留探测模式。
+     */
+    private final ThreadLocal<Boolean> probeMode = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
     public FeiApiClient() {
     }
@@ -35,6 +47,25 @@ public class FeiApiClient {
         this.accessKey = accessKey;
         this.secretKey = secretKey;
         this.gatewayHost = normalizeGatewayHost(gatewayHost);
+    }
+
+    public FeiApiClient(String accessKey, String secretKey, String gatewayHost, String probeSecret) {
+        this.accessKey = accessKey;
+        this.secretKey = secretKey;
+        this.gatewayHost = normalizeGatewayHost(gatewayHost);
+        this.probeSecret = probeSecret;
+    }
+
+    public void setProbeSecret(String probeSecret) {
+        this.probeSecret = probeSecret;
+    }
+
+    public void enableProbeMode() {
+        this.probeMode.set(Boolean.TRUE);
+    }
+
+    public void disableProbeMode() {
+        this.probeMode.remove();
     }
 
     /**
@@ -110,7 +141,24 @@ public class FeiApiClient {
         headers.put("nonce", nonce);
         headers.put("sign", sign);
         headers.put("timestamp", timestamp);
+        addProbeHeadersIfNecessary(headers, method, path);
         return headers;
+    }
+
+    private void addProbeHeadersIfNecessary(Map<String, String> headers, String method, String path) {
+        if (!Boolean.TRUE.equals(probeMode.get())) {
+            return;
+        }
+        if (probeSecret == null || probeSecret.trim().isEmpty()) {
+            throw new RuntimeException("发布探测密钥不能为空");
+        }
+        String probeNonce = UUID.randomUUID().toString().replace("-", "");
+        String probeTimestamp = String.valueOf(System.currentTimeMillis() / 1000);
+        String probeSign = ProbeSignUtils.getSign(probeSecret, method, path, probeNonce, probeTimestamp);
+        headers.put("X-FeiAPI-Probe", "true");
+        headers.put("X-FeiAPI-Probe-Nonce", probeNonce);
+        headers.put("X-FeiAPI-Probe-Timestamp", probeTimestamp);
+        headers.put("X-FeiAPI-Probe-Sign", probeSign);
     }
 
     /**

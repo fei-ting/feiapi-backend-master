@@ -41,3 +41,4 @@ feiapi:
     access-key: ${FEIAPI_CLIENT_ACCESS_KEY}
     secret-key: ${FEIAPI_CLIENT_SECRET_KEY}
     gateway-host: ${FEIAPI_CLIENT_GATEWAY_HOST}
+    probe-secret: ${FEIAPI_PROBE_SECRET}

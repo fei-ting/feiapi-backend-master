@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 public class FeiapiGatewayProperties {
 
     private String interfaceHost = "http://localhost:8123";
+    private String probeSecret;
     private RateLimit rateLimit = new RateLimit();
 
     public String getNormalizedInterfaceHost() {

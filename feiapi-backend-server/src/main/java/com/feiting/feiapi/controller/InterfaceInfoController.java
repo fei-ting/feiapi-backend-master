@@ -1,13 +1,13 @@
 package com.feiting.feiapi.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.feiting.feiapi.common.*;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoQueryRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoUpdateRequest;
-import com.feiting.feiapi.model.enums.InterfaceInfoStatusEnum;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapi.annotation.AuthCheck;
 import com.feiting.feiapi.constant.CommonConstant;
@@ -18,6 +18,7 @@ import com.feiting.feiapi.utils.SortFieldUtils;
 import com.feiting.feiapiclientsdk.client.FeiApiClient;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.entity.User;
+import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
@@ -235,18 +236,39 @@ public class InterfaceInfoController {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
 
-        //判断接口是否可以调用
-        Object invoke = sdkMethodRegistry.invoke(feiApiClient, oldInterfaceInfo.getName(), oldInterfaceInfo.getRequestParams());
-        if(invoke == null){
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"接口验证失败");
+        // 前置检查：只允许 OFFLINE -> PUBLISHING
+        if (oldInterfaceInfo.getStatus() != InterfaceInfoStatusEnum.OFFLINE.getValue()) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口仅支持从下线状态发布");
         }
 
-        //更改数据库中接口信息的状态字段
-        InterfaceInfo interfaceInfo = new InterfaceInfo();
-        interfaceInfo.setId(id);
-        interfaceInfo.setStatus(InterfaceInfoStatusEnum.ONLINE.getValue());
-        boolean result = interfaceInfoService.updateById(interfaceInfo);
-        return ResultUtils.success(result);
+        // 条件更新：只在当前状态为 OFFLINE 时才更新为 PUBLISHING
+        updateInterfaceStatus(id,
+                InterfaceInfoStatusEnum.OFFLINE.getValue(),
+                InterfaceInfoStatusEnum.PUBLISHING.getValue(),
+                "接口发布状态更新失败，请刷新后重试");
+
+        try {
+            feiApiClient.enableProbeMode();
+            Object invoke = sdkMethodRegistry.invoke(feiApiClient, oldInterfaceInfo.getName(), oldInterfaceInfo.getRequestParams());
+            if(invoke == null){
+                throw new BusinessException(ErrorCode.SYSTEM_ERROR,"接口验证失败");
+            }
+            // 成功后：只在当前状态为 PUBLISHING 时才更新为 ONLINE
+            updateInterfaceStatus(id,
+                    InterfaceInfoStatusEnum.PUBLISHING.getValue(),
+                    InterfaceInfoStatusEnum.ONLINE.getValue(),
+                    "接口发布状态已变化，请刷新后重试");
+            return ResultUtils.success(true);
+        } catch (Exception e) {
+            // 回滚时：只在当前状态为 PUBLISHING 时才回滚为 OFFLINE
+            rollbackPublishingStatus(id);
+            if (e instanceof BusinessException) {
+                throw (BusinessException) e;
+            }
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "接口验证失败：" + e.getMessage());
+        } finally {
+            feiApiClient.disableProbeMode();
+        }
     }
 
 
@@ -302,8 +324,8 @@ public class InterfaceInfoController {
         if (oldInterfaceInfo == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
-        if(oldInterfaceInfo.getStatus() == InterfaceInfoStatusEnum.OFFLINE.getValue()){
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"接口已关闭");
+        if(oldInterfaceInfo.getStatus() != InterfaceInfoStatusEnum.ONLINE.getValue()){
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"接口未上线或正在发布验证中");
         }
 
         User loginUser = userService.getLoginUser(request);
@@ -318,5 +340,29 @@ public class InterfaceInfoController {
 
     private String toDatabaseSortField(String sortField) {
         return SortFieldUtils.resolveSortField(sortField, ALLOWED_SORT_FIELDS);
+    }
+
+    private void updateInterfaceStatus(long id, int expectedStatus, int targetStatus, String errorMessage) {
+        InterfaceInfo interfaceInfo = new InterfaceInfo();
+        interfaceInfo.setId(id);
+        interfaceInfo.setStatus(targetStatus);
+        UpdateWrapper<InterfaceInfo> updateWrapper = new UpdateWrapper<>();
+        updateWrapper.eq("id", id);
+        updateWrapper.eq("status", expectedStatus);
+        boolean result = interfaceInfoService.update(interfaceInfo, updateWrapper);
+        if (!result) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, errorMessage);
+        }
+    }
+
+    private void rollbackPublishingStatus(long id) {
+        try {
+            updateInterfaceStatus(id,
+                    InterfaceInfoStatusEnum.PUBLISHING.getValue(),
+                    InterfaceInfoStatusEnum.OFFLINE.getValue(),
+                    "接口发布验证失败后回滚状态失败");
+        } catch (Exception e) {
+            log.error("接口发布验证失败后回滚状态失败，interfaceInfoId={}", id, e);
+        }
     }
 }
