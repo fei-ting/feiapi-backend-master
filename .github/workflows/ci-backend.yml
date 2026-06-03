@@ -70,7 +70,8 @@ jobs:
             -pl feiapi-backend-server -am \
             -Dspring.profiles.active=ci \
             -Dtest='!com.feiting.feiapi.test.ApiTest' \
-            -DfailIfNoTests=false
+            -DfailIfNoTests=false \
+            -Dsurefire.failIfNoSpecifiedTests=false
 
       - name: Maven 打包
         run: mvn -B package -DskipTests
