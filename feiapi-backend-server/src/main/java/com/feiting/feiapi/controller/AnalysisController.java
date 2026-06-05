@@ -19,6 +19,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.annotation.Resource;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -40,29 +42,48 @@ public class AnalysisController {
     @GetMapping("/top/interface/invoke")
     @AuthCheck(mustRole = "admin")
     public BaseResponse<List<InterfaceInfoVO>> listTopInvokeInterfaceInfo() {
-        //获取总调用次数前三的 UserInterfaceInfo 集合
+        //获取总调用次数前三的 UserInterfaceInfo 集合（已按 total_num desc 排序）
         List<UserInterfaceInfo> userInterfaceInfoList = userInterfaceInfoService.listTopInvokeInterfaceInfo(3);
-        //将 List 集合转换为 Map 集合，并根据 InterfaceInfoId 排序
-        Map<Long, List<UserInterfaceInfo>> interfaceInfoIdObjMap = userInterfaceInfoList.stream()
-                .collect(Collectors.groupingBy(UserInterfaceInfo::getInterfaceInfoId));
 
-        //校验：确认接口是否存在
-        QueryWrapper<InterfaceInfo> queryWrapper = new QueryWrapper<>();
-        queryWrapper.in("id", interfaceInfoIdObjMap.keySet());
-        //查询获取 InterfaceInfo 实体类（根据 InterfaceInfoId 进行匹配）
-        List<InterfaceInfo> list = interfaceInfoService.list(queryWrapper);
-        if (CollectionUtils.isEmpty(list)) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR);
+        //无调用数据时返回空列表，而非抛异常
+        if (CollectionUtils.isEmpty(userInterfaceInfoList)) {
+            return ResultUtils.success(new ArrayList<>());
         }
 
-        //将数据放到 map 集合中，根据 interfaceInfo -> {} 条件循环，再转换成 List 集合
-        List<InterfaceInfoVO> interfaceInfoVOList = list.stream().map(interfaceInfo -> {
-            InterfaceInfoVO interfaceInfoVO = new InterfaceInfoVO();
-            BeanUtils.copyProperties(interfaceInfo, interfaceInfoVO);
-            int totalNum = interfaceInfoIdObjMap.get(interfaceInfo.getId()).get(0).getTotalNum();
-            interfaceInfoVO.setTotalNum(totalNum);
-            return interfaceInfoVO;
-        }).collect(Collectors.toList());
+        //使用 LinkedHashMap 保持 mapper 返回的排序顺序
+        Map<Long, List<UserInterfaceInfo>> interfaceInfoIdObjMap = userInterfaceInfoList.stream()
+                .collect(Collectors.groupingBy(
+                        UserInterfaceInfo::getInterfaceInfoId,
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+
+        //查询接口信息
+        QueryWrapper<InterfaceInfo> queryWrapper = new QueryWrapper<>();
+        queryWrapper.in("id", interfaceInfoIdObjMap.keySet());
+        List<InterfaceInfo> list = interfaceInfoService.list(queryWrapper);
+
+        //无匹配接口时返回空列表
+        if (CollectionUtils.isEmpty(list)) {
+            return ResultUtils.success(new ArrayList<>());
+        }
+
+        //将 InterfaceInfo 转为 Map，按 id 索引
+        Map<Long, InterfaceInfo> interfaceInfoMap = list.stream()
+                .collect(Collectors.toMap(InterfaceInfo::getId, info -> info));
+
+        //按原始排序顺序（totalNum desc）遍历，保持排行榜顺序
+        List<InterfaceInfoVO> interfaceInfoVOList = interfaceInfoIdObjMap.keySet().stream()
+                .filter(interfaceInfoMap::containsKey)
+                .map(interfaceInfoId -> {
+                    InterfaceInfo interfaceInfo = interfaceInfoMap.get(interfaceInfoId);
+                    InterfaceInfoVO interfaceInfoVO = new InterfaceInfoVO();
+                    BeanUtils.copyProperties(interfaceInfo, interfaceInfoVO);
+                    int totalNum = interfaceInfoIdObjMap.get(interfaceInfoId).get(0).getTotalNum();
+                    interfaceInfoVO.setTotalNum(totalNum);
+                    return interfaceInfoVO;
+                })
+                .collect(Collectors.toList());
         return ResultUtils.success(interfaceInfoVOList);
     }
 }
