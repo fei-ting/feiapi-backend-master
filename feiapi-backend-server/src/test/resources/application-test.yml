@@ -1,0 +1,48 @@
+# 集成测试专用配置
+spring:
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:feiapi_test;DB_CLOSE_DELAY=-1;MODE=MySQL;NON_KEYWORDS=USER
+    username: sa
+    password:
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-h2.sql
+  session:
+    store-type: none
+  data:
+    redis:
+      repositories:
+        enabled: false
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+      - org.springframework.session.data.redis.RedisSessionAutoConfiguration
+
+server:
+  port: 0
+  servlet:
+    context-path: /
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      logic-delete-field: isDelete
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  mapper-locations: classpath*:mapper/**/*.xml
+
+feiapi:
+  client:
+    access-key: test-access-key
+    secret-key: test-secret-key
+    gateway-host: http://localhost:8090
+    probe-secret: test-probe-secret
+
+dubbo:
+  registry:
+    address: N/A

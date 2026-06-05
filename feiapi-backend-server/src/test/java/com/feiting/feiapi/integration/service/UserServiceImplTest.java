@@ -1,0 +1,276 @@
+package com.feiting.feiapi.integration.service;
+
+import com.feiting.feiapi.exception.BusinessException;
+import com.feiting.feiapi.service.UserService;
+import com.feiting.feiapicommon.model.entity.User;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * UserService 集成测试
+ * 使用 H2 内存数据库，每个测试方法事务回滚
+ */
+@SpringBootTest
+@ActiveProfiles("test")
+@Transactional
+@DisplayName("UserServiceImpl 集成测试")
+class UserServiceImplTest {
+
+    @Resource
+    private UserService userService;
+
+    @Nested
+    @DisplayName("userRegister 用户注册")
+    class UserRegisterTests {
+
+        @Test
+        @DisplayName("正常注册，返回新用户 id")
+        void shouldRegisterSuccessfully() {
+            long userId = userService.userRegister("testuser01", "password123", "password123");
+
+            assertTrue(userId > 0);
+        }
+
+        @Test
+        @DisplayName("注册后可通过 getById 查询到用户")
+        void shouldFindUserAfterRegister() {
+            long userId = userService.userRegister("testuser02", "password123", "password123");
+
+            User user = userService.getById(userId);
+
+            assertNotNull(user);
+            assertEquals("testuser02", user.getUserAccount());
+            assertNotNull(user.getAccessKey());
+            assertNotNull(user.getSecretKey());
+        }
+
+        @Test
+        @DisplayName("注册时密码被加密存储")
+        void shouldEncryptPassword() {
+            userService.userRegister("testuser03", "password123", "password123");
+
+            User user = userService.lambdaQuery().eq(User::getUserAccount, "testuser03").one();
+            assertNotNull(user);
+            assertNotEquals("password123", user.getUserPassword());
+            assertTrue(user.getUserPassword().startsWith("$2a$"));
+        }
+
+        @Test
+        @DisplayName("账号为空时抛出异常")
+        void shouldThrowWhenAccountBlank() {
+            assertThrows(BusinessException.class,
+                    () -> userService.userRegister("", "password123", "password123"));
+        }
+
+        @Test
+        @DisplayName("账号长度不足 4 位时抛出异常")
+        void shouldThrowWhenAccountTooShort() {
+            assertThrows(BusinessException.class,
+                    () -> userService.userRegister("abc", "password123", "password123"));
+        }
+
+        @Test
+        @DisplayName("密码长度不足 8 位时抛出异常")
+        void shouldThrowWhenPasswordTooShort() {
+            assertThrows(BusinessException.class,
+                    () -> userService.userRegister("testuser04", "1234567", "1234567"));
+        }
+
+        @Test
+        @DisplayName("两次密码不一致时抛出异常")
+        void shouldThrowWhenPasswordsMismatch() {
+            assertThrows(BusinessException.class,
+                    () -> userService.userRegister("testuser05", "password123", "password456"));
+        }
+
+        @Test
+        @DisplayName("重复账号注册时抛出异常")
+        void shouldThrowWhenAccountDuplicate() {
+            userService.userRegister("testuser06", "password123", "password123");
+
+            assertThrows(BusinessException.class,
+                    () -> userService.userRegister("testuser06", "password456", "password456"));
+        }
+    }
+
+    @Nested
+    @DisplayName("userLogin 用户登录")
+    class UserLoginTests {
+
+        @Test
+        @DisplayName("正确账号密码登录成功，返回用户信息")
+        void shouldLoginSuccessfully() {
+            userService.userRegister("loginuser01", "password123", "password123");
+            HttpServletRequest request = new MockHttpServletRequest();
+
+            User user = userService.userLogin("loginuser01", "password123", request);
+
+            assertNotNull(user);
+            assertEquals("loginuser01", user.getUserAccount());
+        }
+
+        @Test
+        @DisplayName("登录后 session 中存储了用户信息")
+        void shouldStoreUserInSession() {
+            userService.userRegister("loginuser02", "password123", "password123");
+            MockHttpServletRequest request = new MockHttpServletRequest();
+
+            userService.userLogin("loginuser02", "password123", request);
+
+            Object sessionUser = request.getSession().getAttribute("userLoginState");
+            assertNotNull(sessionUser);
+            assertTrue(sessionUser instanceof User);
+            assertEquals("loginuser02", ((User) sessionUser).getUserAccount());
+        }
+
+        @Test
+        @DisplayName("账号为空时抛出异常")
+        void shouldThrowWhenAccountBlank() {
+            HttpServletRequest request = new MockHttpServletRequest();
+
+            assertThrows(BusinessException.class,
+                    () -> userService.userLogin("", "password123", request));
+        }
+
+        @Test
+        @DisplayName("密码长度不足 8 位时抛出异常")
+        void shouldThrowWhenPasswordTooShort() {
+            HttpServletRequest request = new MockHttpServletRequest();
+
+            assertThrows(BusinessException.class,
+                    () -> userService.userLogin("loginuser03", "1234567", request));
+        }
+
+        @Test
+        @DisplayName("账号不存在时抛出异常")
+        void shouldThrowWhenAccountNotFound() {
+            HttpServletRequest request = new MockHttpServletRequest();
+
+            assertThrows(BusinessException.class,
+                    () -> userService.userLogin("nonexistent", "password123", request));
+        }
+
+        @Test
+        @DisplayName("密码错误时抛出异常")
+        void shouldThrowWhenPasswordWrong() {
+            userService.userRegister("loginuser04", "password123", "password123");
+            HttpServletRequest request = new MockHttpServletRequest();
+
+            assertThrows(BusinessException.class,
+                    () -> userService.userLogin("loginuser04", "wrongpassword", request));
+        }
+    }
+
+    @Nested
+    @DisplayName("getLoginUser 获取登录用户")
+    class GetLoginUserTests {
+
+        @Test
+        @DisplayName("已登录用户可正常获取")
+        void shouldGetLoggedInUser() {
+            long userId = userService.userRegister("getuser01", "password123", "password123");
+            MockHttpServletRequest request = new MockHttpServletRequest();
+            userService.userLogin("getuser01", "password123", request);
+
+            User user = userService.getLoginUser(request);
+
+            assertNotNull(user);
+            assertEquals(userId, user.getId());
+        }
+
+        @Test
+        @DisplayName("未登录时抛出 NOT_LOGIN_ERROR")
+        void shouldThrowWhenNotLoggedIn() {
+            MockHttpServletRequest request = new MockHttpServletRequest();
+
+            assertThrows(BusinessException.class,
+                    () -> userService.getLoginUser(request));
+        }
+    }
+
+    @Nested
+    @DisplayName("isAdmin 管理员判断")
+    class IsAdminTests {
+
+        @Test
+        @DisplayName("普通用户返回 false")
+        void shouldReturnFalseForNormalUser() {
+            userService.userRegister("adminuser01", "password123", "password123");
+            MockHttpServletRequest request = new MockHttpServletRequest();
+            userService.userLogin("adminuser01", "password123", request);
+
+            boolean result = userService.isAdmin(request);
+
+            assertFalse(result);
+        }
+
+        @Test
+        @DisplayName("session 中无用户时返回 false")
+        void shouldReturnFalseWhenNoSession() {
+            MockHttpServletRequest request = new MockHttpServletRequest();
+
+            boolean result = userService.isAdmin(request);
+
+            assertFalse(result);
+        }
+    }
+
+    @Nested
+    @DisplayName("userLogout 用户注销")
+    class UserLogoutTests {
+
+        @Test
+        @DisplayName("已登录用户注销成功")
+        void shouldLogoutSuccessfully() {
+            userService.userRegister("logoutuser01", "password123", "password123");
+            MockHttpServletRequest request = new MockHttpServletRequest();
+            userService.userLogin("logoutuser01", "password123", request);
+
+            boolean result = userService.userLogout(request);
+
+            assertTrue(result);
+            assertNull(request.getSession().getAttribute("userLoginState"));
+        }
+
+        @Test
+        @DisplayName("未登录时注销抛出异常")
+        void shouldThrowWhenNotLoggedIn() {
+            MockHttpServletRequest request = new MockHttpServletRequest();
+
+            assertThrows(BusinessException.class,
+                    () -> userService.userLogout(request));
+        }
+    }
+
+    @Nested
+    @DisplayName("encodePassword 密码加密")
+    class EncodePasswordTests {
+
+        @Test
+        @DisplayName("加密后的密码不等于原密码")
+        void shouldReturnDifferentPassword() {
+            String encoded = userService.encodePassword("password123");
+
+            assertNotEquals("password123", encoded);
+            assertTrue(encoded.startsWith("$2a$"));
+        }
+
+        @Test
+        @DisplayName("相同密码每次加密结果不同（BCrypt salt）")
+        void shouldProduceDifferentHashesForSameInput() {
+            String encoded1 = userService.encodePassword("password123");
+            String encoded2 = userService.encodePassword("password123");
+
+            assertNotEquals(encoded1, encoded2);
+        }
+    }
+}
