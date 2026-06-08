@@ -79,6 +79,20 @@ class InterfaceInvokeSmokeTest {
         return session;
     }
 
+    private long createInterfaceInfo(String name, String url, String method, long userId) {
+        InterfaceInfo interfaceInfo = new InterfaceInfo();
+        interfaceInfo.setName(name);
+        interfaceInfo.setDescription("desc_" + name);
+        interfaceInfo.setUrl(url);
+        interfaceInfo.setRequestHeader("{\"Content-Type\":\"application/json\"}");
+        interfaceInfo.setResponseHeader("{\"Content-Type\":\"application/json\"}");
+        interfaceInfo.setStatus(InterfaceInfoStatusEnum.OFFLINE.getValue());
+        interfaceInfo.setMethod(method);
+        interfaceInfo.setUserId(userId);
+        assertTrue(interfaceInfoService.save(interfaceInfo), "测试接口数据应创建成功");
+        return interfaceInfo.getId();
+    }
+
     @Test
     @DisplayName("成功调用全链路: 创建 -> 发布(mock成功) -> ONLINE -> 调用 -> 返回 data")
     void fullSuccessfulInvokeLifecycle() throws Exception {
@@ -117,7 +131,7 @@ class InterfaceInvokeSmokeTest {
             MvcResult createResult = mockMvc.perform(post("/interfaceInfo/add")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(addRequest))
-                            .session(userSession))
+                            .session(adminSession))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(0))
                     .andReturn();
@@ -209,7 +223,7 @@ class InterfaceInvokeSmokeTest {
             MvcResult createResult = mockMvc.perform(post("/interfaceInfo/add")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(addRequest))
-                            .session(userSession))
+                            .session(adminSession))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(0))
                     .andReturn();
@@ -268,7 +282,7 @@ class InterfaceInvokeSmokeTest {
     }
 
     @Test
-    @DisplayName("非本人删除他人接口应失败")
+    @DisplayName("普通用户删除平台接口应失败")
     void deleteOthersInterfaceShouldFail() throws Exception {
         String suffix = String.valueOf(System.currentTimeMillis());
         String ownerAccount = "smoke_owner_" + suffix;
@@ -279,32 +293,15 @@ class InterfaceInvokeSmokeTest {
         long otherId = -1;
 
         try {
-            MockHttpSession ownerSession = loginWithRole(ownerAccount, "user");
+            loginWithRole(ownerAccount, "user");
             MockHttpSession otherSession = loginWithRole(otherAccount, "user");
 
             ownerId = userService.lambdaQuery().eq(User::getUserAccount, ownerAccount).one().getId();
             otherId = userService.lambdaQuery().eq(User::getUserAccount, otherAccount).one().getId();
 
-            // owner 创建接口
-            InterfaceInfoAddRequest addRequest = new InterfaceInfoAddRequest();
-            addRequest.setName("testDeleteApi");
-            addRequest.setDescription("删除测试");
-            addRequest.setUrl("/api/delete_test_" + suffix);
-            addRequest.setRequestHeader("{\"Content-Type\":\"application/json\"}");
-            addRequest.setResponseHeader("{\"Content-Type\":\"application/json\"}");
-            addRequest.setMethod("GET");
+            interfaceInfoId = createInterfaceInfo("testDeleteApi", "/api/delete_test_" + suffix, "GET", ownerId);
 
-            MvcResult createResult = mockMvc.perform(post("/interfaceInfo/add")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(addRequest))
-                            .session(ownerSession))
-                    .andExpect(status().isOk())
-                    .andReturn();
-
-            interfaceInfoId = objectMapper.readTree(createResult.getResponse().getContentAsString())
-                    .get("data").asLong();
-
-            // other 尝试删除应失败
+            // 普通用户尝试删除平台接口应失败。
             String deleteJson = "{\"id\":" + interfaceInfoId + "}";
             mockMvc.perform(post("/interfaceInfo/delete")
                             .contentType(MediaType.APPLICATION_JSON)

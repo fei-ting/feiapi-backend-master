@@ -23,6 +23,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.stream.StreamSupport;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -88,14 +90,28 @@ class InterfaceInfoControllerTest {
         return request;
     }
 
+    private long createInterfaceInfo(String name, String url, String method, int status) {
+        InterfaceInfo interfaceInfo = new InterfaceInfo();
+        interfaceInfo.setName(name);
+        interfaceInfo.setDescription("desc_" + name);
+        interfaceInfo.setUrl(url);
+        interfaceInfo.setRequestHeader("{\"Content-Type\":\"application/json\"}");
+        interfaceInfo.setResponseHeader("{\"Content-Type\":\"application/json\"}");
+        interfaceInfo.setStatus(status);
+        interfaceInfo.setMethod(method);
+        interfaceInfo.setUserId(1L);
+        assertTrue(interfaceInfoService.save(interfaceInfo), "测试接口数据应创建成功");
+        return interfaceInfo.getId();
+    }
+
     @Nested
     @DisplayName("POST /interfaceInfo/add 创建接口")
     class AddTests {
 
         @Test
-        @DisplayName("已登录用户创建接口成功，数据库可查")
+        @DisplayName("管理员创建接口成功，数据库可查")
         void shouldAddInterfaceInfo() throws Exception {
-            MockHttpSession session = loginAsUser();
+            MockHttpSession session = loginAsAdmin();
             InterfaceInfoAddRequest request = buildAddRequest("addApi", "/api/add_test", "GET");
 
             MvcResult result = mockMvc.perform(post("/interfaceInfo/add")
@@ -118,9 +134,23 @@ class InterfaceInfoControllerTest {
         }
 
         @Test
+        @DisplayName("普通用户创建接口返回无权限")
+        void shouldDenyNormalUserAdd() throws Exception {
+            MockHttpSession session = loginAsUser();
+            InterfaceInfoAddRequest request = buildAddRequest("normalAddApi", "/api/normal_add", "GET");
+
+            mockMvc.perform(post("/interfaceInfo/add")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request))
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40101));
+        }
+
+        @Test
         @DisplayName("请求体为空返回参数错误")
         void shouldFailWhenBodyNull() throws Exception {
-            MockHttpSession session = loginAsUser();
+            MockHttpSession session = loginAsAdmin();
 
             mockMvc.perform(post("/interfaceInfo/add")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -144,7 +174,7 @@ class InterfaceInfoControllerTest {
         @Test
         @DisplayName("name 过长返回参数错误")
         void shouldFailWhenNameTooLong() throws Exception {
-            MockHttpSession session = loginAsUser();
+            MockHttpSession session = loginAsAdmin();
             StringBuilder longName = new StringBuilder();
             for (int i = 0; i < 51; i++) longName.append('a');
 
@@ -166,22 +196,37 @@ class InterfaceInfoControllerTest {
         @Test
         @DisplayName("根据 id 获取接口信息")
         void shouldGetById() throws Exception {
-            MockHttpSession session = loginAsUser();
-            InterfaceInfoAddRequest addRequest = buildAddRequest("getApi", "/api/get_test", "GET");
-
-            String response = mockMvc.perform(post("/interfaceInfo/add")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(addRequest))
-                            .session(session))
-                    .andReturn().getResponse().getContentAsString();
-
-            long id = objectMapper.readTree(response).get("data").asLong();
+            long id = createInterfaceInfo("getApi", "/api/get_test", "GET", InterfaceInfoStatusEnum.ONLINE.getValue());
 
             mockMvc.perform(get("/interfaceInfo/get").param("id", String.valueOf(id)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(0))
                     .andExpect(jsonPath("$.data.name").value("getApi"))
                     .andExpect(jsonPath("$.data.url").value("/api/get_test"));
+        }
+
+        @Test
+        @DisplayName("普通用户查看未上线接口返回数据不存在")
+        void shouldHideOfflineInterfaceForNormalUser() throws Exception {
+            long id = createInterfaceInfo("hiddenApi", "/api/hidden_get", "GET", InterfaceInfoStatusEnum.OFFLINE.getValue());
+
+            mockMvc.perform(get("/interfaceInfo/get").param("id", String.valueOf(id)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40400));
+        }
+
+        @Test
+        @DisplayName("管理员可以查看未上线接口")
+        void shouldAllowAdminGetOfflineInterface() throws Exception {
+            MockHttpSession adminSession = loginAsAdmin();
+            long id = createInterfaceInfo("adminGetApi", "/api/admin_get", "GET", InterfaceInfoStatusEnum.OFFLINE.getValue());
+
+            mockMvc.perform(get("/interfaceInfo/get")
+                            .param("id", String.valueOf(id))
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.name").value("adminGetApi"));
         }
 
         @Test
@@ -207,18 +252,10 @@ class InterfaceInfoControllerTest {
     class UpdateTests {
 
         @Test
-        @DisplayName("本人更新成功，数据库状态已变化")
-        void shouldUpdateOwnInterface() throws Exception {
-            MockHttpSession session = loginAsUser();
-            InterfaceInfoAddRequest addRequest = buildAddRequest("updateApi", "/api/update_test", "GET");
-
-            String createResponse = mockMvc.perform(post("/interfaceInfo/add")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(addRequest))
-                            .session(session))
-                    .andReturn().getResponse().getContentAsString();
-
-            long id = objectMapper.readTree(createResponse).get("data").asLong();
+        @DisplayName("管理员更新成功，数据库基础信息已变化")
+        void shouldUpdateInterfaceByAdmin() throws Exception {
+            MockHttpSession session = loginAsAdmin();
+            long id = createInterfaceInfo("updateApi", "/api/update_test", "GET", InterfaceInfoStatusEnum.OFFLINE.getValue());
 
             InterfaceInfoUpdateRequest updateRequest = new InterfaceInfoUpdateRequest();
             updateRequest.setId(id);
@@ -244,21 +281,36 @@ class InterfaceInfoControllerTest {
         }
 
         @Test
-        @DisplayName("非本人且非管理员更新应失败")
-        void shouldFailWhenNotOwner() throws Exception {
-            MockHttpSession ownerSession = loginWithRole("owner_upd_" + System.currentTimeMillis(), "user");
-            InterfaceInfoAddRequest addRequest = buildAddRequest("ownApi", "/api/own_upd", "GET");
+        @DisplayName("管理员更新时不能通过通用接口修改状态和归属人")
+        void shouldIgnoreStatusAndUserIdWhenUpdate() throws Exception {
+            MockHttpSession adminSession = loginAsAdmin();
+            long id = createInterfaceInfo("sensitiveApi", "/api/sensitive_update", "GET", InterfaceInfoStatusEnum.OFFLINE.getValue());
+            InterfaceInfo before = interfaceInfoService.getById(id);
 
-            String createResponse = mockMvc.perform(post("/interfaceInfo/add")
+            InterfaceInfoUpdateRequest updateRequest = new InterfaceInfoUpdateRequest();
+            updateRequest.setId(id);
+            updateRequest.setName("sensitiveUpdated");
+            updateRequest.setStatus(InterfaceInfoStatusEnum.ONLINE.getValue());
+            updateRequest.setUserId(99999L);
+
+            mockMvc.perform(post("/interfaceInfo/update")
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(addRequest))
-                            .session(ownerSession))
-                    .andReturn().getResponse().getContentAsString();
+                            .content(objectMapper.writeValueAsString(updateRequest))
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0));
 
-            long id = objectMapper.readTree(createResponse).get("data").asLong();
+            InterfaceInfo updated = interfaceInfoService.getById(id);
+            assertEquals("sensitiveUpdated", updated.getName());
+            assertEquals(before.getStatus(), updated.getStatus());
+            assertEquals(before.getUserId(), updated.getUserId());
+        }
 
-            // 其他用户尝试更新
-            MockHttpSession otherSession = loginWithRole("other_upd_" + System.currentTimeMillis(), "user");
+        @Test
+        @DisplayName("普通用户更新接口返回无权限")
+        void shouldDenyNormalUserUpdate() throws Exception {
+            MockHttpSession userSession = loginAsUser();
+            long id = createInterfaceInfo("ownApi", "/api/own_upd", "GET", InterfaceInfoStatusEnum.OFFLINE.getValue());
             InterfaceInfoUpdateRequest updateRequest = new InterfaceInfoUpdateRequest();
             updateRequest.setId(id);
             updateRequest.setName("hacked");
@@ -266,7 +318,7 @@ class InterfaceInfoControllerTest {
             mockMvc.perform(post("/interfaceInfo/update")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(updateRequest))
-                            .session(otherSession))
+                            .session(userSession))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(40101));
 
@@ -278,7 +330,7 @@ class InterfaceInfoControllerTest {
         @Test
         @DisplayName("id <= 0 返回参数错误")
         void shouldFailWhenIdInvalid() throws Exception {
-            MockHttpSession session = loginAsUser();
+            MockHttpSession session = loginAsAdmin();
 
             InterfaceInfoUpdateRequest request = new InterfaceInfoUpdateRequest();
             request.setId(0L);
@@ -294,7 +346,7 @@ class InterfaceInfoControllerTest {
         @Test
         @DisplayName("记录不存在返回数据不存在")
         void shouldFailWhenNotFound() throws Exception {
-            MockHttpSession session = loginAsUser();
+            MockHttpSession session = loginAsAdmin();
 
             InterfaceInfoUpdateRequest request = new InterfaceInfoUpdateRequest();
             request.setId(99999L);
@@ -314,76 +366,27 @@ class InterfaceInfoControllerTest {
     class DeleteTests {
 
         @Test
-        @DisplayName("本人删除成功，数据库逻辑删除")
-        void shouldDeleteOwnInterface() throws Exception {
+        @DisplayName("普通用户删除接口返回无权限")
+        void shouldDenyNormalUserDelete() throws Exception {
             MockHttpSession session = loginAsUser();
-            InterfaceInfoAddRequest addRequest = buildAddRequest("deleteApi", "/api/delete_test", "GET");
-
-            String createResponse = mockMvc.perform(post("/interfaceInfo/add")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(addRequest))
-                            .session(session))
-                    .andReturn().getResponse().getContentAsString();
-
-            long id = objectMapper.readTree(createResponse).get("data").asLong();
+            long id = createInterfaceInfo("deleteApi", "/api/delete_test", "GET", InterfaceInfoStatusEnum.OFFLINE.getValue());
 
             String deleteJson = "{\"id\":" + id + "}";
             mockMvc.perform(post("/interfaceInfo/delete")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(deleteJson)
                             .session(session))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(0));
-
-            // 验证已被逻辑删除
-            InterfaceInfo deleted = interfaceInfoService.getById(id);
-            assertNull(deleted, "逻辑删除后应查不到");
-        }
-
-        @Test
-        @DisplayName("非本人且非管理员删除应失败")
-        void shouldFailWhenNotOwner() throws Exception {
-            MockHttpSession ownerSession = loginWithRole("owner_del_" + System.currentTimeMillis(), "user");
-            InterfaceInfoAddRequest addRequest = buildAddRequest("ownDelApi", "/api/own_del", "GET");
-
-            String createResponse = mockMvc.perform(post("/interfaceInfo/add")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(addRequest))
-                            .session(ownerSession))
-                    .andReturn().getResponse().getContentAsString();
-
-            long id = objectMapper.readTree(createResponse).get("data").asLong();
-
-            // 其他用户尝试删除
-            MockHttpSession otherSession = loginWithRole("other_del_" + System.currentTimeMillis(), "user");
-            String deleteJson = "{\"id\":" + id + "}";
-            mockMvc.perform(post("/interfaceInfo/delete")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(deleteJson)
-                            .session(otherSession))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(40101));
 
-            // 验证未被删除
             assertNotNull(interfaceInfoService.getById(id));
         }
 
         @Test
-        @DisplayName("管理员删除他人接口成功")
+        @DisplayName("管理员删除接口成功")
         void shouldAllowAdminToDelete() throws Exception {
-            MockHttpSession userSession = loginWithRole("user_del_" + System.currentTimeMillis(), "user");
-            InterfaceInfoAddRequest addRequest = buildAddRequest("adminDelApi", "/api/admin_del", "GET");
-
-            String createResponse = mockMvc.perform(post("/interfaceInfo/add")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(addRequest))
-                            .session(userSession))
-                    .andReturn().getResponse().getContentAsString();
-
-            long id = objectMapper.readTree(createResponse).get("data").asLong();
-
-            // 管理员删除
             MockHttpSession adminSession = loginWithRole("admin_del_" + System.currentTimeMillis(), "admin");
+            long id = createInterfaceInfo("adminDelApi", "/api/admin_del", "GET", InterfaceInfoStatusEnum.OFFLINE.getValue());
             String deleteJson = "{\"id\":" + id + "}";
             mockMvc.perform(post("/interfaceInfo/delete")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -398,7 +401,7 @@ class InterfaceInfoControllerTest {
         @Test
         @DisplayName("id <= 0 返回参数错误")
         void shouldFailWhenIdInvalid() throws Exception {
-            MockHttpSession session = loginAsUser();
+            MockHttpSession session = loginAsAdmin();
             String deleteJson = "{\"id\":0}";
 
             mockMvc.perform(post("/interfaceInfo/delete")
@@ -481,6 +484,36 @@ class InterfaceInfoControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(0));
         }
+
+        @Test
+        @DisplayName("普通用户分页查询只返回已上线接口")
+        void shouldOnlyReturnOnlineInterfacesForNormalUser() throws Exception {
+            MockHttpSession session = loginAsUser();
+            String onlineName = "onlineListApi";
+            String offlineName = "offlineListApi";
+            createInterfaceInfo(onlineName, "/api/online_list", "GET", InterfaceInfoStatusEnum.ONLINE.getValue());
+            createInterfaceInfo(offlineName, "/api/offline_list", "GET", InterfaceInfoStatusEnum.OFFLINE.getValue());
+
+            MvcResult result = mockMvc.perform(get("/interfaceInfo/list/page")
+                            .param("current", "1")
+                            .param("pageSize", "50")
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andReturn();
+
+            com.fasterxml.jackson.databind.JsonNode records = objectMapper
+                    .readTree(result.getResponse().getContentAsString())
+                    .get("data")
+                    .get("records");
+            boolean containsOnline = StreamSupport.stream(records.spliterator(), false)
+                    .anyMatch(record -> onlineName.equals(record.get("name").asText()));
+            boolean containsOffline = StreamSupport.stream(records.spliterator(), false)
+                    .anyMatch(record -> offlineName.equals(record.get("name").asText()));
+
+            assertTrue(containsOnline, "普通用户应能看到已上线接口");
+            assertFalse(containsOffline, "普通用户不应看到未上线接口");
+        }
     }
 
     @Nested
@@ -491,17 +524,7 @@ class InterfaceInfoControllerTest {
         @DisplayName("管理员发布 OFFLINE 接口，状态变为 PUBLISHING（验证会失败回滚到 OFFLINE）")
         void shouldStartPublishingFromOffline() throws Exception {
             MockHttpSession adminSession = loginAsAdmin();
-            MockHttpSession userSession = loginWithRole("user_online_" + System.currentTimeMillis(), "user");
-
-            // 创建接口（状态为 OFFLINE）
-            InterfaceInfoAddRequest addRequest = buildAddRequest("onlineApi", "/api/online_test", "GET");
-            MvcResult createResult = mockMvc.perform(post("/interfaceInfo/add")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(addRequest))
-                            .session(userSession))
-                    .andReturn();
-
-            long id = objectMapper.readTree(createResult.getResponse().getContentAsString()).get("data").asLong();
+            long id = createInterfaceInfo("onlineApi", "/api/online_test", "GET", InterfaceInfoStatusEnum.OFFLINE.getValue());
 
             // 发布（会因网关不可用而失败，但应验证状态机转换）
             String onlineJson = "{\"id\":" + id + "}";
@@ -521,15 +544,7 @@ class InterfaceInfoControllerTest {
         @DisplayName("非管理员发布应返回无权限")
         void shouldDenyNonAdmin() throws Exception {
             MockHttpSession userSession = loginWithRole("user_online2_" + System.currentTimeMillis(), "user");
-
-            InterfaceInfoAddRequest addRequest = buildAddRequest("onlineApi2", "/api/online_test2", "GET");
-            MvcResult createResult = mockMvc.perform(post("/interfaceInfo/add")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(addRequest))
-                            .session(userSession))
-                    .andReturn();
-
-            long id = objectMapper.readTree(createResult.getResponse().getContentAsString()).get("data").asLong();
+            long id = createInterfaceInfo("onlineApi2", "/api/online_test2", "GET", InterfaceInfoStatusEnum.OFFLINE.getValue());
 
             String onlineJson = "{\"id\":" + id + "}";
             mockMvc.perform(post("/interfaceInfo/online")
@@ -558,21 +573,7 @@ class InterfaceInfoControllerTest {
         @DisplayName("发布已上线的接口应失败")
         void shouldFailWhenAlreadyOnline() throws Exception {
             MockHttpSession adminSession = loginAsAdmin();
-            MockHttpSession userSession = loginWithRole("user_online3_" + System.currentTimeMillis(), "user");
-
-            InterfaceInfoAddRequest addRequest = buildAddRequest("onlineApi3", "/api/online_test3", "GET");
-            MvcResult createResult = mockMvc.perform(post("/interfaceInfo/add")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(addRequest))
-                            .session(userSession))
-                    .andReturn();
-
-            long id = objectMapper.readTree(createResult.getResponse().getContentAsString()).get("data").asLong();
-
-            // 直接改为 ONLINE
-            InterfaceInfo info = interfaceInfoService.getById(id);
-            info.setStatus(InterfaceInfoStatusEnum.ONLINE.getValue());
-            interfaceInfoService.updateById(info);
+            long id = createInterfaceInfo("onlineApi3", "/api/online_test3", "GET", InterfaceInfoStatusEnum.ONLINE.getValue());
 
             // 尝试再次发布
             String onlineJson = "{\"id\":" + id + "}";
@@ -607,22 +608,7 @@ class InterfaceInfoControllerTest {
         @DisplayName("管理员下线 ONLINE 接口成功")
         void shouldOfflineOnlineInterface() throws Exception {
             MockHttpSession adminSession = loginAsAdmin();
-            MockHttpSession userSession = loginWithRole("user_offline_" + System.currentTimeMillis(), "user");
-
-            // 创建接口
-            InterfaceInfoAddRequest addRequest = buildAddRequest("offlineApi", "/api/offline_test", "GET");
-            MvcResult createResult = mockMvc.perform(post("/interfaceInfo/add")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(addRequest))
-                            .session(userSession))
-                    .andReturn();
-
-            long id = objectMapper.readTree(createResult.getResponse().getContentAsString()).get("data").asLong();
-
-            // 手动改为 ONLINE
-            InterfaceInfo info = interfaceInfoService.getById(id);
-            info.setStatus(InterfaceInfoStatusEnum.ONLINE.getValue());
-            interfaceInfoService.updateById(info);
+            long id = createInterfaceInfo("offlineApi", "/api/offline_test", "GET", InterfaceInfoStatusEnum.ONLINE.getValue());
 
             // 下线
             String offlineJson = "{\"id\":" + id + "}";
@@ -642,20 +628,7 @@ class InterfaceInfoControllerTest {
         @DisplayName("非管理员下线应返回无权限")
         void shouldDenyNonAdmin() throws Exception {
             MockHttpSession userSession = loginWithRole("user_offline2_" + System.currentTimeMillis(), "user");
-
-            InterfaceInfoAddRequest addRequest = buildAddRequest("offlineApi2", "/api/offline_test2", "GET");
-            MvcResult createResult = mockMvc.perform(post("/interfaceInfo/add")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(addRequest))
-                            .session(userSession))
-                    .andReturn();
-
-            long id = objectMapper.readTree(createResult.getResponse().getContentAsString()).get("data").asLong();
-
-            // 手动改为 ONLINE
-            InterfaceInfo info = interfaceInfoService.getById(id);
-            info.setStatus(InterfaceInfoStatusEnum.ONLINE.getValue());
-            interfaceInfoService.updateById(info);
+            long id = createInterfaceInfo("offlineApi2", "/api/offline_test2", "GET", InterfaceInfoStatusEnum.ONLINE.getValue());
 
             // 非管理员尝试下线
             String offlineJson = "{\"id\":" + id + "}";
@@ -671,16 +644,7 @@ class InterfaceInfoControllerTest {
         @DisplayName("下线 OFFLINE 接口应失败")
         void shouldFailWhenAlreadyOffline() throws Exception {
             MockHttpSession adminSession = loginAsAdmin();
-            MockHttpSession userSession = loginWithRole("user_offline3_" + System.currentTimeMillis(), "user");
-
-            InterfaceInfoAddRequest addRequest = buildAddRequest("offlineApi3", "/api/offline_test3", "GET");
-            MvcResult createResult = mockMvc.perform(post("/interfaceInfo/add")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(addRequest))
-                            .session(userSession))
-                    .andReturn();
-
-            long id = objectMapper.readTree(createResult.getResponse().getContentAsString()).get("data").asLong();
+            long id = createInterfaceInfo("offlineApi3", "/api/offline_test3", "GET", InterfaceInfoStatusEnum.OFFLINE.getValue());
 
             // 接口是 OFFLINE 状态，尝试下线
             String offlineJson = "{\"id\":" + id + "}";
@@ -746,15 +710,7 @@ class InterfaceInfoControllerTest {
         @DisplayName("未上线接口不可调用")
         void shouldFailWhenOffline() throws Exception {
             MockHttpSession session = loginAsUser();
-            InterfaceInfoAddRequest addRequest = buildAddRequest("offlineApi", "/api/offline_invoke", "GET");
-
-            String createResponse = mockMvc.perform(post("/interfaceInfo/add")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(addRequest))
-                            .session(session))
-                    .andReturn().getResponse().getContentAsString();
-
-            long id = objectMapper.readTree(createResponse).get("data").asLong();
+            long id = createInterfaceInfo("offlineInvokeApi", "/api/offline_invoke", "GET", InterfaceInfoStatusEnum.OFFLINE.getValue());
 
             InterfaceInfoInvokeRequest invokeRequest = new InterfaceInfoInvokeRequest();
             invokeRequest.setId(id);

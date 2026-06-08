@@ -73,6 +73,7 @@ public class InterfaceInfoController {
      * @return
      */
     @PostMapping("/add")
+    @AuthCheck(mustRole = "admin")
     public BaseResponse<Long> addInterfaceInfo(@RequestBody InterfaceInfoAddRequest interfaceInfoAddRequest, HttpServletRequest request) {
         if (interfaceInfoAddRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -99,20 +100,16 @@ public class InterfaceInfoController {
      * @return
      */
     @PostMapping("/delete")
+    @AuthCheck(mustRole = "admin")
     public BaseResponse<Boolean> deleteInterfaceInfo(@RequestBody DeleteRequest deleteRequest, HttpServletRequest request) {
         if (deleteRequest == null || deleteRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        User user = userService.getLoginUser(request);
         long id = deleteRequest.getId();
-        // 判断是否存在
+        // 判断是否存在，接口维护入口仅允许管理员操作，不再按接口拥有者放行。
         InterfaceInfo oldInterfaceInfo = interfaceInfoService.getById(id);
         if (oldInterfaceInfo == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
-        }
-        // 仅本人或管理员可删除
-        if (!oldInterfaceInfo.getUserId().equals(user.getId()) && !userService.isAdmin(request)) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
         }
         boolean b = interfaceInfoService.removeById(id);
         return ResultUtils.success(b);
@@ -126,25 +123,22 @@ public class InterfaceInfoController {
      * @return
      */
     @PostMapping("/update")
+    @AuthCheck(mustRole = "admin")
     public BaseResponse<Boolean> updateInterfaceInfo(@RequestBody InterfaceInfoUpdateRequest interfaceInfoUpdateRequest,
                                             HttpServletRequest request) {
         if (interfaceInfoUpdateRequest == null || interfaceInfoUpdateRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         InterfaceInfo interfaceInfo = new InterfaceInfo();
-        BeanUtils.copyProperties(interfaceInfoUpdateRequest, interfaceInfo);
+        // 接口状态和归属人只能由平台内部流程维护，禁止通过通用更新接口写入。
+        BeanUtils.copyProperties(interfaceInfoUpdateRequest, interfaceInfo, "status", "userId");
         // 参数校验
         interfaceInfoService.validInterfaceInfo(interfaceInfo, false);
-        User user = userService.getLoginUser(request);
         long id = interfaceInfoUpdateRequest.getId();
         // 判断是否存在
         InterfaceInfo oldInterfaceInfo = interfaceInfoService.getById(id);
         if (oldInterfaceInfo == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
-        }
-        // 仅本人或管理员可修改
-        if (!oldInterfaceInfo.getUserId().equals(user.getId()) && !userService.isAdmin(request)) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
         }
         boolean result = interfaceInfoService.updateById(interfaceInfo);
         return ResultUtils.success(result);
@@ -157,11 +151,14 @@ public class InterfaceInfoController {
      * @return
      */
     @GetMapping("/get")
-    public BaseResponse<InterfaceInfo> getInterfaceInfoById(long id) {
+    public BaseResponse<InterfaceInfo> getInterfaceInfoById(long id, HttpServletRequest request) {
         if (id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         InterfaceInfo interfaceInfo = interfaceInfoService.getById(id);
+        if (interfaceInfo != null && !isVisibleToCurrentUser(interfaceInfo, request)) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+        }
         return ResultUtils.success(interfaceInfo);
     }
 
@@ -197,6 +194,9 @@ public class InterfaceInfoController {
         }
         InterfaceInfo interfaceInfoQuery = new InterfaceInfo();
         BeanUtils.copyProperties(interfaceInfoQueryRequest, interfaceInfoQuery);
+        if (!userService.isAdmin(request)) {
+            interfaceInfoQuery.setStatus(InterfaceInfoStatusEnum.ONLINE.getValue());
+        }
         long current = interfaceInfoQueryRequest.getCurrent();
         long size = interfaceInfoQueryRequest.getPageSize();
         String sortField = toDatabaseSortField(interfaceInfoQueryRequest.getSortField());
@@ -353,6 +353,20 @@ public class InterfaceInfoController {
 
     private String toDatabaseSortField(String sortField) {
         return SortFieldUtils.resolveSortField(sortField, ALLOWED_SORT_FIELDS);
+    }
+
+    /**
+     * 判断当前用户是否可以查看接口详情。
+     *
+     * <p>管理员可以查看全部接口；普通用户和未登录访客只能查看已上线接口，避免暴露待发布或已下线接口信息。</p>
+     *
+     * @param interfaceInfo 接口信息
+     * @param request       HTTP 请求
+     * @return 是否可见
+     */
+    private boolean isVisibleToCurrentUser(InterfaceInfo interfaceInfo, HttpServletRequest request) {
+        return userService.isAdmin(request)
+                || interfaceInfo.getStatus() == InterfaceInfoStatusEnum.ONLINE.getValue();
     }
 
     /**
