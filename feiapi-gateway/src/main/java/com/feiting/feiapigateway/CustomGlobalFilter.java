@@ -38,6 +38,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 网关全局过滤器，负责处理所有经过网关的请求。
@@ -287,7 +288,7 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
      * 处理上线接口的响应，统计调用次数。
      *
      * <p>只对 HTTP 200 的下游响应统计调用次数，避免失败请求消耗用户额度。</p>
-     * <p>响应体被读取后必须重新包装写回，否则客户端会收到空响应。</p>
+     * <p>响应状态码需要在下游响应写出后读取，避免过滤器链执行前状态码尚未生成。</p>
      *
      * @param exchange        请求上下文
      * @param chain           过滤器链
@@ -298,45 +299,57 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
     public Mono<Void> handleResponse(ServerWebExchange exchange, GatewayFilterChain chain, long userId, long interfaceInfoId) {
         try {
             ServerHttpResponse originalResponse = exchange.getResponse();
-            DataBufferFactory bufferFactory = originalResponse.bufferFactory();
-            HttpStatusCode statusCode = originalResponse.getStatusCode();
-            if (HttpStatus.OK.equals(statusCode)) {
-                ServerHttpResponseDecorator decoratedResponse = new ServerHttpResponseDecorator(originalResponse) {
-                    @Override
-                    public Mono<Void> writeWith(Publisher<? extends DataBuffer> body) {
-                        log.info("body instanceof Flux: {}", body instanceof Flux);
-                        if (body instanceof Flux) {
-                            Flux<? extends DataBuffer> fluxBody = Flux.from(body);
-                            return super.writeWith(
-                                    fluxBody.map(dataBuffer -> {
-                                        try {
-                                            innerUserInterfaceInfoService.invokeCount(userId, interfaceInfoId);
-                                        } catch (Exception e) {
-                                            log.error("invokeCount error: {}", e.getMessage(), e);
-                                        }
+            AtomicBoolean invoked = new AtomicBoolean(false);
+            ServerHttpResponseDecorator decoratedResponse = new ServerHttpResponseDecorator(originalResponse) {
+                @Override
+                public Mono<Void> writeWith(Publisher<? extends DataBuffer> body) {
+                    return super.writeWith(body)
+                            .doOnSuccess(unused -> countSuccessfulInvokeOnce(invoked, getStatusCode(), userId, interfaceInfoId));
+                }
 
-                                        byte[] content = new byte[dataBuffer.readableByteCount()];
-                                        dataBuffer.read(content);
-                                        DataBufferUtils.release(dataBuffer);
+                @Override
+                public Mono<Void> writeAndFlushWith(Publisher<? extends Publisher<? extends DataBuffer>> body) {
+                    return super.writeAndFlushWith(body)
+                            .doOnSuccess(unused -> countSuccessfulInvokeOnce(invoked, getStatusCode(), userId, interfaceInfoId));
+                }
 
-                                        HttpStatusCode currentStatusCode = getStatusCode();
-                                        log.info("接口响应完成, status: {}, bodyLength: {} bytes",
-                                                currentStatusCode == null ? "UNKNOWN" : currentStatusCode.value(),
-                                                content.length);
-                                        return bufferFactory.wrap(content);
-                                    }));
-                        }
-                        log.error("<--- {} 响应 code 异常", getStatusCode());
-                        return super.writeWith(body);
-                    }
-                };
-                return chain.filter(exchange.mutate().response(decoratedResponse).build());
-            }
-            return chain.filter(exchange);
+                @Override
+                public Mono<Void> setComplete() {
+                    return super.setComplete()
+                            .doOnSuccess(unused -> countSuccessfulInvokeOnce(invoked, getStatusCode(), userId, interfaceInfoId));
+                }
+            };
+            return chain.filter(exchange.mutate().response(decoratedResponse).build());
         } catch (Exception e) {
             log.error("网关处理响应异常 {}", e.getMessage(), e);
             return chain.filter(exchange);
         }
+    }
+
+    /**
+     * 在响应成功写出后按请求维度统计一次调用。
+     *
+     * <p>响应状态码只有在下游处理后才可靠，因此不能在执行过滤器链之前读取。</p>
+     *
+     * @param invoked         本次请求是否已经计数
+     * @param statusCode      下游响应状态码
+     * @param userId          调用用户 ID
+     * @param interfaceInfoId 接口 ID
+     */
+    private void countSuccessfulInvokeOnce(AtomicBoolean invoked,
+                                           HttpStatusCode statusCode,
+                                           long userId,
+                                           long interfaceInfoId) {
+        if (!HttpStatus.OK.equals(statusCode) || !invoked.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            innerUserInterfaceInfoService.invokeCount(userId, interfaceInfoId);
+        } catch (Exception e) {
+            log.error("invokeCount error: {}", e.getMessage(), e);
+        }
+        log.info("接口响应完成, status: {}, userId: {}, interfaceInfoId: {}",
+                statusCode.value(), userId, interfaceInfoId);
     }
 
     /**
