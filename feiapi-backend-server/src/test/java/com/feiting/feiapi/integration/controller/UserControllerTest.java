@@ -133,7 +133,10 @@ class UserControllerTest {
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(0))
-                    .andExpect(jsonPath("$.data.userAccount").value("loginctrl01"));
+                    .andExpect(jsonPath("$.data.userAccount").value("loginctrl01"))
+                    .andExpect(jsonPath("$.data.userPassword").doesNotExist())
+                    .andExpect(jsonPath("$.data.accessKey").doesNotExist())
+                    .andExpect(jsonPath("$.data.secretKey").doesNotExist());
         }
 
         @Test
