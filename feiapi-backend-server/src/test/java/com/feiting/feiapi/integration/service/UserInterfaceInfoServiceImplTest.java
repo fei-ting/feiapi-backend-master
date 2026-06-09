@@ -1,6 +1,7 @@
 package com.feiting.feiapi.integration.service;
 
 import com.feiting.feiapi.exception.BusinessException;
+import com.feiting.feiapi.mapper.UserInterfaceInfoMapper;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapicommon.model.entity.UserInterfaceInfo;
 import jakarta.annotation.Resource;
@@ -24,6 +25,9 @@ class UserInterfaceInfoServiceImplTest {
 
     @Resource
     private UserInterfaceInfoService userInterfaceInfoService;
+
+    @Resource
+    private UserInterfaceInfoMapper userInterfaceInfoMapper;
 
     private void insertUserInterfaceInfo(long userId, long interfaceInfoId, int leftNum, int totalNum) {
         UserInterfaceInfo info = new UserInterfaceInfo();
@@ -125,6 +129,47 @@ class UserInterfaceInfoServiceImplTest {
 
             assertThrows(BusinessException.class,
                     () -> userInterfaceInfoService.leftNumIsEnough(1L, 4L));
+        }
+
+        @Test
+        @DisplayName("重复初始化 active 记录时不重置剩余次数和总调用次数")
+        void shouldNotResetQuotaWhenActiveRecordAlreadyExists() {
+            insertUserInterfaceInfo(1L, 5L, 3, 20);
+
+            userInterfaceInfoMapper.insertIgnoreIfAbsent(1L, 5L, 100, 0);
+
+            UserInterfaceInfo info = userInterfaceInfoService.lambdaQuery()
+                    .eq(UserInterfaceInfo::getUserId, 1L)
+                    .eq(UserInterfaceInfo::getInterfaceInfoId, 5L)
+                    .one();
+            assertNotNull(info);
+            assertEquals(3, info.getLeftNum());
+            assertEquals(20, info.getTotalNum());
+            assertEquals(0, info.getIsDelete());
+        }
+
+        @Test
+        @DisplayName("恢复软删除记录时不重置剩余次数和总调用次数")
+        void shouldNotResetQuotaWhenRestoreDeletedRecord() {
+            insertUserInterfaceInfo(1L, 6L, 0, 30);
+            UserInterfaceInfo savedInfo = userInterfaceInfoService.lambdaQuery()
+                    .eq(UserInterfaceInfo::getUserId, 1L)
+                    .eq(UserInterfaceInfo::getInterfaceInfoId, 6L)
+                    .one();
+
+            boolean removeResult = userInterfaceInfoService.removeById(savedInfo.getId());
+            assertTrue(removeResult);
+
+            userInterfaceInfoMapper.insertIgnoreIfAbsent(1L, 6L, 100, 0);
+
+            UserInterfaceInfo restoredInfo = userInterfaceInfoService.lambdaQuery()
+                    .eq(UserInterfaceInfo::getUserId, 1L)
+                    .eq(UserInterfaceInfo::getInterfaceInfoId, 6L)
+                    .one();
+            assertNotNull(restoredInfo);
+            assertEquals(0, restoredInfo.getLeftNum());
+            assertEquals(30, restoredInfo.getTotalNum());
+            assertEquals(0, restoredInfo.getIsDelete());
         }
     }
 

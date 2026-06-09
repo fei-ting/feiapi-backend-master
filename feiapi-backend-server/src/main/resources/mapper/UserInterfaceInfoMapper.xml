@@ -35,8 +35,6 @@
         insert into user_interface_info (user_id, interface_info_id, left_num, total_num, is_delete)
         values (#{userId}, #{interfaceInfoId}, #{leftNum}, #{totalNum}, 0)
         on duplicate key update
-            is_delete = 0,
-            left_num = values(left_num),
-            total_num = values(total_num)
+            is_delete = 0
     </insert>
 </mapper>
