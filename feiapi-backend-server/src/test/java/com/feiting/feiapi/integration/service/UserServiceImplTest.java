@@ -25,6 +25,26 @@ import static org.junit.jupiter.api.Assertions.*;
 @DisplayName("UserServiceImpl 集成测试")
 class UserServiceImplTest {
 
+    /**
+     * accessKey 预期长度
+     */
+    private static final int ACCESS_KEY_EXPECTED_LENGTH = 43;
+
+    /**
+     * secretKey 预期长度
+     */
+    private static final int SECRET_KEY_EXPECTED_LENGTH = 64;
+
+    /**
+     * Base64Url 密钥格式
+     */
+    private static final String BASE64_URL_KEY_PATTERN = "^[A-Za-z0-9_-]+$";
+
+    /**
+     * MD5 十六进制摘要格式
+     */
+    private static final String MD5_HEX_PATTERN = "^[a-fA-F0-9]{32}$";
+
     @Resource
     private UserService userService;
 
@@ -51,6 +71,27 @@ class UserServiceImplTest {
             assertEquals("testuser02", user.getUserAccount());
             assertNotNull(user.getAccessKey());
             assertNotNull(user.getSecretKey());
+            assertEquals(ACCESS_KEY_EXPECTED_LENGTH, user.getAccessKey().length());
+            assertEquals(SECRET_KEY_EXPECTED_LENGTH, user.getSecretKey().length());
+            assertTrue(user.getAccessKey().matches(BASE64_URL_KEY_PATTERN));
+            assertTrue(user.getSecretKey().matches(BASE64_URL_KEY_PATTERN));
+            assertFalse(user.getAccessKey().matches(MD5_HEX_PATTERN));
+            assertFalse(user.getSecretKey().matches(MD5_HEX_PATTERN));
+        }
+
+        @Test
+        @DisplayName("注册用户时生成的密钥不可预测且不同用户不重复")
+        void shouldGenerateSecureAndUniqueKeys() {
+            long firstUserId = userService.userRegister("testuser07", "password123", "password123");
+            long secondUserId = userService.userRegister("testuser08", "password123", "password123");
+
+            User firstUser = userService.getById(firstUserId);
+            User secondUser = userService.getById(secondUserId);
+
+            assertNotNull(firstUser);
+            assertNotNull(secondUser);
+            assertNotEquals(firstUser.getAccessKey(), secondUser.getAccessKey());
+            assertNotEquals(firstUser.getSecretKey(), secondUser.getSecretKey());
         }
 
         @Test

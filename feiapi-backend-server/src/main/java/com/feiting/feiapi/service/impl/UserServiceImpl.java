@@ -1,7 +1,5 @@
 package com.feiting.feiapi.service.impl;
 
-import cn.hutool.core.util.RandomUtil;
-import cn.hutool.crypto.digest.DigestUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.feiting.feiapi.common.ErrorCode;
@@ -17,6 +15,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import java.security.SecureRandom;
+import java.util.Base64;
 
 
 /**
@@ -28,6 +28,21 @@ import jakarta.servlet.http.HttpServletRequest;
 @Slf4j
 public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         implements UserService {
+
+    /**
+     * accessKey 随机字节长度
+     */
+    private static final int ACCESS_KEY_RANDOM_BYTE_LENGTH = 32;
+
+    /**
+     * secretKey 随机字节长度
+     */
+    private static final int SECRET_KEY_RANDOM_BYTE_LENGTH = 48;
+
+    /**
+     * 安全随机数生成器
+     */
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     @Resource
     private UserMapper userMapper;
@@ -61,11 +76,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             // 2. 加密
             String encryptPassword = passwordEncoder.encode(userPassword);
 
-            //3.分配accessKey和secretKey
-            String accessKey = DigestUtil.md5Hex("feiting" + userAccount + RandomUtil.randomNumbers(4));
-            String secretKey = DigestUtil.md5Hex("feiting" + userAccount + RandomUtil.randomNumbers(6));
+            // 3. 分配不可预测的 accessKey 和 secretKey
+            String accessKey = generateSecureKey(ACCESS_KEY_RANDOM_BYTE_LENGTH);
+            String secretKey = generateSecureKey(SECRET_KEY_RANDOM_BYTE_LENGTH);
 
-            // 3. 插入数据
+            // 4. 插入数据
             User user = new User();
             user.setUserAccount(userAccount);
             user.setUserPassword(encryptPassword);
@@ -77,6 +92,18 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             }
             return user.getId();
         }
+    }
+
+    /**
+     * 生成 URL 安全的随机密钥
+     *
+     * @param byteLength 随机字节长度
+     * @return URL 安全的随机密钥
+     */
+    private String generateSecureKey(int byteLength) {
+        byte[] randomBytes = new byte[byteLength];
+        SECURE_RANDOM.nextBytes(randomBytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
     }
 
     @Override
