@@ -1,5 +1,4 @@
 package com.feiting.feiapi.service.impl;
-import java.util.Date;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.feiting.feiapi.common.ErrorCode;
@@ -19,38 +18,42 @@ import org.springframework.stereotype.Service;
 public class InterfaceInfoServiceImpl extends ServiceImpl<InterfaceInfoMapper, InterfaceInfo>
     implements InterfaceInfoService {
 
-
     @Override
     public void validInterfaceInfo(InterfaceInfo interfaceInfo, boolean add) {
-
+        // 空对象校验
         if (interfaceInfo == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
 
-        Long id = interfaceInfo.getId();
         String name = interfaceInfo.getName();
-        String description = interfaceInfo.getDescription();
         String url = interfaceInfo.getUrl();
-        String requestHeader = interfaceInfo.getRequestHeader();
-        String responseHeader = interfaceInfo.getResponseHeader();
-        Integer status = interfaceInfo.getStatus();
         String method = interfaceInfo.getMethod();
-        Long userId = interfaceInfo.getUserId();
-        Date createTime = interfaceInfo.getCreateTime();
-        Date updateTime = interfaceInfo.getUpdateTime();
-        Integer isDelete = interfaceInfo.getIsDelete();
 
-        // 创建时，所有参数必须非空
+        // 创建时，必填字段强制校验：name、url、method 不能为空
         if (add) {
-            if (StringUtils.isAnyBlank(String.valueOf(id),name,description,url,requestHeader,responseHeader,
-                    String.valueOf(status), method,String.valueOf(userId),String.valueOf(createTime),String.valueOf(updateTime),String.valueOf(isDelete))) {
-                throw new BusinessException(ErrorCode.PARAMS_ERROR);
+            if (StringUtils.isAnyBlank(name, url, method)) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "接口名称、URL、请求方法不能为空");
+            }
+        } else {
+            // 更新时，只校验传入的核心字段不能是空白
+            // name 如果传了，不能是空白
+            if (name != null && name.trim().isEmpty()) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "接口名称不能为空白");
+            }
+            // url 如果传了，不能是空白
+            if (url != null && url.trim().isEmpty()) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "接口URL不能为空白");
+            }
+            // method 如果传了，不能是空白
+            if (method != null && method.trim().isEmpty()) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求方法不能为空白");
             }
         }
+
+        // name 长度校验（创建和更新都适用）
         if (StringUtils.isNotBlank(name) && name.length() > 50) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "名称过长");
         }
-
     }
 }
 

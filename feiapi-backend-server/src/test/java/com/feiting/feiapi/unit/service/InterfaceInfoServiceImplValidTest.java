@@ -7,8 +7,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.util.Date;
-
 import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("InterfaceInfoServiceImpl.validInterfaceInfo 校验逻辑测试")
@@ -32,9 +30,9 @@ class InterfaceInfoServiceImplValidTest {
     class AddValidationTests {
 
         @Test
-        @DisplayName("所有字段非空时校验通过")
-        void shouldPassWhenAllFieldsPresent() {
-            InterfaceInfo info = buildCompleteInterfaceInfo();
+        @DisplayName("必填字段（name、url、method）非空时校验通过")
+        void shouldPassWhenRequiredFieldsPresent() {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
 
             assertDoesNotThrow(() -> service.validInterfaceInfo(info, true));
         }
@@ -42,17 +40,17 @@ class InterfaceInfoServiceImplValidTest {
         @Test
         @DisplayName("name 为空时抛出异常")
         void shouldThrowWhenNameBlank() {
-            InterfaceInfo info = buildCompleteInterfaceInfo();
+            InterfaceInfo info = buildMinimalInterfaceInfo();
             info.setName("");
 
             assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, true));
         }
 
         @Test
-        @DisplayName("description 为空时抛出异常")
-        void shouldThrowWhenDescriptionBlank() {
-            InterfaceInfo info = buildCompleteInterfaceInfo();
-            info.setDescription("");
+        @DisplayName("name 为 null 时抛出异常")
+        void shouldThrowWhenNameNull() {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
+            info.setName(null);
 
             assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, true));
         }
@@ -60,8 +58,17 @@ class InterfaceInfoServiceImplValidTest {
         @Test
         @DisplayName("url 为空时抛出异常")
         void shouldThrowWhenUrlBlank() {
-            InterfaceInfo info = buildCompleteInterfaceInfo();
+            InterfaceInfo info = buildMinimalInterfaceInfo();
             info.setUrl("");
+
+            assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, true));
+        }
+
+        @Test
+        @DisplayName("url 为 null 时抛出异常")
+        void shouldThrowWhenUrlNull() {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
+            info.setUrl(null);
 
             assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, true));
         }
@@ -69,79 +76,150 @@ class InterfaceInfoServiceImplValidTest {
         @Test
         @DisplayName("method 为空时抛出异常")
         void shouldThrowWhenMethodBlank() {
-            InterfaceInfo info = buildCompleteInterfaceInfo();
+            InterfaceInfo info = buildMinimalInterfaceInfo();
             info.setMethod("");
 
             assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, true));
         }
 
         @Test
-        @DisplayName("requestHeader 为空时抛出异常")
-        void shouldThrowWhenRequestHeaderBlank() {
-            InterfaceInfo info = buildCompleteInterfaceInfo();
-            info.setRequestHeader("");
+        @DisplayName("method 为 null 时抛出异常")
+        void shouldThrowWhenMethodNull() {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
+            info.setMethod(null);
 
             assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, true));
         }
 
         @Test
-        @DisplayName("responseHeader 为空时抛出异常")
-        void shouldThrowWhenResponseHeaderBlank() {
-            InterfaceInfo info = buildCompleteInterfaceInfo();
+        @DisplayName("description 为空允许通过（可选字段）")
+        void shouldAllowDescriptionBlank() {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
+            info.setDescription("");
+
+            assertDoesNotThrow(() -> service.validInterfaceInfo(info, true));
+        }
+
+        @Test
+        @DisplayName("description 为 null 允许通过（可选字段）")
+        void shouldAllowDescriptionNull() {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
+            info.setDescription(null);
+
+            assertDoesNotThrow(() -> service.validInterfaceInfo(info, true));
+        }
+
+        @Test
+        @DisplayName("requestHeader 为空允许通过（可选字段）")
+        void shouldAllowRequestHeaderBlank() {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
+            info.setRequestHeader("");
+
+            assertDoesNotThrow(() -> service.validInterfaceInfo(info, true));
+        }
+
+        @Test
+        @DisplayName("requestHeader 为 null 允许通过（可选字段）")
+        void shouldAllowRequestHeaderNull() {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
+            info.setRequestHeader(null);
+
+            assertDoesNotThrow(() -> service.validInterfaceInfo(info, true));
+        }
+
+        @Test
+        @DisplayName("responseHeader 为空允许通过（可选字段）")
+        void shouldAllowResponseHeaderBlank() {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
             info.setResponseHeader("");
 
-            assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, true));
+            assertDoesNotThrow(() -> service.validInterfaceInfo(info, true));
+        }
+
+        @Test
+        @DisplayName("responseHeader 为 null 允许通过（可选字段）")
+        void shouldAllowResponseHeaderNull() {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
+            info.setResponseHeader(null);
+
+            assertDoesNotThrow(() -> service.validInterfaceInfo(info, true));
+        }
+
+        @Test
+        @DisplayName("requestParams 为空允许通过（可选字段，无参数接口可以为空）")
+        void shouldAllowRequestParamsBlank() {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
+            info.setRequestParams("");
+
+            assertDoesNotThrow(() -> service.validInterfaceInfo(info, true));
+        }
+
+        @Test
+        @DisplayName("requestParams 为 null 允许通过（可选字段）")
+        void shouldAllowRequestParamsNull() {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
+            info.setRequestParams(null);
+
+            assertDoesNotThrow(() -> service.validInterfaceInfo(info, true));
         }
 
         /**
-         * 以下字段在创建时允许为 null，由数据库或框架自动生成：
-         * - status: 数据库默认值 0（OFFLINE）
-         * - userId: 由 controller 层从登录态获取后设置
+         * 以下字段由服务端维护，不应由通用校验方法校验：
+         * - id: 由数据库自动生成
+         * - status: 由 /online、/offline 接口维护
+         * - userId: 由登录用户上下文设置
          * - createTime/updateTime: 由 MyBatis Plus 自动填充
          * - isDelete: 由逻辑删除机制默认设为 0
-         *
-         * 校验器不校验这些字段的 null 值是正确的行为，因为它们不应由调用方传入。
          */
         @Test
-        @DisplayName("status 为 null 允许通过（创建时由数据库默认值生成）")
+        @DisplayName("id 为 null 允许通过（服务端维护字段）")
+        void shouldAllowIdNullOnCreate() {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
+            info.setId(null);
+
+            assertDoesNotThrow(() -> service.validInterfaceInfo(info, true));
+        }
+
+        @Test
+        @DisplayName("status 为 null 允许通过（服务端维护字段）")
         void shouldAllowStatusNullOnCreate() {
-            InterfaceInfo info = buildCompleteInterfaceInfo();
+            InterfaceInfo info = buildMinimalInterfaceInfo();
             info.setStatus(null);
 
             assertDoesNotThrow(() -> service.validInterfaceInfo(info, true));
         }
 
         @Test
-        @DisplayName("userId 为 null 允许通过（创建时由 controller 从登录态设置）")
+        @DisplayName("userId 为 null 允许通过（服务端维护字段）")
         void shouldAllowUserIdNullOnCreate() {
-            InterfaceInfo info = buildCompleteInterfaceInfo();
+            InterfaceInfo info = buildMinimalInterfaceInfo();
             info.setUserId(null);
 
             assertDoesNotThrow(() -> service.validInterfaceInfo(info, true));
         }
 
         @Test
-        @DisplayName("createTime 为 null 允许通过（创建时由框架自动填充）")
+        @DisplayName("createTime 为 null 允许通过（服务端维护字段）")
         void shouldAllowCreateTimeNullOnCreate() {
-            InterfaceInfo info = buildCompleteInterfaceInfo();
+            InterfaceInfo info = buildMinimalInterfaceInfo();
             info.setCreateTime(null);
 
             assertDoesNotThrow(() -> service.validInterfaceInfo(info, true));
         }
 
         @Test
-        @DisplayName("updateTime 为 null 允许通过（创建时由框架自动填充）")
+        @DisplayName("updateTime 为 null 允许通过（服务端维护字段）")
         void shouldAllowUpdateTimeNullOnCreate() {
-            InterfaceInfo info = buildCompleteInterfaceInfo();
+            InterfaceInfo info = buildMinimalInterfaceInfo();
             info.setUpdateTime(null);
 
             assertDoesNotThrow(() -> service.validInterfaceInfo(info, true));
         }
 
         @Test
-        @DisplayName("isDelete 为 null 允许通过（创建时由逻辑删除机制默认设为 0）")
+        @DisplayName("isDelete 为 null 允许通过（服务端维护字段）")
         void shouldAllowIsDeleteNullOnCreate() {
-            InterfaceInfo info = buildCompleteInterfaceInfo();
+            InterfaceInfo info = buildMinimalInterfaceInfo();
             info.setIsDelete(null);
 
             assertDoesNotThrow(() -> service.validInterfaceInfo(info, true));
@@ -153,18 +231,126 @@ class InterfaceInfoServiceImplValidTest {
     class UpdateValidationTests {
 
         @Test
-        @DisplayName("interfaceInfo 不为 null 时通过通用校验")
-        void shouldPassWhenNotNull() {
+        @DisplayName("所有字段为 null 时通过校验（更新时允许不传字段）")
+        void shouldPassWhenAllFieldsNull() {
             InterfaceInfo info = new InterfaceInfo();
-            info.setName("test");
 
             assertDoesNotThrow(() -> service.validInterfaceInfo(info, false));
         }
 
         @Test
-        @DisplayName("name 为 null 时不抛异常（更新时允许部分字段为空）")
-        void shouldPassWhenNameNull() {
+        @DisplayName("name 传入正常值时通过校验")
+        void shouldPassWhenNameValid() {
             InterfaceInfo info = new InterfaceInfo();
+            info.setName("updatedApi");
+
+            assertDoesNotThrow(() -> service.validInterfaceInfo(info, false));
+        }
+
+        @Test
+        @DisplayName("name 传入空白字符串时抛出异常")
+        void shouldThrowWhenNameBlankOnUpdate() {
+            InterfaceInfo info = new InterfaceInfo();
+            info.setName("   ");
+
+            assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, false));
+        }
+
+        @Test
+        @DisplayName("name 传入空字符串时抛出异常")
+        void shouldThrowWhenNameEmptyOnUpdate() {
+            InterfaceInfo info = new InterfaceInfo();
+            info.setName("");
+
+            assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, false));
+        }
+
+        @Test
+        @DisplayName("url 传入正常值时通过校验")
+        void shouldPassWhenUrlValid() {
+            InterfaceInfo info = new InterfaceInfo();
+            info.setUrl("/api/updated");
+
+            assertDoesNotThrow(() -> service.validInterfaceInfo(info, false));
+        }
+
+        @Test
+        @DisplayName("url 传入空白字符串时抛出异常")
+        void shouldThrowWhenUrlBlankOnUpdate() {
+            InterfaceInfo info = new InterfaceInfo();
+            info.setUrl("   ");
+
+            assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, false));
+        }
+
+        @Test
+        @DisplayName("method 传入正常值时通过校验")
+        void shouldPassWhenMethodValid() {
+            InterfaceInfo info = new InterfaceInfo();
+            info.setMethod("POST");
+
+            assertDoesNotThrow(() -> service.validInterfaceInfo(info, false));
+        }
+
+        @Test
+        @DisplayName("method 传入空白字符串时抛出异常")
+        void shouldThrowWhenMethodBlankOnUpdate() {
+            InterfaceInfo info = new InterfaceInfo();
+            info.setMethod("   ");
+
+            assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, false));
+        }
+
+        @Test
+        @DisplayName("description 为空允许通过（可用于清空描述）")
+        void shouldAllowDescriptionBlankOnUpdate() {
+            InterfaceInfo info = new InterfaceInfo();
+            info.setDescription("");
+
+            assertDoesNotThrow(() -> service.validInterfaceInfo(info, false));
+        }
+
+        @Test
+        @DisplayName("requestHeader 为空允许通过（可用于清空请求头）")
+        void shouldAllowRequestHeaderBlankOnUpdate() {
+            InterfaceInfo info = new InterfaceInfo();
+            info.setRequestHeader("");
+
+            assertDoesNotThrow(() -> service.validInterfaceInfo(info, false));
+        }
+
+        @Test
+        @DisplayName("responseHeader 为空允许通过（可用于清空响应头）")
+        void shouldAllowResponseHeaderBlankOnUpdate() {
+            InterfaceInfo info = new InterfaceInfo();
+            info.setResponseHeader("");
+
+            assertDoesNotThrow(() -> service.validInterfaceInfo(info, false));
+        }
+
+        @Test
+        @DisplayName("requestParams 为空允许通过（可用于清空参数说明）")
+        void shouldAllowRequestParamsBlankOnUpdate() {
+            InterfaceInfo info = new InterfaceInfo();
+            info.setRequestParams("");
+
+            assertDoesNotThrow(() -> service.validInterfaceInfo(info, false));
+        }
+
+        @Test
+        @DisplayName("status 为 null 允许通过（由 /online、/offline 接口维护）")
+        void shouldAllowStatusNullOnUpdate() {
+            InterfaceInfo info = new InterfaceInfo();
+            info.setStatus(null);
+
+            assertDoesNotThrow(() -> service.validInterfaceInfo(info, false));
+        }
+
+        @Test
+        @DisplayName("userId 为 null 允许通过（由登录用户上下文维护）")
+        void shouldAllowUserIdNullOnUpdate() {
+            InterfaceInfo info = new InterfaceInfo();
+            info.setUserId(null);
 
             assertDoesNotThrow(() -> service.validInterfaceInfo(info, false));
         }
@@ -177,7 +363,7 @@ class InterfaceInfoServiceImplValidTest {
         @Test
         @DisplayName("name 长度超过 50 时抛出异常")
         void shouldThrowWhenNameTooLong() {
-            InterfaceInfo info = buildCompleteInterfaceInfo();
+            InterfaceInfo info = buildMinimalInterfaceInfo();
             info.setName(padding(51));
 
             assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, true));
@@ -186,10 +372,19 @@ class InterfaceInfoServiceImplValidTest {
         @Test
         @DisplayName("name 长度等于 50 时通过")
         void shouldPassWhenNameExactly50() {
-            InterfaceInfo info = buildCompleteInterfaceInfo();
+            InterfaceInfo info = buildMinimalInterfaceInfo();
             info.setName(padding(50));
 
             assertDoesNotThrow(() -> service.validInterfaceInfo(info, true));
+        }
+
+        @Test
+        @DisplayName("更新时 name 长度超过 50 也抛出异常")
+        void shouldThrowWhenNameTooLongOnUpdate() {
+            InterfaceInfo info = new InterfaceInfo();
+            info.setName(padding(51));
+
+            assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, false));
         }
     }
 
@@ -204,20 +399,14 @@ class InterfaceInfoServiceImplValidTest {
         return sb.toString();
     }
 
-    private InterfaceInfo buildCompleteInterfaceInfo() {
+    /**
+     * 构建最小化的接口信息对象，只包含必填字段
+     */
+    private InterfaceInfo buildMinimalInterfaceInfo() {
         InterfaceInfo info = new InterfaceInfo();
-        info.setId(1L);
         info.setName("testApi");
-        info.setDescription("测试接口");
         info.setUrl("/api/test");
-        info.setRequestHeader("{\"Content-Type\":\"application/json\"}");
-        info.setResponseHeader("{\"Content-Type\":\"application/json\"}");
-        info.setStatus(0);
         info.setMethod("GET");
-        info.setUserId(1L);
-        info.setCreateTime(new Date());
-        info.setUpdateTime(new Date());
-        info.setIsDelete(0);
         return info;
     }
 }
