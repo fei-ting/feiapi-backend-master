@@ -5,10 +5,13 @@ import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.common.ResultUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+
+import java.util.stream.Collectors;
 
 /**
  * 全局异常处理器
@@ -32,6 +35,18 @@ public class GlobalExceptionHandler {
     public BaseResponse<?> httpMessageNotReadableExceptionHandler(HttpMessageNotReadableException e) {
         log.warn("请求体解析失败: {}", e.getMessage());
         return ResultUtils.error(ErrorCode.PARAMS_ERROR, "请求参数格式错误");
+    }
+
+    /**
+     * 请求体参数校验失败
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public BaseResponse<?> methodArgumentNotValidExceptionHandler(MethodArgumentNotValidException e) {
+        String message = e.getBindingResult().getFieldErrors().stream()
+                .map(fieldError -> fieldError.getField() + ": " + fieldError.getDefaultMessage())
+                .collect(Collectors.joining("; "));
+        log.warn("请求体参数校验失败: {}", message);
+        return ResultUtils.error(ErrorCode.PARAMS_ERROR, message);
     }
 
     /**

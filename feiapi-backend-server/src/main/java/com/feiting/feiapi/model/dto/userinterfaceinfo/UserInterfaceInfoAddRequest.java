@@ -1,18 +1,14 @@
 package com.feiting.feiapi.model.dto.userinterfaceinfo;
 
-import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableLogic;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import lombok.Data;
 
 import java.io.Serializable;
-import java.util.Date;
 
 /**
- * 创建请求
- *
- * @TableName product
+ * 用户接口调用关系创建请求
  */
 @Data
 public class UserInterfaceInfoAddRequest implements Serializable {
@@ -20,28 +16,20 @@ public class UserInterfaceInfoAddRequest implements Serializable {
     /**
      * 调用人 id
      */
+    @NotNull(message = "调用人 id 不能为空")
+    @Positive(message = "调用人 id 必须大于 0")
     private Long userId;
 
     /**
      * 接口 id
      */
+    @NotNull(message = "接口 id 不能为空")
+    @Positive(message = "接口 id 必须大于 0")
     private Long interfaceInfoId;
 
     /**
-     * 总调用次数
+     * 序列化版本号
      */
-    private Integer totalNum;
-
-    /**
-     * 剩余调用次数
-     */
-    private Integer leftNum;
-
-    /**
-     * 0-正常，1-禁用
-     */
-    private Integer status;
-
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;
 
