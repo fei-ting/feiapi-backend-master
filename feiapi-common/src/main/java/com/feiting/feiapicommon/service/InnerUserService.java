@@ -1,6 +1,6 @@
 package com.feiting.feiapicommon.service;
 
-import com.feiting.feiapicommon.model.entity.User;
+import com.feiting.feiapicommon.model.vo.InvokeUserVO;
 
 
 /**
@@ -11,9 +11,10 @@ import com.feiting.feiapicommon.model.entity.User;
 public interface InnerUserService {
 
     /**
-     * 数据库中查是否已分配给用户秘钥（accessKey）
+     * 数据库中查是否已分配给用户密钥（accessKey）
+     *
      * @param accessKey
-     * @return
+     * @return 内部调用用户最小信息
      */
-    User getInvokeUser(String accessKey);
+    InvokeUserVO getInvokeUser(String accessKey);
 }

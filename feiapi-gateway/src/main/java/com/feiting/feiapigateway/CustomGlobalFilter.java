@@ -4,7 +4,7 @@ import com.feiting.feiapiclientsdk.utils.SignUtils;
 import com.feiting.feiapiclientsdk.utils.ProbeSignUtils;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
-import com.feiting.feiapicommon.model.entity.User;
+import com.feiting.feiapicommon.model.vo.InvokeUserVO;
 import com.feiting.feiapicommon.service.InnerInterfaceInfoService;
 import com.feiting.feiapicommon.service.InnerUserInterfaceInfoService;
 import com.feiting.feiapicommon.service.InnerUserService;
@@ -162,7 +162,7 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
         String timestamp = headers.getFirst("timestamp");
 
         // 步骤1：根据 accessKey 查询调用用户，后续验签必须使用该用户自己的 secretKey。
-        User invokeUser = null;
+        InvokeUserVO invokeUser = null;
         try {
             invokeUser = innerUserService.getInvokeUser(accessKey);
         } catch (Exception e) {
@@ -185,7 +185,7 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
         }
 
         // 步骤4：Gateway 的请求体只能消费一次，这里先聚合 body 用于验签，后面再通过装饰器写回下游请求。
-        User finalInvokeUser = invokeUser;
+        InvokeUserVO finalInvokeUser = invokeUser;
         return DataBufferUtils.join(request.getBody())
                 .defaultIfEmpty(response.bufferFactory().wrap(new byte[0]))
                 .flatMap(dataBuffer -> {
@@ -501,7 +501,7 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
     private Mono<Void> invokeOnlineInterface(ServerWebExchange exchange,
                                              GatewayFilterChain chain,
                                              ServerHttpResponse response,
-                                             User invokeUser,
+                                             InvokeUserVO invokeUser,
                                              InterfaceInfo interfaceInfo) {
         Long userId = invokeUser.getId();
         Long interfaceInfoId = interfaceInfo.getId();

@@ -67,9 +67,12 @@ public class GlobalExceptionHandler {
         return ResultUtils.error(ErrorCode.PARAMS_ERROR, "参数类型错误: " + e.getName());
     }
 
+    /**
+     * 运行时异常统一处理，避免向前端暴露内部错误细节
+     */
     @ExceptionHandler(RuntimeException.class)
     public BaseResponse<?> runtimeExceptionHandler(RuntimeException e) {
         log.error("runtimeException", e);
-        return ResultUtils.error(ErrorCode.SYSTEM_ERROR, e.getMessage());
+        return ResultUtils.error(ErrorCode.SYSTEM_ERROR);
     }
 }
