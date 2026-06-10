@@ -1,6 +1,7 @@
 package com.feiting.feiapi.integration.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.feiting.feiapi.constant.UserConstant;
 import com.feiting.feiapi.model.dto.user.UserLoginRequest;
 import com.feiting.feiapi.model.dto.user.UserRegisterRequest;
 import com.feiting.feiapi.service.UserService;
@@ -67,6 +68,18 @@ class UserControllerTest {
                         .session(session))
                 .andExpect(status().isOk());
 
+        return session;
+    }
+
+    /**
+     * 辅助方法：注册并登录管理员用户，返回已登录的 session
+     */
+    private MockHttpSession registerAndLoginAdmin(String account, String password) throws Exception {
+        MockHttpSession session = registerAndLogin(account, password);
+        User user = (User) session.getAttribute(UserConstant.USER_LOGIN_STATE);
+        user.setUserRole(UserConstant.ADMIN_ROLE);
+        userService.updateById(user);
+        session.setAttribute(UserConstant.USER_LOGIN_STATE, user);
         return session;
     }
 
@@ -224,6 +237,28 @@ class UserControllerTest {
                             .session(session))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(40000));
+        }
+
+        @Test
+        @DisplayName("管理员查询超过 int 范围的用户 id 成功")
+        void shouldGetUserWhenIdExceedsIntegerMaxValue() throws Exception {
+            MockHttpSession adminSession = registerAndLoginAdmin("getbyid03", "password123");
+            Long largeUserId = Integer.MAX_VALUE + 1L;
+            User user = new User();
+            user.setId(largeUserId);
+            user.setUserName("大 ID 用户");
+            user.setUserAccount("largeid01");
+            user.setUserPassword(userService.encodePassword("password123"));
+            user.setUserRole(UserConstant.DEFAULT_ROLE);
+            userService.save(user);
+
+            mockMvc.perform(get("/user/get")
+                            .param("id", String.valueOf(largeUserId))
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.id").value(largeUserId))
+                    .andExpect(jsonPath("$.data.userAccount").value("largeid01"));
         }
     }
 }

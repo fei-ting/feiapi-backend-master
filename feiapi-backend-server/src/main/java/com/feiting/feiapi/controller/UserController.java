@@ -190,12 +190,12 @@ public class UserController {
      * @return
      */
     @GetMapping("/get")
-    public BaseResponse<UserVO> getUserById(int id, HttpServletRequest request) {
-        if (id <= 0) {
+    public BaseResponse<UserVO> getUserById(Long id, HttpServletRequest request) {
+        if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         User loginUser = userService.getLoginUser(request);
-        if (loginUser == null || (!loginUser.getId().equals((long) id) && !userService.isAdmin(request))) {
+        if (loginUser == null || (!loginUser.getId().equals(id) && !userService.isAdmin(request))) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
         }
         User user = userService.getById(id);
