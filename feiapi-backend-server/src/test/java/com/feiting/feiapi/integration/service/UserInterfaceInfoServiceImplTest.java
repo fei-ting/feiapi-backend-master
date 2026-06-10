@@ -94,7 +94,7 @@ class UserInterfaceInfoServiceImplTest {
         }
 
         @Test
-        @DisplayName("预扣失败后返还成功，leftNum 加 1，totalNum 减 1")
+        @DisplayName("已预扣后返还成功，leftNum 加 1，totalNum 减 1")
         void shouldRollbackInvokeCountSuccessfully() {
             insertUserInterfaceInfo(1L, 7L, 9, 1);
 
@@ -111,8 +111,27 @@ class UserInterfaceInfoServiceImplTest {
         }
 
         @Test
-        @DisplayName("totalNum 为 0 时返还失败，避免总调用次数变为负数")
-        void shouldFailRollbackWhenTotalNumIsZero() {
+        @DisplayName("首次调用预扣后失败补偿成功，额度恢复到初始状态")
+        void shouldRollbackSuccessfullyAfterFirstInvokePrecharged() {
+            insertUserInterfaceInfo(1L, 9L, 100, 0);
+
+            boolean invokeResult = userInterfaceInfoService.invokeCount(1L, 9L);
+            boolean rollbackResult = userInterfaceInfoService.rollbackInvokeCount(1L, 9L);
+
+            assertTrue(invokeResult);
+            assertTrue(rollbackResult);
+            UserInterfaceInfo info = userInterfaceInfoService.lambdaQuery()
+                    .eq(UserInterfaceInfo::getUserId, 1L)
+                    .eq(UserInterfaceInfo::getInterfaceInfoId, 9L)
+                    .one();
+            assertNotNull(info);
+            assertEquals(100, info.getLeftNum());
+            assertEquals(0, info.getTotalNum());
+        }
+
+        @Test
+        @DisplayName("没有预扣时返还失败，避免总调用次数变为负数或误加额度")
+        void shouldFailRollbackWhenNotPrecharged() {
             insertUserInterfaceInfo(1L, 8L, 10, 0);
 
             boolean result = userInterfaceInfoService.rollbackInvokeCount(1L, 8L);
