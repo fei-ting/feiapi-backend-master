@@ -1,8 +1,12 @@
 package com.feiting.feiapi.integration.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.feiting.feiapi.common.BaseResponse;
+import com.feiting.feiapi.controller.InterfaceInfoController;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
+import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoQueryRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoUpdateRequest;
 import com.feiting.feiapi.model.dto.user.UserLoginRequest;
 import com.feiting.feiapi.service.InterfaceInfoService;
@@ -17,8 +21,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.AopTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,6 +58,9 @@ class InterfaceInfoControllerTest {
 
     @Resource
     private ObjectMapper objectMapper;
+
+    @Resource
+    private InterfaceInfoController interfaceInfoController;
 
     private MockHttpSession loginWithRole(String account, String role) throws Exception {
         userService.userRegister(account, "password123", "password123");
@@ -483,6 +492,21 @@ class InterfaceInfoControllerTest {
                             .session(session))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(0));
+        }
+
+        @Test
+        @DisplayName("sortOrder 为 null 时分页查询不触发空指针")
+        void shouldNotThrowWhenSortOrderNull() throws Exception {
+            InterfaceInfoQueryRequest queryRequest = new InterfaceInfoQueryRequest();
+            queryRequest.setSortField("createTime");
+            queryRequest.setSortOrder(null);
+            MockHttpServletRequest servletRequest = new MockHttpServletRequest();
+
+            InterfaceInfoController targetController = AopTestUtils.getTargetObject(interfaceInfoController);
+            BaseResponse<Page<InterfaceInfo>> response = targetController.listInterfaceInfoByPage(queryRequest, servletRequest);
+
+            assertEquals(0, response.getCode());
+            assertNotNull(response.getData());
         }
 
         @Test
