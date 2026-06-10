@@ -23,17 +23,25 @@ public interface UserInterfaceInfoService extends IService<UserInterfaceInfo> {
 
     /**
      * 统计调用次数
-     * @param userId
-     * @param interfaceInfoId
-     * @return
+     * @param userId 用户 ID
+     * @param interfaceInfoId 接口 ID
+     * @return 是否统计成功
      */
     boolean invokeCount(long userId, long interfaceInfoId);
 
     /**
+     * 返还一次已预扣的调用次数
+     * @param userId 用户 ID
+     * @param interfaceInfoId 接口 ID
+     * @return 是否返还成功
+     */
+    boolean rollbackInvokeCount(long userId, long interfaceInfoId);
+
+    /**
      * 接口剩余调用次数是否足够
-     * @param userId
-     * @param interfaceInfoId
-     * @return
+     * @param userId 用户 ID
+     * @param interfaceInfoId 接口 ID
+     * @return 剩余次数是否足够
      */
     boolean leftNumIsEnough(long userId, long interfaceInfoId);
 

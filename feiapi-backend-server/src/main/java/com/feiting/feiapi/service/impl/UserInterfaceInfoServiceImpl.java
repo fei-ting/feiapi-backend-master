@@ -52,6 +52,21 @@ public class UserInterfaceInfoServiceImpl extends ServiceImpl<UserInterfaceInfoM
     }
 
     @Override
+    public boolean rollbackInvokeCount(long userId, long interfaceInfoId) {
+        if (userId <= 0 || interfaceInfoId <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "接口或用户不存在");
+        }
+
+        UpdateWrapper<UserInterfaceInfo> updateWrapper = new UpdateWrapper<>();
+        updateWrapper.eq("user_id", userId);
+        updateWrapper.eq("interface_info_id", interfaceInfoId);
+        updateWrapper.eq("is_delete", 0);
+        updateWrapper.gt("total_num", 0);
+        updateWrapper.setSql("left_num = left_num + 1, total_num = total_num - 1");
+        return this.update(updateWrapper);
+    }
+
+    @Override
     public boolean leftNumIsEnough(long userId, long interfaceInfoId) {
         if (userId <= 0 || interfaceInfoId <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "接口或用户不存在");

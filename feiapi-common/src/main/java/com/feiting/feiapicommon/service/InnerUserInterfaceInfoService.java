@@ -15,6 +15,15 @@ public interface InnerUserInterfaceInfoService {
     boolean invokeCount(long userId, long interfaceInfoId);
 
     /**
+     * 返还一次已预扣的用户接口调用次数。
+     *
+     * @param userId 用户 ID
+     * @param interfaceInfoId 接口 ID
+     * @return 是否返还成功
+     */
+    boolean rollbackInvokeCount(long userId, long interfaceInfoId);
+
+    /**
      * 检查用户是否还有指定接口的剩余调用次数。
      *
      * @param userId 用户 ID

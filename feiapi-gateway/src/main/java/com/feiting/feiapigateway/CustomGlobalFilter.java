@@ -285,9 +285,10 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
     }
 
     /**
-     * 处理上线接口的响应，统计调用次数。
+     * 处理上线接口的响应，确认或补偿预扣的调用次数。
      *
-     * <p>只对 HTTP 200 的下游响应统计调用次数，避免失败请求消耗用户额度。</p>
+     * <p>上线接口在放行前已经原子预扣一次调用次数；下游返回 HTTP 200 时确认消费，
+     * 其他响应或响应链路异常时返还预扣次数，避免失败请求消耗付费额度。</p>
      * <p>响应状态码需要在下游响应写出后读取，避免过滤器链执行前状态码尚未生成。</p>
      *
      * @param exchange        请求上下文
@@ -299,57 +300,79 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
     public Mono<Void> handleResponse(ServerWebExchange exchange, GatewayFilterChain chain, long userId, long interfaceInfoId) {
         try {
             ServerHttpResponse originalResponse = exchange.getResponse();
-            AtomicBoolean invoked = new AtomicBoolean(false);
+            AtomicBoolean compensated = new AtomicBoolean(false);
             ServerHttpResponseDecorator decoratedResponse = new ServerHttpResponseDecorator(originalResponse) {
                 @Override
                 public Mono<Void> writeWith(Publisher<? extends DataBuffer> body) {
                     return super.writeWith(body)
-                            .doOnSuccess(unused -> countSuccessfulInvokeOnce(invoked, getStatusCode(), userId, interfaceInfoId));
+                            .doOnSuccess(unused -> compensateInvokeIfNecessary(compensated, getStatusCode(), userId, interfaceInfoId))
+                            .doOnError(error -> compensatePrechargedInvokeOnce(compensated, userId, interfaceInfoId));
                 }
 
                 @Override
                 public Mono<Void> writeAndFlushWith(Publisher<? extends Publisher<? extends DataBuffer>> body) {
                     return super.writeAndFlushWith(body)
-                            .doOnSuccess(unused -> countSuccessfulInvokeOnce(invoked, getStatusCode(), userId, interfaceInfoId));
+                            .doOnSuccess(unused -> compensateInvokeIfNecessary(compensated, getStatusCode(), userId, interfaceInfoId))
+                            .doOnError(error -> compensatePrechargedInvokeOnce(compensated, userId, interfaceInfoId));
                 }
 
                 @Override
                 public Mono<Void> setComplete() {
                     return super.setComplete()
-                            .doOnSuccess(unused -> countSuccessfulInvokeOnce(invoked, getStatusCode(), userId, interfaceInfoId));
+                            .doOnSuccess(unused -> compensateInvokeIfNecessary(compensated, getStatusCode(), userId, interfaceInfoId))
+                            .doOnError(error -> compensatePrechargedInvokeOnce(compensated, userId, interfaceInfoId));
                 }
             };
-            return chain.filter(exchange.mutate().response(decoratedResponse).build());
+            return chain.filter(exchange.mutate().response(decoratedResponse).build())
+                    .doOnError(error -> compensatePrechargedInvokeOnce(compensated, userId, interfaceInfoId));
         } catch (Exception e) {
             log.error("网关处理响应异常 {}", e.getMessage(), e);
-            return chain.filter(exchange);
+            compensatePrechargedInvokeOnce(new AtomicBoolean(false), userId, interfaceInfoId);
+            return handleInvokeError(exchange.getResponse());
         }
     }
 
     /**
-     * 在响应成功写出后按请求维度统计一次调用。
+     * 根据下游响应状态决定是否补偿预扣次数。
      *
-     * <p>响应状态码只有在下游处理后才可靠，因此不能在执行过滤器链之前读取。</p>
+     * <p>HTTP 200 表示调用成功，预扣次数直接确认；其他状态码表示调用失败，需要返还预扣次数。</p>
      *
-     * @param invoked         本次请求是否已经计数
+     * @param compensated     本次请求是否已经补偿
      * @param statusCode      下游响应状态码
      * @param userId          调用用户 ID
      * @param interfaceInfoId 接口 ID
      */
-    private void countSuccessfulInvokeOnce(AtomicBoolean invoked,
-                                           HttpStatusCode statusCode,
-                                           long userId,
-                                           long interfaceInfoId) {
-        if (!HttpStatus.OK.equals(statusCode) || !invoked.compareAndSet(false, true)) {
+    private void compensateInvokeIfNecessary(AtomicBoolean compensated,
+                                             HttpStatusCode statusCode,
+                                             long userId,
+                                             long interfaceInfoId) {
+        if (statusCode == null || HttpStatus.OK.equals(statusCode)) {
+            log.info("接口响应完成, status: {}, userId: {}, interfaceInfoId: {}",
+                    statusCode == null ? HttpStatus.OK.value() : statusCode.value(), userId, interfaceInfoId);
+            return;
+        }
+        compensatePrechargedInvokeOnce(compensated, userId, interfaceInfoId);
+    }
+
+    /**
+     * 按请求维度最多返还一次已预扣的调用次数。
+     *
+     * @param compensated     本次请求是否已经补偿
+     * @param userId          调用用户 ID
+     * @param interfaceInfoId 接口 ID
+     */
+    private void compensatePrechargedInvokeOnce(AtomicBoolean compensated, long userId, long interfaceInfoId) {
+        if (!compensated.compareAndSet(false, true)) {
             return;
         }
         try {
-            innerUserInterfaceInfoService.invokeCount(userId, interfaceInfoId);
+            boolean rollbackResult = innerUserInterfaceInfoService.rollbackInvokeCount(userId, interfaceInfoId);
+            if (!rollbackResult) {
+                log.error("rollbackInvokeCount failed, userId: {}, interfaceInfoId: {}", userId, interfaceInfoId);
+            }
         } catch (Exception e) {
-            log.error("invokeCount error: {}", e.getMessage(), e);
+            log.error("rollbackInvokeCount error: {}", e.getMessage(), e);
         }
-        log.info("接口响应完成, status: {}, userId: {}, interfaceInfoId: {}",
-                statusCode.value(), userId, interfaceInfoId);
     }
 
     /**
@@ -484,6 +507,11 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
         Long interfaceInfoId = interfaceInfo.getId();
         try {
             innerUserInterfaceInfoService.leftNumIsEnough(userId, interfaceInfoId);
+            boolean precharged = innerUserInterfaceInfoService.invokeCount(userId, interfaceInfoId);
+            if (!precharged) {
+                log.warn("接口调用次数预扣失败, userId: {}, interfaceInfoId: {}", userId, interfaceInfoId);
+                return handleInvokeError(response);
+            }
         } catch (Exception e) {
             log.error("leftNumIsEnough error: {}", e.getMessage(), e);
             return handleInvokeError(response);

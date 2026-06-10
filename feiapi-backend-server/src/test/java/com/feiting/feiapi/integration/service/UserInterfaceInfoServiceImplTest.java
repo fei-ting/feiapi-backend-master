@@ -92,6 +92,40 @@ class UserInterfaceInfoServiceImplTest {
 
             assertFalse(result);
         }
+
+        @Test
+        @DisplayName("预扣失败后返还成功，leftNum 加 1，totalNum 减 1")
+        void shouldRollbackInvokeCountSuccessfully() {
+            insertUserInterfaceInfo(1L, 7L, 9, 1);
+
+            boolean result = userInterfaceInfoService.rollbackInvokeCount(1L, 7L);
+
+            assertTrue(result);
+            UserInterfaceInfo info = userInterfaceInfoService.lambdaQuery()
+                    .eq(UserInterfaceInfo::getUserId, 1L)
+                    .eq(UserInterfaceInfo::getInterfaceInfoId, 7L)
+                    .one();
+            assertNotNull(info);
+            assertEquals(10, info.getLeftNum());
+            assertEquals(0, info.getTotalNum());
+        }
+
+        @Test
+        @DisplayName("totalNum 为 0 时返还失败，避免总调用次数变为负数")
+        void shouldFailRollbackWhenTotalNumIsZero() {
+            insertUserInterfaceInfo(1L, 8L, 10, 0);
+
+            boolean result = userInterfaceInfoService.rollbackInvokeCount(1L, 8L);
+
+            assertFalse(result);
+            UserInterfaceInfo info = userInterfaceInfoService.lambdaQuery()
+                    .eq(UserInterfaceInfo::getUserId, 1L)
+                    .eq(UserInterfaceInfo::getInterfaceInfoId, 8L)
+                    .one();
+            assertNotNull(info);
+            assertEquals(10, info.getLeftNum());
+            assertEquals(0, info.getTotalNum());
+        }
     }
 
     @Nested

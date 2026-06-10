@@ -21,6 +21,11 @@ public class InnerUserInterfaceInfoServiceImpl implements InnerUserInterfaceInfo
     }
 
     @Override
+    public boolean rollbackInvokeCount(long userId, long interfaceInfoId) {
+        return userInterfaceInfoService.rollbackInvokeCount(userId, interfaceInfoId);
+    }
+
+    @Override
     public boolean leftNumIsEnough(long userId, long interfaceInfoId) {
         return userInterfaceInfoService.leftNumIsEnough(userId, interfaceInfoId);
     }
