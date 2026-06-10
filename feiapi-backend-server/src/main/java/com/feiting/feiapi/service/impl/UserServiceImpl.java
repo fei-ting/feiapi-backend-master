@@ -10,6 +10,7 @@ import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapicommon.model.entity.User;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
@@ -65,33 +66,36 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         if (!userPassword.equals(checkPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "两次输入的密码不一致");
         }
-        synchronized (userAccount.intern()) {
-            // 账户不能重复
-            QueryWrapper<User> queryWrapper = new QueryWrapper<>();
-            queryWrapper.eq("user_account", userAccount);
-            long count = userMapper.selectCount(queryWrapper);
-            if (count > 0) {
-                throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号重复");
-            }
-            // 2. 加密
-            String encryptPassword = passwordEncoder.encode(userPassword);
-
-            // 3. 分配不可预测的 accessKey 和 secretKey
-            String accessKey = generateSecureKey(ACCESS_KEY_RANDOM_BYTE_LENGTH);
-            String secretKey = generateSecureKey(SECRET_KEY_RANDOM_BYTE_LENGTH);
-
-            // 4. 插入数据
-            User user = new User();
-            user.setUserAccount(userAccount);
-            user.setUserPassword(encryptPassword);
-            user.setAccessKey(accessKey);
-            user.setSecretKey(secretKey);
-            boolean saveResult = this.save(user);
-            if (!saveResult) {
-                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "注册失败，数据库错误");
-            }
-            return user.getId();
+        // 账户不能重复
+        QueryWrapper<User> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("user_account", userAccount);
+        long count = userMapper.selectCount(queryWrapper);
+        if (count > 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号重复");
         }
+        // 2. 加密
+        String encryptPassword = passwordEncoder.encode(userPassword);
+
+        // 3. 分配不可预测的 accessKey 和 secretKey
+        String accessKey = generateSecureKey(ACCESS_KEY_RANDOM_BYTE_LENGTH);
+        String secretKey = generateSecureKey(SECRET_KEY_RANDOM_BYTE_LENGTH);
+
+        // 4. 插入数据，并将并发注册触发的唯一键冲突转为业务异常
+        User user = new User();
+        user.setUserAccount(userAccount);
+        user.setUserPassword(encryptPassword);
+        user.setAccessKey(accessKey);
+        user.setSecretKey(secretKey);
+        boolean saveResult;
+        try {
+            saveResult = this.save(user);
+        } catch (DuplicateKeyException e) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号重复");
+        }
+        if (!saveResult) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "注册失败，数据库错误");
+        }
+        return user.getId();
     }
 
     /**

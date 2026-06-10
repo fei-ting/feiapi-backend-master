@@ -1,5 +1,6 @@
 package com.feiting.feiapi.integration.service;
 
+import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapicommon.model.entity.User;
@@ -12,6 +13,15 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -140,6 +150,62 @@ class UserServiceImplTest {
 
             assertThrows(BusinessException.class,
                     () -> userService.userRegister("testuser06", "password456", "password456"));
+        }
+
+        @Test
+        @DisplayName("并发注册同一账号时只成功一次，其余请求返回账号重复业务异常")
+        void shouldTranslateDuplicateKeyWhenConcurrentRegisterSameAccount() throws Exception {
+            String userAccount = "concurrent" + System.nanoTime();
+            int threadCount = 8;
+            ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
+            CountDownLatch readyLatch = new CountDownLatch(threadCount);
+            CountDownLatch startLatch = new CountDownLatch(1);
+
+            try {
+                List<Future<Object>> futures = IntStream.range(0, threadCount)
+                        .mapToObj(index -> executorService.submit(() -> {
+                            readyLatch.countDown();
+                            startLatch.await();
+                            try {
+                                return (Object) userService.userRegister(userAccount, "password123", "password123");
+                            } catch (BusinessException e) {
+                                return e;
+                            }
+                        }))
+                        .collect(Collectors.toList());
+
+                assertTrue(readyLatch.await(5, TimeUnit.SECONDS));
+                startLatch.countDown();
+
+                List<Object> results = futures.stream()
+                        .map(future -> {
+                            try {
+                                return future.get(10, TimeUnit.SECONDS);
+                            } catch (Exception e) {
+                                throw new RuntimeException(e);
+                            }
+                        })
+                        .collect(Collectors.toList());
+
+                long successCount = results.stream()
+                        .filter(Long.class::isInstance)
+                        .count();
+                long duplicateExceptionCount = results.stream()
+                        .filter(BusinessException.class::isInstance)
+                        .map(BusinessException.class::cast)
+                        .filter(e -> ErrorCode.PARAMS_ERROR.getCode() == e.getCode())
+                        .filter(e -> "账号重复".equals(e.getMessage()))
+                        .count();
+                long savedUserCount = userService.lambdaQuery()
+                        .eq(User::getUserAccount, userAccount)
+                        .count();
+
+                assertEquals(1, successCount);
+                assertEquals(threadCount - 1, duplicateExceptionCount);
+                assertEquals(1, savedUserCount);
+            } finally {
+                executorService.shutdownNow();
+            }
         }
     }
 
