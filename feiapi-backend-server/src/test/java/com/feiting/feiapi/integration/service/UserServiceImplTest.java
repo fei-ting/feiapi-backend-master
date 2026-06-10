@@ -275,6 +275,42 @@ class UserServiceImplTest {
             assertThrows(BusinessException.class,
                     () -> userService.userLogin("loginuser04", "wrongpassword", request));
         }
+
+        @Test
+        @DisplayName("连续失败 5 次后第 6 次登录直接返回锁定提示")
+        void shouldBlockAfterFiveFailures() {
+            userService.userRegister("loginuser05", "password123", "password123");
+            HttpServletRequest request = new MockHttpServletRequest();
+
+            for (int i = 0; i < 5; i++) {
+                assertThrows(BusinessException.class,
+                        () -> userService.userLogin("loginuser05", "wrongpassword", request));
+            }
+
+            BusinessException exception = assertThrows(BusinessException.class,
+                    () -> userService.userLogin("loginuser05", "password123", request));
+
+            assertEquals(ErrorCode.FORBIDDEN_ERROR.getCode(), exception.getCode());
+            assertEquals("登录失败次数过多，请稍后再试", exception.getMessage());
+        }
+
+        @Test
+        @DisplayName("登录成功后会清理失败记录")
+        void shouldClearFailureRecordsAfterSuccess() {
+            userService.userRegister("loginuser06", "password123", "password123");
+            HttpServletRequest request = new MockHttpServletRequest();
+
+            for (int i = 0; i < 4; i++) {
+                assertThrows(BusinessException.class,
+                        () -> userService.userLogin("loginuser06", "wrongpassword", request));
+            }
+
+            User user = userService.userLogin("loginuser06", "password123", request);
+            assertNotNull(user);
+
+            assertThrows(BusinessException.class,
+                    () -> userService.userLogin("loginuser06", "wrongpassword", request));
+        }
     }
 
     @Nested

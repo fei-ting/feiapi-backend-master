@@ -6,6 +6,7 @@ import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.constant.UserConstant;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.mapper.UserMapper;
+import com.feiting.feiapi.service.LoginAttemptService;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapicommon.model.entity.User;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +32,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         implements UserService {
 
     /**
+     * 登录失败次数过多时的提示信息
+     */
+    private static final String LOGIN_ATTEMPT_LOCK_MESSAGE = "登录失败次数过多，请稍后再试";
+
+    /**
      * accessKey 随机字节长度
      */
     private static final int ACCESS_KEY_RANDOM_BYTE_LENGTH = 32;
@@ -47,6 +53,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
     @Resource
     private UserMapper userMapper;
+
+    @Resource
+    private LoginAttemptService loginAttemptService;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -122,6 +131,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         if (userPassword.length() < 8) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "密码错误");
         }
+        if (!loginAttemptService.isLoginAllowed(userAccount)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN_ERROR, LOGIN_ATTEMPT_LOCK_MESSAGE);
+        }
         // 2. 查询用户
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("user_account", userAccount);
@@ -129,9 +141,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         // 用户不存在或密码不匹配
         if (user == null || !passwordEncoder.matches(userPassword, user.getUserPassword())) {
             log.info("user login failed, userAccount cannot match userPassword");
+            loginAttemptService.recordLoginFailure(userAccount);
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户不存在或密码错误");
         }
         // 3. 记录用户的登录态
+        loginAttemptService.recordLoginSuccess(userAccount);
         request.getSession().setAttribute(UserConstant.USER_LOGIN_STATE, user);
         return user;
     }
