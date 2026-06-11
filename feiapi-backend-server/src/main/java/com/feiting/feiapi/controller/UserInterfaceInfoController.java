@@ -82,7 +82,7 @@ public class UserInterfaceInfoController {
      */
     @PostMapping("/delete")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
-    public BaseResponse<Boolean> deleteUserInterfaceInfo(@RequestBody DeleteRequest deleteRequest) {
+    public BaseResponse<Boolean> deleteUserInterfaceInfo(@Valid @RequestBody DeleteRequest deleteRequest) {
         if (deleteRequest == null || deleteRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
@@ -146,7 +146,7 @@ public class UserInterfaceInfoController {
      */
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     @GetMapping("/list")
-    public BaseResponse<List<UserInterfaceInfo>> listUserInterfaceInfo(UserInterfaceInfoQueryRequest userInterfaceInfoQueryRequest) {
+    public BaseResponse<List<UserInterfaceInfo>> listUserInterfaceInfo(@Valid UserInterfaceInfoQueryRequest userInterfaceInfoQueryRequest) {
         UserInterfaceInfo userInterfaceInfoQuery = new UserInterfaceInfo();
         if (userInterfaceInfoQueryRequest != null) {
             BeanUtils.copyProperties(userInterfaceInfoQueryRequest, userInterfaceInfoQuery);
@@ -164,7 +164,7 @@ public class UserInterfaceInfoController {
      */
     @GetMapping("/admin/list/page")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
-    public BaseResponse<Page<UserInterfaceInfo>> listUserInterfaceInfoByPage(UserInterfaceInfoQueryRequest userInterfaceInfoQueryRequest) {
+    public BaseResponse<Page<UserInterfaceInfo>> listUserInterfaceInfoByPage(@Valid UserInterfaceInfoQueryRequest userInterfaceInfoQueryRequest) {
         return listUserInterfaceInfoPage(userInterfaceInfoQueryRequest, null);
     }
 
@@ -199,7 +199,7 @@ public class UserInterfaceInfoController {
      * @return 分页调用关系列表
      */
     @GetMapping("/my/list/page")
-    public BaseResponse<Page<UserInterfaceInfo>> listMyUserInterfaceInfoByPage(UserInterfaceInfoQueryRequest userInterfaceInfoQueryRequest, HttpServletRequest request) {
+    public BaseResponse<Page<UserInterfaceInfo>> listMyUserInterfaceInfoByPage(@Valid UserInterfaceInfoQueryRequest userInterfaceInfoQueryRequest, HttpServletRequest request) {
         User loginUser = getCurrentLoginUser(request);
         return listUserInterfaceInfoPage(userInterfaceInfoQueryRequest, loginUser.getId());
     }
