@@ -42,6 +42,8 @@ dubbo:
     name: feiapi-backend
   registry:
     address: nacos://${FEIAPI_NACOS_HOST:localhost}:${FEIAPI_NACOS_PORT:8848}
+    username: ${FEIAPI_NACOS_USERNAME:}
+    password: ${FEIAPI_NACOS_PASSWORD:}
   consumer:
     timeout: 5000
   provider:
