@@ -120,6 +120,7 @@ class AnalysisControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(0))
                     .andExpect(jsonPath("$.data").isArray())
+                    .andExpect(jsonPath("$.data[0].isDelete").doesNotExist())
                     .andReturn();
 
             // 验证返回了 3 条数据
