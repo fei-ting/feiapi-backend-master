@@ -17,8 +17,8 @@ server:
     session:
       cookie:
         domain: ${FEIAPI_COOKIE_DOMAIN}
-#        same-site: lax
-#        secure: false
+        same-site: ${FEIAPI_COOKIE_SAME_SITE:Lax}
+        secure: ${FEIAPI_COOKIE_SECURE:true}
 
 
 dubbo:

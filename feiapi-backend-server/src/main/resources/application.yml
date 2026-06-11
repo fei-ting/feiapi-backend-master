@@ -7,7 +7,7 @@ spring:
     username: ${FEIAPI_DB_USERNAME:root}
     password: ${FEIAPI_DB_PASSWORD:}
   session:
-    timeout: 86400
+    timeout: 28800
     store-type: redis
   redis:
     host: ${FEIAPI_REDIS_HOST:localhost}
