@@ -8,6 +8,7 @@ import com.feiting.feiapi.common.BaseResponse;
 import com.feiting.feiapi.common.DeleteRequest;
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.common.ResultUtils;
+import com.feiting.feiapi.component.UserSessionManager;
 import com.feiting.feiapi.constant.UserConstant;
 import com.feiting.feiapi.model.dto.user.*;
 import com.feiting.feiapi.model.vo.UserVO;
@@ -35,6 +36,9 @@ public class UserController {
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private UserSessionManager userSessionManager;
 
     // region 登录相关
 
@@ -76,7 +80,8 @@ public class UserController {
         if (StringUtils.isAnyBlank(userAccount, userPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        User user = userService.userLogin(userAccount, userPassword, request);
+        User user = userService.userLogin(userAccount, userPassword);
+        userSessionManager.saveLoginUser(request, user);
         UserVO userVO = new UserVO();
         BeanUtils.copyProperties(user, userVO);
         return ResultUtils.success(userVO);
@@ -93,7 +98,9 @@ public class UserController {
         if (request == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        boolean result = userService.userLogout(request);
+        User sessionUser = userSessionManager.getLoginUser(request);
+        boolean result = userService.userLogout(sessionUser);
+        userSessionManager.removeLoginUser(request);
         return ResultUtils.success(result);
     }
 
@@ -105,7 +112,7 @@ public class UserController {
      */
     @GetMapping("/get/login")
     public BaseResponse<UserVO> getLoginUser(HttpServletRequest request) {
-        User user = userService.getLoginUser(request);
+        User user = getCurrentLoginUser(request);
         UserVO userVO = new UserVO();
         BeanUtils.copyProperties(user, userVO);
         return ResultUtils.success(userVO);
@@ -157,7 +164,7 @@ public class UserController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         // 获取当前操作者 id
-        User loginUser = userService.getLoginUser(request);
+        User loginUser = getCurrentLoginUser(request);
         // 调用 Service 层的安全删除方法，包含最后管理员保护
         boolean b = userService.deleteUser(deleteRequest.getId(), loginUser.getId());
         return ResultUtils.success(b);
@@ -211,7 +218,7 @@ public class UserController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         // 获取当前操作者 id 用于审计日志
-        User loginUser = userService.getLoginUser(request);
+        User loginUser = getCurrentLoginUser(request);
         boolean result = userService.updateUserRole(userId, newRole, loginUser.getId());
         return ResultUtils.success(result);
     }
@@ -228,8 +235,8 @@ public class UserController {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        User loginUser = userService.getLoginUser(request);
-        if (loginUser == null || (!loginUser.getId().equals(id) && !userService.isAdmin(request))) {
+        User loginUser = getCurrentLoginUser(request);
+        if (!loginUser.getId().equals(id) && !userService.isAdmin(loginUser)) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
         }
         User user = userService.getById(id);
@@ -296,4 +303,14 @@ public class UserController {
     }
 
     // endregion
+
+    /**
+     * 从当前 HTTP 会话中获取登录用户
+     *
+     * @param request HTTP 请求
+     * @return 当前登录用户
+     */
+    private User getCurrentLoginUser(HttpServletRequest request) {
+        return userService.getLoginUser(userSessionManager.getLoginUser(request));
+    }
 }

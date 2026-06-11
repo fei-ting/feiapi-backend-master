@@ -3,6 +3,7 @@ package com.feiting.feiapi.aop;
 import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import com.feiting.feiapi.annotation.AuthCheck;
 import com.feiting.feiapi.common.ErrorCode;
+import com.feiting.feiapi.component.UserSessionManager;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapicommon.model.entity.User;
@@ -34,6 +35,9 @@ public class AuthInterceptor {
     @Resource
     private UserService userService;
 
+    @Resource
+    private UserSessionManager userSessionManager;
+
     /**
      * 执行拦截
      *
@@ -48,7 +52,7 @@ public class AuthInterceptor {
         RequestAttributes requestAttributes = RequestContextHolder.currentRequestAttributes();
         HttpServletRequest request = ((ServletRequestAttributes) requestAttributes).getRequest();
         // 当前登录用户
-        User user = userService.getLoginUser(request);
+        User user = userService.getLoginUser(userSessionManager.getLoginUser(request));
         // 拥有任意权限即通过
         if (CollectionUtils.isNotEmpty(anyRole)) {
             String userRole = user.getUserRole();

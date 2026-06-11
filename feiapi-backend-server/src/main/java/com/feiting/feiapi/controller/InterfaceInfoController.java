@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.feiting.feiapi.common.*;
+import com.feiting.feiapi.component.UserSessionManager;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoQueryRequest;
@@ -55,6 +56,9 @@ public class InterfaceInfoController {
     private UserService userService;
 
     @Resource
+    private UserSessionManager userSessionManager;
+
+    @Resource
     private FeiApiClient feiApiClient;
 
     @Resource
@@ -82,7 +86,7 @@ public class InterfaceInfoController {
         BeanUtils.copyProperties(interfaceInfoAddRequest, interfaceInfo);
         // 校验
         interfaceInfoService.validInterfaceInfo(interfaceInfo, true);
-        User loginUser = userService.getLoginUser(request);
+        User loginUser = getCurrentLoginUser(request);
         interfaceInfo.setUserId(loginUser.getId());
         boolean result = interfaceInfoService.save(interfaceInfo);
         if (!result) {
@@ -194,7 +198,7 @@ public class InterfaceInfoController {
         }
         InterfaceInfo interfaceInfoQuery = new InterfaceInfo();
         BeanUtils.copyProperties(interfaceInfoQueryRequest, interfaceInfoQuery);
-        if (!userService.isAdmin(request)) {
+        if (!isCurrentUserAdmin(request)) {
             interfaceInfoQuery.setStatus(InterfaceInfoStatusEnum.ONLINE.getValue());
         }
         long current = interfaceInfoQueryRequest.getCurrent();
@@ -341,7 +345,7 @@ public class InterfaceInfoController {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR,"接口未上线或正在发布验证中");
         }
 
-        User loginUser = userService.getLoginUser(request);
+        User loginUser = getCurrentLoginUser(request);
         String accessKey = loginUser.getAccessKey();
         String secretKey = loginUser.getSecretKey();
 
@@ -365,8 +369,39 @@ public class InterfaceInfoController {
      * @return 是否可见
      */
     private boolean isVisibleToCurrentUser(InterfaceInfo interfaceInfo, HttpServletRequest request) {
-        return userService.isAdmin(request)
+        return isCurrentUserAdmin(request)
                 || interfaceInfo.getStatus() == InterfaceInfoStatusEnum.ONLINE.getValue();
+    }
+
+    /**
+     * 从当前 HTTP 会话中获取登录用户
+     *
+     * @param request HTTP 请求
+     * @return 当前登录用户
+     */
+    private User getCurrentLoginUser(HttpServletRequest request) {
+        return userService.getLoginUser(userSessionManager.getLoginUser(request));
+    }
+
+    /**
+     * 判断当前 HTTP 会话用户是否为管理员
+     *
+     * @param request HTTP 请求
+     * @return 是否为管理员
+     */
+    private boolean isCurrentUserAdmin(HttpServletRequest request) {
+        User sessionUser = userSessionManager.getLoginUser(request);
+        if (sessionUser == null || sessionUser.getId() == null) {
+            return false;
+        }
+        try {
+            return userService.isAdmin(userService.getLoginUser(sessionUser));
+        } catch (BusinessException e) {
+            if (ErrorCode.NOT_LOGIN_ERROR.getCode() == e.getCode()) {
+                return false;
+            }
+            throw e;
+        }
     }
 
     /**

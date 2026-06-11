@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.feiting.feiapi.annotation.AuthCheck;
 import com.feiting.feiapi.common.*;
+import com.feiting.feiapi.component.UserSessionManager;
 import com.feiting.feiapi.constant.CommonConstant;
 import com.feiting.feiapi.constant.UserConstant;
 import com.feiting.feiapi.exception.BusinessException;
@@ -42,6 +43,9 @@ public class UserInterfaceInfoController {
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private UserSessionManager userSessionManager;
 
 
     // region 增删改查
@@ -176,7 +180,7 @@ public class UserInterfaceInfoController {
         if (id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        User loginUser = userService.getLoginUser(request);
+        User loginUser = getCurrentLoginUser(request);
         UserInterfaceInfo userInterfaceInfo = userInterfaceInfoService.getById(id);
         if (userInterfaceInfo == null) {
             return ResultUtils.success(null);
@@ -196,7 +200,7 @@ public class UserInterfaceInfoController {
      */
     @GetMapping("/my/list/page")
     public BaseResponse<Page<UserInterfaceInfo>> listMyUserInterfaceInfoByPage(UserInterfaceInfoQueryRequest userInterfaceInfoQueryRequest, HttpServletRequest request) {
-        User loginUser = userService.getLoginUser(request);
+        User loginUser = getCurrentLoginUser(request);
         return listUserInterfaceInfoPage(userInterfaceInfoQueryRequest, loginUser.getId());
     }
 
@@ -235,6 +239,16 @@ public class UserInterfaceInfoController {
 
     private String toDatabaseSortField(String sortField) {
         return SortFieldUtils.resolveSortField(sortField, ALLOWED_SORT_FIELDS);
+    }
+
+    /**
+     * 从当前 HTTP 会话中获取登录用户
+     *
+     * @param request HTTP 请求
+     * @return 当前登录用户
+     */
+    private User getCurrentLoginUser(HttpServletRequest request) {
+        return userService.getLoginUser(userSessionManager.getLoginUser(request));
     }
 
 }

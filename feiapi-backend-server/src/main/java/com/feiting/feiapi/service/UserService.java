@@ -4,8 +4,6 @@ package com.feiting.feiapi.service;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.feiting.feiapicommon.model.entity.User;
 
-import jakarta.servlet.http.HttpServletRequest;
-
 /**
  * 用户服务
  *
@@ -28,34 +26,33 @@ public interface UserService extends IService<User> {
      *
      * @param userAccount  用户账户
      * @param userPassword 用户密码
-     * @param request
-     * @return 脱敏后的用户信息
+     * @return 登录成功的用户信息
      */
-    User userLogin(String userAccount, String userPassword, HttpServletRequest request);
+    User userLogin(String userAccount, String userPassword);
 
     /**
      * 获取当前登录用户
      *
-     * @param request
-     * @return
+     * @param sessionUser 会话中保存的用户快照
+     * @return 当前登录用户
      */
-    User getLoginUser(HttpServletRequest request);
+    User getLoginUser(User sessionUser);
 
     /**
      * 是否为管理员
      *
-     * @param request
-     * @return
+     * @param user 用户信息
+     * @return 是否为管理员
      */
-    boolean isAdmin(HttpServletRequest request);
+    boolean isAdmin(User user);
 
     /**
      * 用户注销
      *
-     * @param request
-     * @return
+     * @param sessionUser 会话中保存的用户快照
+     * @return 是否注销成功
      */
-    boolean userLogout(HttpServletRequest request);
+    boolean userLogout(User sessionUser);
 
     /**
      * 对明文密码进行BCrypt加密

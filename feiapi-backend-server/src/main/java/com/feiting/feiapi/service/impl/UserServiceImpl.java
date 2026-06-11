@@ -19,7 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import jakarta.annotation.Resource;
-import jakarta.servlet.http.HttpServletRequest;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.List;
@@ -127,7 +126,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     }
 
     @Override
-    public User userLogin(String userAccount, String userPassword, HttpServletRequest request) {
+    public User userLogin(String userAccount, String userPassword) {
         // 1. 校验
         if (StringUtils.isAnyBlank(userAccount, userPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
@@ -151,29 +150,26 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             loginAttemptService.recordLoginFailure(userAccount);
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户不存在或密码错误");
         }
-        // 3. 记录用户的登录态
+        // 3. 记录登录成功，HTTP 会话写入由 Web 层负责
         loginAttemptService.recordLoginSuccess(userAccount);
-        request.getSession().setAttribute(UserConstant.USER_LOGIN_STATE, user);
         return user;
     }
 
     /**
      * 获取当前登录用户
      *
-     * @param request
-     * @return
+     * @param sessionUser 会话中保存的用户快照
+     * @return 当前登录用户
      */
     @Override
-    public User getLoginUser(HttpServletRequest request) {
+    public User getLoginUser(User sessionUser) {
         // 先判断是否已登录
-        Object userObj = request.getSession().getAttribute(UserConstant.USER_LOGIN_STATE);
-        User currentUser = (User) userObj;
-        if (currentUser == null || currentUser.getId() == null) {
+        if (sessionUser == null || sessionUser.getId() == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
         }
         // 从数据库查询（追求性能的话可以注释，直接走缓存）
-        long userId = currentUser.getId();
-        currentUser = this.getById(userId);
+        long userId = sessionUser.getId();
+        User currentUser = this.getById(userId);
         if (currentUser == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
         }
@@ -183,14 +179,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     /**
      * 是否为管理员
      *
-     * @param request
-     * @return
+     * @param user 用户信息
+     * @return 是否为管理员
      */
     @Override
-    public boolean isAdmin(HttpServletRequest request) {
+    public boolean isAdmin(User user) {
         // 仅管理员可查询
-        Object userObj = request.getSession().getAttribute(UserConstant.USER_LOGIN_STATE);
-        User user = (User) userObj;
         return user != null && UserConstant.ADMIN_ROLE.equals(user.getUserRole());
     }
 
@@ -202,15 +196,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     /**
      * 用户注销
      *
-     * @param request
+     * @param sessionUser 会话中保存的用户快照
      */
     @Override
-    public boolean userLogout(HttpServletRequest request) {
-        if (request.getSession().getAttribute(UserConstant.USER_LOGIN_STATE) == null) {
+    public boolean userLogout(User sessionUser) {
+        if (sessionUser == null || sessionUser.getId() == null) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "未登录");
         }
-        // 移除登录态
-        request.getSession().removeAttribute(UserConstant.USER_LOGIN_STATE);
         return true;
     }
 
