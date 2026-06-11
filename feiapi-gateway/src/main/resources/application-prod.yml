@@ -9,6 +9,8 @@ dubbo:
   registry:
 #    id: zk-registry
     address: nacos://${FEIAPI_NACOS_HOST}:${FEIAPI_NACOS_PORT:8848}
+    username: ${FEIAPI_NACOS_USERNAME}
+    password: ${FEIAPI_NACOS_PASSWORD}
   #配置超时时间
   consumer:
     timeout: 5000
