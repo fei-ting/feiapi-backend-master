@@ -38,11 +38,6 @@ public class UserUpdateRequest implements Serializable {
     private Integer gender;
 
     /**
-     * 用户角色: user, admin
-     */
-    private String userRole;
-
-    /**
      * 密码
      */
     private String userPassword;

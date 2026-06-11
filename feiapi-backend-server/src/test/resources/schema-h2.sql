@@ -47,3 +47,13 @@ CREATE TABLE IF NOT EXISTS `user_interface_info` (
     `is_delete` TINYINT NOT NULL DEFAULT 0,
     UNIQUE (`user_id`, `interface_info_id`)
 );
+
+CREATE TABLE IF NOT EXISTS `user_role_change_log` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `operator_id` BIGINT NOT NULL,
+    `target_user_id` BIGINT NOT NULL,
+    `old_role` VARCHAR(256) NOT NULL,
+    `new_role` VARCHAR(256) DEFAULT NULL,
+    `remark` VARCHAR(512) DEFAULT NULL,
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP
+);

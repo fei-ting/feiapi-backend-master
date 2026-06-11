@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -129,6 +130,8 @@ public class UserController {
         }
         User user = new User();
         BeanUtils.copyProperties(userAddRequest, user);
+        // 强制设置默认角色为普通用户，管理员不能通过此接口指定角色
+        user.setUserRole(UserConstant.DEFAULT_ROLE);
         String password = userAddRequest.getUserPassword();
         if (StringUtils.isNotBlank(password)) {
             user.setUserPassword(userService.encodePassword(password));
@@ -143,9 +146,9 @@ public class UserController {
     /**
      * 删除用户
      *
-     * @param deleteRequest
-     * @param request
-     * @return
+     * @param deleteRequest 删除请求
+     * @param request       HTTP 请求
+     * @return 是否删除成功
      */
     @PostMapping("/delete")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
@@ -153,7 +156,10 @@ public class UserController {
         if (deleteRequest == null || deleteRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        boolean b = userService.removeById(deleteRequest.getId());
+        // 获取当前操作者 id
+        User loginUser = userService.getLoginUser(request);
+        // 调用 Service 层的安全删除方法，包含最后管理员保护
+        boolean b = userService.deleteUser(deleteRequest.getId(), loginUser.getId());
         return ResultUtils.success(b);
     }
 
@@ -179,6 +185,34 @@ public class UserController {
             user.setUserPassword(null);
         }
         boolean result = userService.updateById(user);
+        return ResultUtils.success(result);
+    }
+
+    /**
+     * 更新用户角色（专用接口，仅管理员可调用）
+     *
+     * @param userRoleUpdateRequest 角色变更请求
+     * @param request               HTTP 请求
+     * @return 是否更新成功
+     */
+    @PostMapping("/update/role")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    public BaseResponse<Boolean> updateUserRole(@Valid @RequestBody UserRoleUpdateRequest userRoleUpdateRequest,
+                                                HttpServletRequest request) {
+        if (userRoleUpdateRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        Long userId = userRoleUpdateRequest.getId();
+        String newRole = userRoleUpdateRequest.getUserRole();
+        if (userId == null || userId <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        if (StringUtils.isBlank(newRole)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        // 获取当前操作者 id 用于审计日志
+        User loginUser = userService.getLoginUser(request);
+        boolean result = userService.updateUserRole(userId, newRole, loginUser.getId());
         return ResultUtils.success(result);
     }
 

@@ -64,4 +64,31 @@ public interface UserService extends IService<User> {
      * @return 加密后的密码
      */
     String encodePassword(String rawPassword);
+
+    /**
+     * 更新用户角色
+     *
+     * @param userId     目标用户 id
+     * @param newRole    新角色
+     * @param operatorId 操作者 id
+     * @return 是否更新成功
+     */
+    boolean updateUserRole(Long userId, String newRole, Long operatorId);
+
+    /**
+     * 判断指定用户是否是最后一个管理员
+     *
+     * @param userId 用户 id
+     * @return 是否是最后一个管理员
+     */
+    boolean isLastAdmin(Long userId);
+
+    /**
+     * 安全删除用户（含最后管理员保护）
+     *
+     * @param userId     要删除的用户 id
+     * @param operatorId 操作者 id
+     * @return 是否删除成功
+     */
+    boolean deleteUser(Long userId, Long operatorId);
 }

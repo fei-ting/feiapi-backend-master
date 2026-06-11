@@ -6,19 +6,23 @@ import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.constant.UserConstant;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.mapper.UserMapper;
+import com.feiting.feiapi.mapper.UserRoleChangeLogMapper;
 import com.feiting.feiapi.service.LoginAttemptService;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapicommon.model.entity.User;
+import com.feiting.feiapicommon.model.entity.UserRoleChangeLog;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.List;
 
 
 /**
@@ -53,6 +57,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
     @Resource
     private UserMapper userMapper;
+
+    @Resource
+    private UserRoleChangeLogMapper userRoleChangeLogMapper;
 
     @Resource
     private LoginAttemptService loginAttemptService;
@@ -205,6 +212,145 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         // 移除登录态
         request.getSession().removeAttribute(UserConstant.USER_LOGIN_STATE);
         return true;
+    }
+
+    /**
+     * 更新用户角色
+     *
+     * @param userId     目标用户 id
+     * @param newRole    新角色
+     * @param operatorId 操作者 id
+     * @return 是否更新成功
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateUserRole(Long userId, String newRole, Long operatorId) {
+        // 1. 校验角色是否合法
+        if (!UserConstant.DEFAULT_ROLE.equals(newRole) && !UserConstant.ADMIN_ROLE.equals(newRole)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "非法的角色值");
+        }
+
+        // 2. 校验操作者存在且必须是管理员
+        User operator = this.getById(operatorId);
+        if (operator == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "操作者不存在");
+        }
+        if (!UserConstant.ADMIN_ROLE.equals(operator.getUserRole())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "非管理员无权修改用户角色");
+        }
+
+        // 3. 查询目标用户
+        User targetUser = this.getById(userId);
+        if (targetUser == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "用户不存在");
+        }
+
+        String oldRole = targetUser.getUserRole();
+
+        // 4. 角色未变更时直接返回
+        if (newRole.equals(oldRole)) {
+            return true;
+        }
+
+        // 5. 最后一个管理员保护：如果目标当前是 admin 且新角色不是 admin
+        //    使用 FOR UPDATE 锁住管理员集合，确保并发安全
+        if (UserConstant.ADMIN_ROLE.equals(oldRole) && !UserConstant.ADMIN_ROLE.equals(newRole)) {
+            // 使用 FOR UPDATE 锁住管理员行，防止并发修改
+            List<Long> adminIds = userMapper.selectAdminIdsForUpdate();
+            if (adminIds.size() <= 1) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "不能降级最后一个管理员");
+            }
+        }
+
+        // 6. 更新角色
+        targetUser.setUserRole(newRole);
+        boolean result = this.updateById(targetUser);
+
+        // 7. 角色变更成功后插入审计记录
+        if (result) {
+            insertAuditLog(operatorId, userId, oldRole, newRole, "管理员通过专用接口变更用户角色");
+        }
+
+        return result;
+    }
+
+    /**
+     * 安全删除用户（含最后管理员保护）
+     *
+     * @param userId     要删除的用户 id
+     * @param operatorId 操作者 id
+     * @return 是否删除成功
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean deleteUser(Long userId, Long operatorId) {
+        // 1. 查询目标用户
+        User targetUser = this.getById(userId);
+        if (targetUser == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "用户不存在");
+        }
+
+        // 2. 如果删除的是管理员，需要检查是否是最后一个管理员
+        if (UserConstant.ADMIN_ROLE.equals(targetUser.getUserRole())) {
+            // 使用 FOR UPDATE 锁住管理员行，防止并发删除或降级最后一个管理员
+            List<Long> adminIds = userMapper.selectAdminIdsForUpdate();
+            if (adminIds.size() <= 1) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "不能删除最后一个管理员");
+            }
+        }
+
+        // 3. 执行删除
+        boolean result = this.removeById(userId);
+
+        // 4. 删除成功后记录审计日志
+        if (result) {
+            insertAuditLog(operatorId, userId, targetUser.getUserRole(), null, "管理员删除用户");
+        }
+
+        return result;
+    }
+
+    /**
+     * 插入审计日志
+     *
+     * @param operatorId    操作者 id
+     * @param targetUserId  目标用户 id
+     * @param oldRole       旧角色
+     * @param newRole       新角色（删除时为 null）
+     * @param remark        备注
+     */
+    private void insertAuditLog(Long operatorId, Long targetUserId, String oldRole, String newRole, String remark) {
+        UserRoleChangeLog auditLog = new UserRoleChangeLog();
+        auditLog.setOperatorId(operatorId);
+        auditLog.setTargetUserId(targetUserId);
+        auditLog.setOldRole(oldRole);
+        auditLog.setNewRole(newRole);
+        auditLog.setRemark(remark);
+        userRoleChangeLogMapper.insert(auditLog);
+
+        // 日志保留作为辅助手段
+        log.info("用户角色变更审计 - 操作者: {}, 目标用户: {}, 旧角色: {}, 新角色: {}, 备注: {}, 审计ID: {}",
+                operatorId, targetUserId, oldRole, newRole, remark, auditLog.getId());
+    }
+
+    /**
+     * 判断指定用户是否是最后一个管理员
+     *
+     * @param userId 用户 id
+     * @return 是否是最后一个管理员
+     */
+    @Override
+    public boolean isLastAdmin(Long userId) {
+        // 查询该用户是否是管理员
+        User user = this.getById(userId);
+        if (user == null || !UserConstant.ADMIN_ROLE.equals(user.getUserRole())) {
+            return false;
+        }
+        // 查询管理员总数
+        QueryWrapper<User> adminQuery = new QueryWrapper<>();
+        adminQuery.eq("user_role", UserConstant.ADMIN_ROLE);
+        long adminCount = userMapper.selectCount(adminQuery);
+        return adminCount <= 1;
     }
 
 }

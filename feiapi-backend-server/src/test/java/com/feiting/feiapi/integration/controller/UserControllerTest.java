@@ -2,10 +2,12 @@ package com.feiting.feiapi.integration.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.feiting.feiapi.constant.UserConstant;
+import com.feiting.feiapi.mapper.UserRoleChangeLogMapper;
 import com.feiting.feiapi.model.dto.user.UserLoginRequest;
 import com.feiting.feiapi.model.dto.user.UserRegisterRequest;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapicommon.model.entity.User;
+import com.feiting.feiapicommon.model.entity.UserRoleChangeLog;
 import jakarta.annotation.Resource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -38,6 +40,9 @@ class UserControllerTest {
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private UserRoleChangeLogMapper userRoleChangeLogMapper;
 
     @Resource
     private ObjectMapper objectMapper;
@@ -259,6 +264,368 @@ class UserControllerTest {
                     .andExpect(jsonPath("$.code").value(0))
                     .andExpect(jsonPath("$.data.id").value(largeUserId))
                     .andExpect(jsonPath("$.data.userAccount").value("largeid01"));
+        }
+    }
+
+    @Nested
+    @DisplayName("POST /user/add 创建用户 - 角色安全")
+    class AddUserRoleTests {
+
+        @Test
+        @DisplayName("管理员通过 add 接口不能指定角色，新用户始终为普通用户")
+        void shouldNotAllowAdminToSetRoleViaAdd() throws Exception {
+            MockHttpSession adminSession = registerAndLoginAdmin("addrole01", "password123");
+
+            // 构造请求体，尝试夹带 admin 角色
+            String requestBody = "{\"userAccount\":\"newuser01\",\"userPassword\":\"password123\","
+                    + "\"userName\":\"新用户\",\"userRole\":\"admin\"}";
+
+            String response = mockMvc.perform(post("/user/add")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andReturn().getResponse().getContentAsString();
+
+            // 提取新用户 id 并查询，验证角色为普通用户
+            Long newUserId = objectMapper.readTree(response).get("data").asLong();
+            User newUser = userService.getById(newUserId);
+            org.assertj.core.api.Assertions.assertThat(newUser.getUserRole())
+                    .as("通过 add 接口创建的用户角色应为默认普通用户")
+                    .isEqualTo(UserConstant.DEFAULT_ROLE);
+        }
+    }
+
+    @Nested
+    @DisplayName("POST /user/update 更新用户 - 角色安全")
+    class UpdateUserRoleTests {
+
+        @Test
+        @DisplayName("管理员通过 update 接口不能修改用户角色")
+        void shouldNotAllowAdminToChangeRoleViaUpdate() throws Exception {
+            MockHttpSession adminSession = registerAndLoginAdmin("updaterole01", "password123");
+
+            // 创建一个普通用户
+            long userId = userService.userRegister("updatetarget01", "password123", "password123");
+            User targetUser = userService.getById(userId);
+            org.assertj.core.api.Assertions.assertThat(targetUser.getUserRole())
+                    .as("新注册用户角色应为普通用户")
+                    .isEqualTo(UserConstant.DEFAULT_ROLE);
+
+            // 构造请求体，尝试夹带 admin 角色
+            String requestBody = "{\"id\":" + userId + ",\"userName\":\"修改后的名字\",\"userRole\":\"admin\"}";
+
+            mockMvc.perform(post("/user/update")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0));
+
+            // 验证角色未被修改
+            User updatedUser = userService.getById(userId);
+            org.assertj.core.api.Assertions.assertThat(updatedUser.getUserRole())
+                    .as("通过 update 接口不应修改用户角色")
+                    .isEqualTo(UserConstant.DEFAULT_ROLE);
+            // 验证其他字段确实被修改了
+            org.assertj.core.api.Assertions.assertThat(updatedUser.getUserName())
+                    .as("userName 应被正常更新")
+                    .isEqualTo("修改后的名字");
+        }
+    }
+
+    @Nested
+    @DisplayName("POST /user/update/role 用户角色变更")
+    class UpdateRoleTests {
+
+        @Test
+        @DisplayName("管理员通过专用接口成功修改用户角色")
+        void shouldAllowAdminToUpdateRoleViaDedicatedApi() throws Exception {
+            MockHttpSession adminSession = registerAndLoginAdmin("roleapi01", "password123");
+
+            // 创建一个普通用户
+            long userId = userService.userRegister("roletarget01", "password123", "password123");
+
+            String requestBody = "{\"id\":" + userId + ",\"userRole\":\"admin\"}";
+
+            mockMvc.perform(post("/user/update/role")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data").value(true));
+
+            // 验证角色已变更
+            User updatedUser = userService.getById(userId);
+            org.assertj.core.api.Assertions.assertThat(updatedUser.getUserRole())
+                    .as("通过专用接口应成功修改用户角色")
+                    .isEqualTo(UserConstant.ADMIN_ROLE);
+        }
+
+        @Test
+        @DisplayName("非法角色值应被拒绝")
+        void shouldRejectInvalidRole() throws Exception {
+            MockHttpSession adminSession = registerAndLoginAdmin("roleapi02", "password123");
+
+            long userId = userService.userRegister("roletarget02", "password123", "password123");
+
+            String requestBody = "{\"id\":" + userId + ",\"userRole\":\"superadmin\"}";
+
+            mockMvc.perform(post("/user/update/role")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000));
+
+            // 验证角色未被修改
+            User user = userService.getById(userId);
+            org.assertj.core.api.Assertions.assertThat(user.getUserRole())
+                    .as("非法角色值不应修改用户角色")
+                    .isEqualTo(UserConstant.DEFAULT_ROLE);
+        }
+
+        @Test
+        @DisplayName("空角色值应被拒绝")
+        void shouldRejectBlankRole() throws Exception {
+            MockHttpSession adminSession = registerAndLoginAdmin("roleapi03", "password123");
+
+            long userId = userService.userRegister("roletarget03", "password123", "password123");
+
+            String requestBody = "{\"id\":" + userId + ",\"userRole\":\"\"}";
+
+            mockMvc.perform(post("/user/update/role")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000));
+        }
+
+        @Test
+        @DisplayName("角色未变更时返回成功但不产生额外更新")
+        void shouldReturnSuccessWhenRoleUnchanged() throws Exception {
+            MockHttpSession adminSession = registerAndLoginAdmin("roleapi04", "password123");
+
+            // 获取管理员用户 id
+            User adminUser = (User) adminSession.getAttribute(UserConstant.USER_LOGIN_STATE);
+            Long operatorId = adminUser.getId();
+
+            long userId = userService.userRegister("roletarget04", "password123", "password123");
+
+            // 将用户提升为 admin
+            userService.updateUserRole(userId, UserConstant.ADMIN_ROLE, operatorId);
+
+            // 再次设置为 admin（角色未变更）
+            String requestBody = "{\"id\":" + userId + ",\"userRole\":\"admin\"}";
+
+            mockMvc.perform(post("/user/update/role")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data").value(true));
+        }
+
+        @Test
+        @DisplayName("不存在的用户 id 应返回错误")
+        void shouldReturnErrorWhenUserNotFound() throws Exception {
+            MockHttpSession adminSession = registerAndLoginAdmin("roleapi05", "password123");
+
+            String requestBody = "{\"id\":999999,\"userRole\":\"admin\"}";
+
+            mockMvc.perform(post("/user/update/role")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40400));
+        }
+
+        @Test
+        @DisplayName("非管理员访问 /user/update/role 应返回无权限")
+        void shouldRejectNonAdminAccessToUpdateRole() throws Exception {
+            MockHttpSession userSession = registerAndLogin("roleapi06", "password123");
+
+            long userId = userService.userRegister("roletarget06", "password123", "password123");
+
+            String requestBody = "{\"id\":" + userId + ",\"userRole\":\"admin\"}";
+
+            mockMvc.perform(post("/user/update/role")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(userSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40101));
+        }
+
+        @Test
+        @DisplayName("最后一个管理员不能被降权")
+        void shouldNotAllowDowngradeLastAdmin() throws Exception {
+            MockHttpSession adminSession = registerAndLoginAdmin("roleapi07", "password123");
+
+            // 获取当前管理员用户
+            User adminUser = (User) adminSession.getAttribute(UserConstant.USER_LOGIN_STATE);
+            Long adminUserId = adminUser.getId();
+
+            // 尝试将自己降级为普通用户
+            String requestBody = "{\"id\":" + adminUserId + ",\"userRole\":\"user\"}";
+
+            mockMvc.perform(post("/user/update/role")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(50001));
+
+            // 验证管理员角色未被修改
+            User userAfterAttempt = userService.getById(adminUserId);
+            org.assertj.core.api.Assertions.assertThat(userAfterAttempt.getUserRole())
+                    .as("最后一个管理员不应被降级")
+                    .isEqualTo(UserConstant.ADMIN_ROLE);
+        }
+
+        @Test
+        @DisplayName("角色变更后审计记录应落库")
+        void shouldCreateAuditLogWhenRoleChanged() throws Exception {
+            MockHttpSession adminSession = registerAndLoginAdmin("roleapi08", "password123");
+
+            // 获取管理员用户 id
+            User adminUser = (User) adminSession.getAttribute(UserConstant.USER_LOGIN_STATE);
+            Long operatorId = adminUser.getId();
+
+            // 创建一个普通用户
+            long targetUserId = userService.userRegister("roletarget08", "password123", "password123");
+
+            // 记录变更前审计记录数量
+            long logCountBefore = userRoleChangeLogMapper.selectCount(null);
+
+            String requestBody = "{\"id\":" + targetUserId + ",\"userRole\":\"admin\"}";
+
+            mockMvc.perform(post("/user/update/role")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data").value(true));
+
+            // 验证审计记录已落库
+            long logCountAfter = userRoleChangeLogMapper.selectCount(null);
+            org.assertj.core.api.Assertions.assertThat(logCountAfter)
+                    .as("角色变更后应新增一条审计记录")
+                    .isEqualTo(logCountBefore + 1);
+
+            // 验证审计记录内容正确
+            UserRoleChangeLog latestLog = userRoleChangeLogMapper.selectList(
+                    new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<UserRoleChangeLog>()
+                            .orderByDesc("id")
+                            .last("LIMIT 1")
+            ).get(0);
+
+            org.assertj.core.api.Assertions.assertThat(latestLog.getOperatorId())
+                    .as("审计记录操作者 id 应正确")
+                    .isEqualTo(operatorId);
+            org.assertj.core.api.Assertions.assertThat(latestLog.getTargetUserId())
+                    .as("审计记录目标用户 id 应正确")
+                    .isEqualTo(targetUserId);
+            org.assertj.core.api.Assertions.assertThat(latestLog.getOldRole())
+                    .as("审计记录旧角色应为 user")
+                    .isEqualTo(UserConstant.DEFAULT_ROLE);
+            org.assertj.core.api.Assertions.assertThat(latestLog.getNewRole())
+                    .as("审计记录新角色应为 admin")
+                    .isEqualTo(UserConstant.ADMIN_ROLE);
+        }
+    }
+
+    @Nested
+    @DisplayName("POST /user/delete 删除用户 - 最后管理员保护")
+    class DeleteUserTests {
+
+        @Test
+        @DisplayName("最后一个管理员不能被删除")
+        void shouldNotAllowDeleteLastAdmin() throws Exception {
+            MockHttpSession adminSession = registerAndLoginAdmin("deleteadmin01", "password123");
+
+            // 获取当前管理员用户
+            User adminUser = (User) adminSession.getAttribute(UserConstant.USER_LOGIN_STATE);
+            Long adminUserId = adminUser.getId();
+
+            // 尝试删除自己（最后一个管理员）
+            String requestBody = "{\"id\":" + adminUserId + "}";
+
+            mockMvc.perform(post("/user/delete")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(50001));
+
+            // 验证管理员仍然存在
+            User userAfterAttempt = userService.getById(adminUserId);
+            org.assertj.core.api.Assertions.assertThat(userAfterAttempt)
+                    .as("最后一个管理员不应被删除")
+                    .isNotNull();
+            org.assertj.core.api.Assertions.assertThat(userAfterAttempt.getUserRole())
+                    .as("最后一个管理员角色不应改变")
+                    .isEqualTo(UserConstant.ADMIN_ROLE);
+        }
+
+        @Test
+        @DisplayName("有多个管理员时可以删除其中一个")
+        void shouldAllowDeleteAdminWhenMultipleAdminsExist() throws Exception {
+            MockHttpSession adminSession = registerAndLoginAdmin("deleteadmin02", "password123");
+
+            // 创建第二个管理员
+            long secondAdminId = userService.userRegister("deleteadmin03", "password123", "password123");
+            userService.updateUserRole(secondAdminId, UserConstant.ADMIN_ROLE,
+                    ((User) adminSession.getAttribute(UserConstant.USER_LOGIN_STATE)).getId());
+
+            // 删除第二个管理员
+            String requestBody = "{\"id\":" + secondAdminId + "}";
+
+            mockMvc.perform(post("/user/delete")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data").value(true));
+
+            // 验证第二个管理员已被删除
+            User deletedUser = userService.getById(secondAdminId);
+            org.assertj.core.api.Assertions.assertThat(deletedUser)
+                    .as("第二个管理员应被删除")
+                    .isNull();
+        }
+
+        @Test
+        @DisplayName("删除普通用户不受最后管理员保护限制")
+        void shouldAllowDeleteNormalUser() throws Exception {
+            MockHttpSession adminSession = registerAndLoginAdmin("deleteadmin04", "password123");
+
+            // 创建一个普通用户
+            long normalUserId = userService.userRegister("deleteuser01", "password123", "password123");
+
+            // 删除普通用户
+            String requestBody = "{\"id\":" + normalUserId + "}";
+
+            mockMvc.perform(post("/user/delete")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data").value(true));
+
+            // 验证普通用户已被删除
+            User deletedUser = userService.getById(normalUserId);
+            org.assertj.core.api.Assertions.assertThat(deletedUser)
+                    .as("普通用户应被删除")
+                    .isNull();
         }
     }
 }
