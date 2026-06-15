@@ -1,5 +1,7 @@
 package com.feiting.feiapi.annotation;
 
+import com.feiting.feiapi.model.enums.UserRoleEnum;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -20,16 +22,15 @@ public @interface AuthCheck {
      *
      * @return
      */
-    String[] anyRole() default "";
+    UserRoleEnum[] anyRole() default {};
 
     /**
      * 必须有某个角色
      *
      * @return
      */
-    String mustRole() default "";
+    UserRoleEnum mustRole() default UserRoleEnum.NONE;
 
 }
-
 
 

@@ -5,6 +5,7 @@ import com.feiting.feiapi.annotation.AuthCheck;
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.component.UserSessionManager;
 import com.feiting.feiapi.exception.BusinessException;
+import com.feiting.feiapi.model.enums.UserRoleEnum;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapicommon.model.entity.User;
 import org.apache.commons.lang3.StringUtils;
@@ -47,23 +48,27 @@ public class AuthInterceptor {
      */
     @Around("@annotation(authCheck)")
     public Object doInterceptor(ProceedingJoinPoint joinPoint, AuthCheck authCheck) throws Throwable {
-        List<String> anyRole = Arrays.stream(authCheck.anyRole()).filter(StringUtils::isNotBlank).collect(Collectors.toList());
-        String mustRole = authCheck.mustRole();
+        List<String> anyRoleCodes = Arrays.stream(authCheck.anyRole())
+                .filter(role -> role != UserRoleEnum.NONE)
+                .map(UserRoleEnum::getCode)
+                .filter(StringUtils::isNotBlank)
+                .collect(Collectors.toList());
+        UserRoleEnum mustRole = authCheck.mustRole();
         RequestAttributes requestAttributes = RequestContextHolder.currentRequestAttributes();
         HttpServletRequest request = ((ServletRequestAttributes) requestAttributes).getRequest();
         // 当前登录用户
         User user = userService.getLoginUser(userSessionManager.getLoginUser(request));
         // 拥有任意权限即通过
-        if (CollectionUtils.isNotEmpty(anyRole)) {
+        if (CollectionUtils.isNotEmpty(anyRoleCodes)) {
             String userRole = user.getUserRole();
-            if (!anyRole.contains(userRole)) {
+            if (!anyRoleCodes.contains(userRole)) {
                 throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
             }
         }
         // 必须有所有权限才通过
-        if (StringUtils.isNotBlank(mustRole)) {
+        if (mustRole != UserRoleEnum.NONE) {
             String userRole = user.getUserRole();
-            if (!mustRole.equals(userRole)) {
+            if (!mustRole.getCode().equals(userRole)) {
                 throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
             }
         }

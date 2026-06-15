@@ -7,6 +7,7 @@ import com.feiting.feiapi.constant.UserConstant;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.mapper.UserMapper;
 import com.feiting.feiapi.mapper.UserRoleChangeLogMapper;
+import com.feiting.feiapi.model.enums.UserRoleEnum;
 import com.feiting.feiapi.service.LoginAttemptService;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapicommon.model.entity.User;
@@ -185,7 +186,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     @Override
     public boolean isAdmin(User user) {
         // 仅管理员可查询
-        return user != null && UserConstant.ADMIN_ROLE.equals(user.getUserRole());
+        return user != null && UserRoleEnum.ADMIN.getCode().equals(user.getUserRole());
     }
 
     @Override
@@ -216,18 +217,19 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean updateUserRole(Long userId, String newRole, Long operatorId) {
+    public boolean updateUserRole(Long userId, UserRoleEnum newRole, Long operatorId) {
         // 1. 校验角色是否合法
-        if (!UserConstant.DEFAULT_ROLE.equals(newRole) && !UserConstant.ADMIN_ROLE.equals(newRole)) {
+        if (newRole == null || newRole == UserRoleEnum.NONE) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "非法的角色值");
         }
+        String newRoleCode = newRole.getCode();
 
         // 2. 校验操作者存在且必须是管理员
         User operator = this.getById(operatorId);
         if (operator == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "操作者不存在");
         }
-        if (!UserConstant.ADMIN_ROLE.equals(operator.getUserRole())) {
+        if (!UserRoleEnum.ADMIN.getCode().equals(operator.getUserRole())) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "非管理员无权修改用户角色");
         }
 
@@ -240,13 +242,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         String oldRole = targetUser.getUserRole();
 
         // 4. 角色未变更时直接返回
-        if (newRole.equals(oldRole)) {
+        if (newRoleCode.equals(oldRole)) {
             return true;
         }
 
         // 5. 最后一个管理员保护：如果目标当前是 admin 且新角色不是 admin
         //    使用 FOR UPDATE 锁住管理员集合，确保并发安全
-        if (UserConstant.ADMIN_ROLE.equals(oldRole) && !UserConstant.ADMIN_ROLE.equals(newRole)) {
+        if (UserRoleEnum.ADMIN.getCode().equals(oldRole) && newRole != UserRoleEnum.ADMIN) {
             // 使用 FOR UPDATE 锁住管理员行，防止并发修改
             List<Long> adminIds = userMapper.selectAdminIdsForUpdate();
             if (adminIds.size() <= 1) {
@@ -255,12 +257,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         }
 
         // 6. 更新角色
-        targetUser.setUserRole(newRole);
+        targetUser.setUserRole(newRoleCode);
         boolean result = this.updateById(targetUser);
 
         // 7. 角色变更成功后插入审计记录
         if (result) {
-            insertAuditLog(operatorId, userId, oldRole, newRole, "管理员通过专用接口变更用户角色");
+            insertAuditLog(operatorId, userId, oldRole, newRoleCode, "管理员通过专用接口变更用户角色");
         }
 
         return result;
@@ -283,7 +285,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         }
 
         // 2. 如果删除的是管理员，需要检查是否是最后一个管理员
-        if (UserConstant.ADMIN_ROLE.equals(targetUser.getUserRole())) {
+        if (UserRoleEnum.ADMIN.getCode().equals(targetUser.getUserRole())) {
             // 使用 FOR UPDATE 锁住管理员行，防止并发删除或降级最后一个管理员
             List<Long> adminIds = userMapper.selectAdminIdsForUpdate();
             if (adminIds.size() <= 1) {
@@ -335,12 +337,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     public boolean isLastAdmin(Long userId) {
         // 查询该用户是否是管理员
         User user = this.getById(userId);
-        if (user == null || !UserConstant.ADMIN_ROLE.equals(user.getUserRole())) {
+        if (user == null || !UserRoleEnum.ADMIN.getCode().equals(user.getUserRole())) {
             return false;
         }
         // 查询管理员总数
         QueryWrapper<User> adminQuery = new QueryWrapper<>();
-        adminQuery.eq("user_role", UserConstant.ADMIN_ROLE);
+        adminQuery.eq("user_role", UserRoleEnum.ADMIN.getCode());
         long adminCount = userMapper.selectCount(adminQuery);
         return adminCount <= 1;
     }

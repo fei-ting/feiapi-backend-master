@@ -11,6 +11,7 @@ import com.feiting.feiapi.common.ResultUtils;
 import com.feiting.feiapi.component.UserSessionManager;
 import com.feiting.feiapi.constant.UserConstant;
 import com.feiting.feiapi.model.dto.user.*;
+import com.feiting.feiapi.model.enums.UserRoleEnum;
 import com.feiting.feiapi.model.vo.UserVO;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapi.exception.BusinessException;
@@ -130,7 +131,7 @@ public class UserController {
      * @return
      */
     @PostMapping("/add")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     public BaseResponse<Long> addUser(@Valid @RequestBody UserAddRequest userAddRequest, HttpServletRequest request) {
         if (userAddRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -138,7 +139,7 @@ public class UserController {
         User user = new User();
         BeanUtils.copyProperties(userAddRequest, user);
         // 强制设置默认角色为普通用户，管理员不能通过此接口指定角色
-        user.setUserRole(UserConstant.DEFAULT_ROLE);
+        user.setUserRole(UserRoleEnum.USER.getCode());
         String password = userAddRequest.getUserPassword();
         if (StringUtils.isNotBlank(password)) {
             user.setUserPassword(userService.encodePassword(password));
@@ -158,7 +159,7 @@ public class UserController {
      * @return 是否删除成功
      */
     @PostMapping("/delete")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     public BaseResponse<Boolean> deleteUser(@Valid @RequestBody DeleteRequest deleteRequest, HttpServletRequest request) {
         if (deleteRequest == null || deleteRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -178,7 +179,7 @@ public class UserController {
      * @return
      */
     @PostMapping("/update")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     public BaseResponse<Boolean> updateUser(@Valid @RequestBody UserUpdateRequest userUpdateRequest, HttpServletRequest request) {
         if (userUpdateRequest == null || userUpdateRequest.getId() == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -203,18 +204,18 @@ public class UserController {
      * @return 是否更新成功
      */
     @PostMapping("/update/role")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     public BaseResponse<Boolean> updateUserRole(@Valid @RequestBody UserRoleUpdateRequest userRoleUpdateRequest,
                                                 HttpServletRequest request) {
         if (userRoleUpdateRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         Long userId = userRoleUpdateRequest.getId();
-        String newRole = userRoleUpdateRequest.getUserRole();
+        UserRoleEnum newRole = userRoleUpdateRequest.getUserRole();
         if (userId == null || userId <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        if (StringUtils.isBlank(newRole)) {
+        if (newRole == null || newRole == UserRoleEnum.NONE) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         // 获取当前操作者 id 用于审计日志
@@ -256,7 +257,7 @@ public class UserController {
      * @return
      */
     @GetMapping("/list")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     public BaseResponse<List<UserVO>> listUser(@Valid UserQueryRequest userQueryRequest, HttpServletRequest request) {
         User userQuery = new User();
         if (userQueryRequest != null) {
@@ -280,7 +281,7 @@ public class UserController {
      * @return
      */
     @GetMapping("/list/page")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     public BaseResponse<Page<UserVO>> listUserByPage(@Valid UserQueryRequest userQueryRequest, HttpServletRequest request) {
         long current = 1;
         long size = 10;

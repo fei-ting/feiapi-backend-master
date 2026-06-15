@@ -1,8 +1,7 @@
 package com.feiting.feiapi.model.dto.user;
 
-import jakarta.validation.constraints.NotBlank;
+import com.feiting.feiapi.model.enums.UserRoleEnum;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import lombok.Data;
 
@@ -26,9 +25,8 @@ public class UserRoleUpdateRequest implements Serializable {
     /**
      * 用户角色: user, admin
      */
-    @NotBlank(message = "用户角色不能为空")
-    @Pattern(regexp = "^(user|admin)$", message = "用户角色只能是 user 或 admin")
-    private String userRole;
+    @NotNull(message = "用户角色不能为空")
+    private UserRoleEnum userRole;
 
     private static final long serialVersionUID = 1L;
 }

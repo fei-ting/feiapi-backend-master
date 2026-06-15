@@ -5,6 +5,7 @@ import com.feiting.feiapi.constant.UserConstant;
 import com.feiting.feiapi.mapper.UserRoleChangeLogMapper;
 import com.feiting.feiapi.model.dto.user.UserLoginRequest;
 import com.feiting.feiapi.model.dto.user.UserRegisterRequest;
+import com.feiting.feiapi.model.enums.UserRoleEnum;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapicommon.model.entity.User;
 import com.feiting.feiapicommon.model.entity.UserRoleChangeLog;
@@ -416,7 +417,7 @@ class UserControllerTest {
             long userId = userService.userRegister("roletarget04", "password123", "password123");
 
             // 将用户提升为 admin
-            userService.updateUserRole(userId, UserConstant.ADMIN_ROLE, operatorId);
+            userService.updateUserRole(userId, UserRoleEnum.ADMIN, operatorId);
 
             // 再次设置为 admin（角色未变更）
             String requestBody = "{\"id\":" + userId + ",\"userRole\":\"admin\"}";
@@ -581,7 +582,7 @@ class UserControllerTest {
 
             // 创建第二个管理员
             long secondAdminId = userService.userRegister("deleteadmin03", "password123", "password123");
-            userService.updateUserRole(secondAdminId, UserConstant.ADMIN_ROLE,
+            userService.updateUserRole(secondAdminId, UserRoleEnum.ADMIN,
                     ((User) adminSession.getAttribute(UserConstant.USER_LOGIN_STATE)).getId());
 
             // 删除第二个管理员

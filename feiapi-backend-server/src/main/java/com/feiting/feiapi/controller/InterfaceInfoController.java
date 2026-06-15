@@ -9,6 +9,7 @@ import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoQueryRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoUpdateRequest;
+import com.feiting.feiapi.model.enums.UserRoleEnum;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapi.annotation.AuthCheck;
 import com.feiting.feiapi.constant.CommonConstant;
@@ -78,7 +79,7 @@ public class InterfaceInfoController {
      * @return
      */
     @PostMapping("/add")
-    @AuthCheck(mustRole = "admin")
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     public BaseResponse<Long> addInterfaceInfo(@Valid @RequestBody InterfaceInfoAddRequest interfaceInfoAddRequest, HttpServletRequest request) {
         if (interfaceInfoAddRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -105,7 +106,7 @@ public class InterfaceInfoController {
      * @return
      */
     @PostMapping("/delete")
-    @AuthCheck(mustRole = "admin")
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     public BaseResponse<Boolean> deleteInterfaceInfo(@Valid @RequestBody DeleteRequest deleteRequest, HttpServletRequest request) {
         if (deleteRequest == null || deleteRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -128,7 +129,7 @@ public class InterfaceInfoController {
      * @return
      */
     @PostMapping("/update")
-    @AuthCheck(mustRole = "admin")
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     public BaseResponse<Boolean> updateInterfaceInfo(@Valid @RequestBody InterfaceInfoUpdateRequest interfaceInfoUpdateRequest,
                                             HttpServletRequest request) {
         if (interfaceInfoUpdateRequest == null || interfaceInfoUpdateRequest.getId() <= 0) {
@@ -173,7 +174,7 @@ public class InterfaceInfoController {
      * @param interfaceInfoQueryRequest
      * @return
      */
-    @AuthCheck(mustRole = "admin")
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     @GetMapping("/list")
     public BaseResponse<List<InterfaceInfo>> listInterfaceInfo(@Valid InterfaceInfoQueryRequest interfaceInfoQueryRequest) {
         InterfaceInfo interfaceInfoQuery = new InterfaceInfo();
@@ -230,7 +231,7 @@ public class InterfaceInfoController {
      * @return
      */
     @PostMapping("/online")
-    @AuthCheck(mustRole = "admin")
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     public BaseResponse<Boolean> onlineInterfaceInfo(@Valid @RequestBody IdRequest idRequest) {
         //参数校验
         if(idRequest == null || idRequest.getId() <= 0){
@@ -293,7 +294,7 @@ public class InterfaceInfoController {
      * @return
      */
     @PostMapping("/offline")
-    @AuthCheck(mustRole = "admin")
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     public BaseResponse<Boolean> offlineInterfaceInfo(@Valid @RequestBody IdRequest idRequest) {
         //参数校验
         if(idRequest == null || idRequest.getId() <= 0){

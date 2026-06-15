@@ -6,11 +6,11 @@ import com.feiting.feiapi.annotation.AuthCheck;
 import com.feiting.feiapi.common.*;
 import com.feiting.feiapi.component.UserSessionManager;
 import com.feiting.feiapi.constant.CommonConstant;
-import com.feiting.feiapi.constant.UserConstant;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.model.dto.userinterfaceinfo.UserInterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.userinterfaceinfo.UserInterfaceInfoQueryRequest;
 import com.feiting.feiapi.model.dto.userinterfaceinfo.UserInterfaceInfoUpdateRequest;
+import com.feiting.feiapi.model.enums.UserRoleEnum;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapi.utils.SortFieldUtils;
@@ -57,7 +57,7 @@ public class UserInterfaceInfoController {
      * @return
      */
     @PostMapping("/add")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     public BaseResponse<Long> addUserInterfaceInfo(@RequestBody @Valid UserInterfaceInfoAddRequest userInterfaceInfoAddRequest) {
         if (userInterfaceInfoAddRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -81,7 +81,7 @@ public class UserInterfaceInfoController {
      * @return
      */
     @PostMapping("/delete")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     public BaseResponse<Boolean> deleteUserInterfaceInfo(@Valid @RequestBody DeleteRequest deleteRequest) {
         if (deleteRequest == null || deleteRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -103,7 +103,7 @@ public class UserInterfaceInfoController {
      * @return
      */
     @PostMapping("/update")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     public BaseResponse<Boolean> updateUserInterfaceInfo(@RequestBody @Valid UserInterfaceInfoUpdateRequest userInterfaceInfoUpdateRequest) {
         if (userInterfaceInfoUpdateRequest == null || userInterfaceInfoUpdateRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -129,7 +129,7 @@ public class UserInterfaceInfoController {
      * @return
      */
     @GetMapping("/admin/get")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     public BaseResponse<UserInterfaceInfo> getUserInterfaceInfoById(long id) {
         if (id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -144,7 +144,7 @@ public class UserInterfaceInfoController {
      * @param userInterfaceInfoQueryRequest
      * @return
      */
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     @GetMapping("/list")
     public BaseResponse<List<UserInterfaceInfo>> listUserInterfaceInfo(@Valid UserInterfaceInfoQueryRequest userInterfaceInfoQueryRequest) {
         UserInterfaceInfo userInterfaceInfoQuery = new UserInterfaceInfo();
@@ -163,7 +163,7 @@ public class UserInterfaceInfoController {
      * @return
      */
     @GetMapping("/admin/list/page")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     public BaseResponse<Page<UserInterfaceInfo>> listUserInterfaceInfoByPage(@Valid UserInterfaceInfoQueryRequest userInterfaceInfoQueryRequest) {
         return listUserInterfaceInfoPage(userInterfaceInfoQueryRequest, null);
     }

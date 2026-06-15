@@ -2,6 +2,7 @@ package com.feiting.feiapi.service;
 
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.feiting.feiapi.model.enums.UserRoleEnum;
 import com.feiting.feiapicommon.model.entity.User;
 
 /**
@@ -70,7 +71,7 @@ public interface UserService extends IService<User> {
      * @param operatorId 操作者 id
      * @return 是否更新成功
      */
-    boolean updateUserRole(Long userId, String newRole, Long operatorId);
+    boolean updateUserRole(Long userId, UserRoleEnum newRole, Long operatorId);
 
     /**
      * 判断指定用户是否是最后一个管理员

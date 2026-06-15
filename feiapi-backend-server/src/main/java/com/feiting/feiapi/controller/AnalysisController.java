@@ -6,6 +6,7 @@ import com.feiting.feiapi.common.BaseResponse;
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.common.ResultUtils;
 import com.feiting.feiapi.exception.BusinessException;
+import com.feiting.feiapi.model.enums.UserRoleEnum;
 import com.feiting.feiapi.model.vo.InterfaceInfoVO;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
@@ -40,7 +41,7 @@ public class AnalysisController {
     private InterfaceInfoService interfaceInfoService;
 
     @GetMapping("/top/interface/invoke")
-    @AuthCheck(mustRole = "admin")
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
     public BaseResponse<List<InterfaceInfoVO>> listTopInvokeInterfaceInfo() {
         //获取总调用次数前三的 UserInterfaceInfo 集合（已按 total_num desc 排序）
         List<UserInterfaceInfo> userInterfaceInfoList = userInterfaceInfoService.listTopInvokeInterfaceInfo(3);
