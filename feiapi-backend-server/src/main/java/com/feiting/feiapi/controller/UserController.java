@@ -250,30 +250,6 @@ public class UserController {
     }
 
     /**
-     * 获取用户列表
-     *
-     * @param userQueryRequest
-     * @param request
-     * @return
-     */
-    @GetMapping("/list")
-    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
-    public BaseResponse<List<UserVO>> listUser(@Valid UserQueryRequest userQueryRequest, HttpServletRequest request) {
-        User userQuery = new User();
-        if (userQueryRequest != null) {
-            BeanUtils.copyProperties(userQueryRequest, userQuery);
-        }
-        QueryWrapper<User> queryWrapper = new QueryWrapper<>(userQuery);
-        List<User> userList = userService.list(queryWrapper);
-        List<UserVO> userVOList = userList.stream().map(user -> {
-            UserVO userVO = new UserVO();
-            BeanUtils.copyProperties(user, userVO);
-            return userVO;
-        }).collect(Collectors.toList());
-        return ResultUtils.success(userVOList);
-    }
-
-    /**
      * 分页获取用户列表
      *
      * @param userQueryRequest

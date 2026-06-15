@@ -64,37 +64,9 @@ class AuthInterceptorTest {
     class MustRoleAdminTests {
 
         @Test
-        @DisplayName("管理员访问 /user/list 成功")
+        @DisplayName("管理员访问 /user/list/page 成功")
         void shouldAllowAdminAccess() throws Exception {
             MockHttpSession session = loginWithRole("auth_admin01", "admin");
-
-            mockMvc.perform(get("/user/list").session(session))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(0));
-        }
-
-        @Test
-        @DisplayName("普通用户访问 /user/list 返回无权限")
-        void shouldDenyNormalUser() throws Exception {
-            MockHttpSession session = loginWithRole("auth_user01", "user");
-
-            mockMvc.perform(get("/user/list").session(session))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(40101));
-        }
-
-        @Test
-        @DisplayName("未登录访问 /user/list 返回未登录")
-        void shouldDenyNotLoggedIn() throws Exception {
-            mockMvc.perform(get("/user/list"))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(40100));
-        }
-
-        @Test
-        @DisplayName("管理员访问 /user/list/page 成功")
-        void shouldAllowAdminAccessPageList() throws Exception {
-            MockHttpSession session = loginWithRole("auth_admin02", "admin");
 
             mockMvc.perform(get("/user/list/page").session(session))
                     .andExpect(status().isOk())
@@ -103,12 +75,21 @@ class AuthInterceptorTest {
 
         @Test
         @DisplayName("普通用户访问 /user/list/page 返回无权限")
-        void shouldDenyNormalUserPageList() throws Exception {
-            MockHttpSession session = loginWithRole("auth_user02", "user");
+        void shouldDenyNormalUser() throws Exception {
+            MockHttpSession session = loginWithRole("auth_user01", "user");
 
             mockMvc.perform(get("/user/list/page").session(session))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(40101));
         }
+
+        @Test
+        @DisplayName("未登录访问 /user/list/page 返回未登录")
+        void shouldDenyNotLoggedIn() throws Exception {
+            mockMvc.perform(get("/user/list/page"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40100));
+        }
+
     }
 }

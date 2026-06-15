@@ -423,32 +423,6 @@ class InterfaceInfoControllerTest {
     }
 
     @Nested
-    @DisplayName("GET /interfaceInfo/list 管理员查询列表")
-    class ListTests {
-
-        @Test
-        @DisplayName("管理员查询接口列表成功")
-        void shouldAllowAdminToList() throws Exception {
-            MockHttpSession session = loginAsAdmin();
-
-            mockMvc.perform(get("/interfaceInfo/list").session(session))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(0))
-                    .andExpect(jsonPath("$.data").isArray());
-        }
-
-        @Test
-        @DisplayName("非管理员查询返回无权限")
-        void shouldDenyNormalUser() throws Exception {
-            MockHttpSession session = loginWithRole("user_list_" + System.currentTimeMillis(), "user");
-
-            mockMvc.perform(get("/interfaceInfo/list").session(session))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(40101));
-        }
-    }
-
-    @Nested
     @DisplayName("GET /interfaceInfo/list/page 分页查询")
     class ListPageTests {
 

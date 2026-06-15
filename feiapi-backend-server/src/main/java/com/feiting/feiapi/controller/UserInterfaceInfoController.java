@@ -24,7 +24,6 @@ import org.springframework.web.bind.annotation.*;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import java.util.List;
 import java.util.Set;
 
 /**
@@ -136,24 +135,6 @@ public class UserInterfaceInfoController {
         }
         UserInterfaceInfo userInterfaceInfo = userInterfaceInfoService.getById(id);
         return ResultUtils.success(userInterfaceInfo);
-    }
-
-    /**
-     * 获取列表（仅管理员可使用）
-     *
-     * @param userInterfaceInfoQueryRequest
-     * @return
-     */
-    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
-    @GetMapping("/list")
-    public BaseResponse<List<UserInterfaceInfo>> listUserInterfaceInfo(@Valid UserInterfaceInfoQueryRequest userInterfaceInfoQueryRequest) {
-        UserInterfaceInfo userInterfaceInfoQuery = new UserInterfaceInfo();
-        if (userInterfaceInfoQueryRequest != null) {
-            BeanUtils.copyProperties(userInterfaceInfoQueryRequest, userInterfaceInfoQuery);
-        }
-        QueryWrapper<UserInterfaceInfo> queryWrapper = new QueryWrapper<>(userInterfaceInfoQuery);
-        List<UserInterfaceInfo> userInterfaceInfoList = userInterfaceInfoService.list(queryWrapper);
-        return ResultUtils.success(userInterfaceInfoList);
     }
 
     /**
