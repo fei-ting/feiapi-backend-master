@@ -267,6 +267,9 @@ public class UserController {
             current = userQueryRequest.getCurrent();
             size = userQueryRequest.getPageSize();
         }
+        if (size > 50) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
         QueryWrapper<User> queryWrapper = new QueryWrapper<>(userQuery);
         Page<User> userPage = userService.page(new Page<>(current, size), queryWrapper);
         Page<UserVO> userVOPage = new PageDTO<>(userPage.getCurrent(), userPage.getSize(), userPage.getTotal());
