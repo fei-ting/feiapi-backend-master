@@ -89,4 +89,14 @@ public interface UserService extends IService<User> {
      * @return 是否删除成功
      */
     boolean deleteUser(Long userId, Long operatorId);
+
+    /**
+     * 清除指定用户的缓存
+     * <p>
+     * 用于用户资料变更、角色变更、用户删除等场景，确保缓存数据一致性
+     * </p>
+     *
+     * @param userId 用户 id
+     */
+    void evictUserCache(Long userId);
 }

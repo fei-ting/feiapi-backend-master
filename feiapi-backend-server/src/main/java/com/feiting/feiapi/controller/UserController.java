@@ -193,6 +193,10 @@ public class UserController {
             user.setUserPassword(null);
         }
         boolean result = userService.updateById(user);
+        // 更新成功后清除用户缓存，避免旧数据被继续使用
+        if (result && userUpdateRequest.getId() != null) {
+            userService.evictUserCache(userUpdateRequest.getId());
+        }
         return ResultUtils.success(result);
     }
 

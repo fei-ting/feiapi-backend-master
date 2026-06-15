@@ -3,7 +3,7 @@ package com.feiting.feiapi.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.feiting.feiapi.common.ErrorCode;
-import com.feiting.feiapi.constant.UserConstant;
+import com.feiting.feiapi.config.CacheConfig;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.mapper.UserMapper;
 import com.feiting.feiapi.mapper.UserRoleChangeLogMapper;
@@ -14,6 +14,8 @@ import com.feiting.feiapicommon.model.entity.User;
 import com.feiting.feiapicommon.model.entity.UserRoleChangeLog;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.Cache;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,6 +65,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
     @Resource
     private LoginAttemptService loginAttemptService;
+
+    @Resource
+    private CacheManager cacheManager;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -158,22 +163,49 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
     /**
      * 获取当前登录用户
+     * <p>
+     * 优先从缓存读取，缓存未命中时再查询数据库
+     * 缓存 key 为用户 id，缓存内容为用户实体
+     * </p>
      *
      * @param sessionUser 会话中保存的用户快照
      * @return 当前登录用户
      */
     @Override
     public User getLoginUser(User sessionUser) {
-        // 先判断是否已登录
+        // 1. 先判断是否已登录
         if (sessionUser == null || sessionUser.getId() == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
         }
-        // 从数据库查询（追求性能的话可以注释，直接走缓存）
+
         long userId = sessionUser.getId();
+        String cacheKey = String.valueOf(userId);
+
+        // 2. 尝试从缓存读取
+        Cache cache = cacheManager.getCache(CacheConfig.LOGIN_USER_CACHE_NAME);
+        if (cache != null) {
+            Cache.ValueWrapper valueWrapper = cache.get(cacheKey);
+            if (valueWrapper != null) {
+                User cachedUser = (User) valueWrapper.get();
+                if (cachedUser != null) {
+                    log.debug("从缓存获取用户信息，userId: {}", userId);
+                    return cachedUser;
+                }
+            }
+        }
+
+        // 3. 缓存未命中，从数据库查询
         User currentUser = this.getById(userId);
         if (currentUser == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
         }
+
+        // 4. 将用户信息放入缓存
+        if (cache != null) {
+            cache.put(cacheKey, currentUser);
+            log.debug("用户信息已缓存，userId: {}", userId);
+        }
+
         return currentUser;
     }
 
@@ -260,9 +292,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         targetUser.setUserRole(newRoleCode);
         boolean result = this.updateById(targetUser);
 
-        // 7. 角色变更成功后插入审计记录
+        // 7. 角色变更成功后插入审计记录并清理缓存
         if (result) {
             insertAuditLog(operatorId, userId, oldRole, newRoleCode, "管理员通过专用接口变更用户角色");
+            evictUserCache(userId);
         }
 
         return result;
@@ -296,9 +329,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         // 3. 执行删除
         boolean result = this.removeById(userId);
 
-        // 4. 删除成功后记录审计日志
+        // 4. 删除成功后记录审计日志并清理缓存
         if (result) {
             insertAuditLog(operatorId, userId, targetUser.getUserRole(), null, "管理员删除用户");
+            evictUserCache(userId);
         }
 
         return result;
@@ -325,6 +359,26 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         // 日志保留作为辅助手段
         log.info("用户角色变更审计 - 操作者: {}, 目标用户: {}, 旧角色: {}, 新角色: {}, 备注: {}, 审计ID: {}",
                 operatorId, targetUserId, oldRole, newRole, remark, auditLog.getId());
+    }
+
+    /**
+     * 清除指定用户的缓存
+     * <p>
+     * 用于用户资料变更、角色变更、用户删除等场景，确保缓存数据一致性
+     * </p>
+     *
+     * @param userId 用户 id
+     */
+    @Override
+    public void evictUserCache(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        Cache cache = cacheManager.getCache(CacheConfig.LOGIN_USER_CACHE_NAME);
+        if (cache != null) {
+            cache.evict(String.valueOf(userId));
+            log.debug("已清除用户缓存，userId: {}", userId);
+        }
     }
 
     /**

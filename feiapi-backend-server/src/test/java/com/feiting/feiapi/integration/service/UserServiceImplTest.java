@@ -1,7 +1,9 @@
 package com.feiting.feiapi.integration.service;
 
 import com.feiting.feiapi.common.ErrorCode;
+import com.feiting.feiapi.config.CacheConfig;
 import com.feiting.feiapi.exception.BusinessException;
+import com.feiting.feiapi.model.enums.UserRoleEnum;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapicommon.model.entity.User;
 import jakarta.annotation.Resource;
@@ -9,6 +11,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.cache.CacheManager;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,6 +58,9 @@ class UserServiceImplTest {
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private CacheManager cacheManager;
 
     @Nested
     @DisplayName("userRegister 用户注册")
@@ -320,6 +326,92 @@ class UserServiceImplTest {
         void shouldThrowWhenNotLoggedIn() {
             assertThrows(BusinessException.class,
                     () -> userService.getLoginUser(null));
+        }
+
+        @Test
+        @DisplayName("用户信息被缓存，第二次查询直接从缓存获取")
+        void shouldCacheUserInfoAfterFirstQuery() {
+            long userId = userService.userRegister("getuser02", "password123", "password123");
+            User sessionUser = new User();
+            sessionUser.setId(userId);
+
+            // 第一次查询，从数据库获取并缓存
+            User firstUser = userService.getLoginUser(sessionUser);
+            assertNotNull(firstUser);
+
+            // 验证缓存中存在用户信息
+            org.springframework.cache.Cache cache = cacheManager.getCache(CacheConfig.LOGIN_USER_CACHE_NAME);
+            assertNotNull(cache);
+            Object cachedValue = cache.get(String.valueOf(userId));
+            assertNotNull(cachedValue);
+
+            // 第二次查询，应从缓存获取
+            User secondUser = userService.getLoginUser(sessionUser);
+            assertNotNull(secondUser);
+            assertEquals(firstUser.getId(), secondUser.getId());
+            assertEquals(firstUser.getUserAccount(), secondUser.getUserAccount());
+        }
+
+        @Test
+        @DisplayName("角色变更后缓存被清除")
+        void shouldEvictCacheAfterRoleChange() {
+            long userId = userService.userRegister("getuser03", "password123", "password123");
+            User sessionUser = new User();
+            sessionUser.setId(userId);
+
+            // 第一次查询，缓存用户信息
+            User user = userService.getLoginUser(sessionUser);
+            assertNotNull(user);
+
+            // 验证缓存存在
+            org.springframework.cache.Cache cache = cacheManager.getCache(CacheConfig.LOGIN_USER_CACHE_NAME);
+            assertNotNull(cache);
+            assertNotNull(cache.get(String.valueOf(userId)));
+
+            // 变更用户角色
+            long operatorId = userService.userRegister("admin01", "password123", "password123");
+            // 需要先将操作者设为管理员
+            User operator = new User();
+            operator.setId(operatorId);
+            operator.setUserRole(UserRoleEnum.ADMIN.getCode());
+            userService.updateById(operator);
+
+            boolean roleChanged = userService.updateUserRole(userId, UserRoleEnum.ADMIN, operatorId);
+            assertTrue(roleChanged);
+
+            // 验证缓存已被清除
+            assertNull(cache.get(String.valueOf(userId)));
+        }
+
+        @Test
+        @DisplayName("删除用户后缓存被清除")
+        void shouldEvictCacheAfterUserDeletion() {
+            long userId = userService.userRegister("getuser04", "password123", "password123");
+            User sessionUser = new User();
+            sessionUser.setId(userId);
+
+            // 第一次查询，缓存用户信息
+            User user = userService.getLoginUser(sessionUser);
+            assertNotNull(user);
+
+            // 验证缓存存在
+            org.springframework.cache.Cache cache = cacheManager.getCache(CacheConfig.LOGIN_USER_CACHE_NAME);
+            assertNotNull(cache);
+            assertNotNull(cache.get(String.valueOf(userId)));
+
+            // 删除用户
+            long operatorId = userService.userRegister("admin02", "password123", "password123");
+            // 需要先将操作者设为管理员
+            User operator = new User();
+            operator.setId(operatorId);
+            operator.setUserRole(UserRoleEnum.ADMIN.getCode());
+            userService.updateById(operator);
+
+            boolean deleted = userService.deleteUser(userId, operatorId);
+            assertTrue(deleted);
+
+            // 验证缓存已被清除
+            assertNull(cache.get(String.valueOf(userId)));
         }
     }
 
