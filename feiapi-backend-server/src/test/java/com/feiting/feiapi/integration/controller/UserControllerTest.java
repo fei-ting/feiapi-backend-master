@@ -1,9 +1,12 @@
 package com.feiting.feiapi.integration.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.feiting.feiapi.controller.UserController;
+import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.constant.UserConstant;
 import com.feiting.feiapi.mapper.UserRoleChangeLogMapper;
 import com.feiting.feiapi.model.dto.user.UserLoginRequest;
+import com.feiting.feiapi.model.dto.user.UserQueryRequest;
 import com.feiting.feiapi.model.dto.user.UserRegisterRequest;
 import com.feiting.feiapi.model.enums.UserRoleEnum;
 import com.feiting.feiapi.service.UserService;
@@ -17,10 +20,13 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.AopTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -47,6 +53,9 @@ class UserControllerTest {
 
     @Resource
     private ObjectMapper objectMapper;
+
+    @Resource
+    private UserController userController;
 
     /**
      * 辅助方法：注册并登录，返回已登录的 session
@@ -265,6 +274,34 @@ class UserControllerTest {
                     .andExpect(jsonPath("$.code").value(0))
                     .andExpect(jsonPath("$.data.id").value(largeUserId))
                     .andExpect(jsonPath("$.data.userAccount").value("largeid01"));
+        }
+    }
+
+    @Nested
+    @DisplayName("GET /user/list/page 分页获取用户列表")
+    class ListUserByPageTests {
+
+        @Test
+        @DisplayName("pageSize > 50 返回参数错误")
+        void shouldFailWhenPageSizeTooLarge() throws Exception {
+            MockHttpSession adminSession = registerAndLoginAdmin("listpage01", "password123");
+
+            mockMvc.perform(get("/user/list/page")
+                            .param("pageSize", "51")
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000));
+        }
+
+        @Test
+        @DisplayName("直接调用分页方法时 pageSize > 50 返回参数错误")
+        void shouldRejectOversizedPageWhenCalledDirectly() throws Exception {
+            UserQueryRequest queryRequest = new UserQueryRequest();
+            queryRequest.setPageSize(51);
+            UserController targetController = AopTestUtils.getTargetObject(userController);
+
+            assertThrows(BusinessException.class,
+                    () -> targetController.listUserByPage(queryRequest, new MockHttpServletRequest()));
         }
     }
 
