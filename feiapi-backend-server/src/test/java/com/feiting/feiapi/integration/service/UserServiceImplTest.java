@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cache.CacheManager;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -329,48 +330,115 @@ class UserServiceImplTest {
         }
 
         @Test
-        @DisplayName("用户信息被缓存，第二次查询直接从缓存获取")
-        void shouldCacheUserInfoAfterFirstQuery() {
-            long userId = userService.userRegister("getuser02", "password123", "password123");
+        @DisplayName("缓存中存储的是 LoginUserSnapshot 而非完整 User 实体")
+        void shouldCacheLoginUserSnapshotNotFullEntity() {
+            long userId = userService.userRegister("snapshot01", "password123", "password123");
             User sessionUser = new User();
             sessionUser.setId(userId);
 
-            // 第一次查询，从数据库获取并缓存
-            User firstUser = userService.getLoginUser(sessionUser);
-            assertNotNull(firstUser);
+            // 第一次查询，触发缓存写入
+            userService.getLoginUser(sessionUser);
 
-            // 验证缓存中存在用户信息
+            // 验证缓存中存储的是 LoginUserSnapshot 类型
             org.springframework.cache.Cache cache = cacheManager.getCache(CacheConfig.LOGIN_USER_CACHE_NAME);
             assertNotNull(cache);
-            Object cachedValue = cache.get(String.valueOf(userId));
-            assertNotNull(cachedValue);
-
-            // 第二次查询，应从缓存获取
-            User secondUser = userService.getLoginUser(sessionUser);
-            assertNotNull(secondUser);
-            assertEquals(firstUser.getId(), secondUser.getId());
-            assertEquals(firstUser.getUserAccount(), secondUser.getUserAccount());
+            org.springframework.cache.Cache.ValueWrapper valueWrapper = cache.get(String.valueOf(userId));
+            assertNotNull(valueWrapper);
+            Object cachedValue = valueWrapper.get();
+            assertTrue(cachedValue instanceof com.feiting.feiapi.model.vo.LoginUserSnapshot,
+                    "缓存中应存储 LoginUserSnapshot 类型，实际类型: " + cachedValue.getClass().getName());
         }
 
         @Test
-        @DisplayName("角色变更后缓存被清除")
-        void shouldEvictCacheAfterRoleChange() {
-            long userId = userService.userRegister("getuser03", "password123", "password123");
+        @DisplayName("从缓存获取的用户不包含敏感字段")
+        void shouldNotContainSensitiveFieldsFromCache() {
+            long userId = userService.userRegister("snapshot02", "password123", "password123");
             User sessionUser = new User();
             sessionUser.setId(userId);
 
-            // 第一次查询，缓存用户信息
-            User user = userService.getLoginUser(sessionUser);
-            assertNotNull(user);
+            // 第一次查询触发缓存写入
+            userService.getLoginUser(sessionUser);
+
+            // 第二次查询从缓存获取
+            User cachedUser = userService.getLoginUser(sessionUser);
+            assertNotNull(cachedUser);
+            assertEquals(userId, cachedUser.getId());
+            // 快照对象不包含敏感字段，转换后这些字段应为 null
+            assertNull(cachedUser.getUserPassword(), "从缓存获取的用户不应包含密码");
+            assertNull(cachedUser.getAccessKey(), "从缓存获取的用户不应包含 accessKey");
+            assertNull(cachedUser.getSecretKey(), "从缓存获取的用户不应包含 secretKey");
+        }
+
+        @Test
+        @DisplayName("缓存命中时可从会话快照补充接口调用密钥")
+        void shouldRestoreApiKeysFromSessionSnapshotWhenCacheHit() {
+            long userId = userService.userRegister("snapshot03", "password123", "password123");
+            User sessionUser = new User();
+            sessionUser.setId(userId);
+
+            // 第一次查询触发缓存写入，缓存内容不包含密钥
+            userService.getLoginUser(sessionUser);
+
+            User databaseUser = userService.getById(userId);
+            User sessionUserWithKeys = new User();
+            sessionUserWithKeys.setId(userId);
+            sessionUserWithKeys.setAccessKey(databaseUser.getAccessKey());
+            sessionUserWithKeys.setSecretKey(databaseUser.getSecretKey());
+
+            // 第二次查询命中缓存，但接口调用密钥应从会话快照补回
+            User cachedUser = userService.getLoginUser(sessionUserWithKeys);
+            assertNotNull(cachedUser);
+            assertEquals(databaseUser.getAccessKey(), cachedUser.getAccessKey());
+            assertEquals(databaseUser.getSecretKey(), cachedUser.getSecretKey());
+            assertNull(cachedUser.getUserPassword(), "缓存命中时仍不应补回密码");
+        }
+
+        @Test
+        @DisplayName("evictUserCache 清除缓存后，下次查询从数据库重新加载")
+        void shouldReloadFromDatabaseAfterEvict() {
+            long userId = userService.userRegister("evict01", "password123", "password123");
+            User sessionUser = new User();
+            sessionUser.setId(userId);
+
+            // 第一次查询触发缓存
+            User firstUser = userService.getLoginUser(sessionUser);
+            assertNotNull(firstUser);
+            assertEquals("evict01", firstUser.getUserAccount());
 
             // 验证缓存存在
             org.springframework.cache.Cache cache = cacheManager.getCache(CacheConfig.LOGIN_USER_CACHE_NAME);
             assertNotNull(cache);
             assertNotNull(cache.get(String.valueOf(userId)));
 
+            // 手动清除缓存（模拟 Controller 调用 evictUserCache 的场景）
+            userService.evictUserCache(userId);
+
+            // 验证缓存已被清除
+            assertNull(cache.get(String.valueOf(userId)));
+
+            // 再次查询应从数据库加载并重新缓存
+            User reloadedUser = userService.getLoginUser(sessionUser);
+            assertNotNull(reloadedUser);
+            assertEquals(userId, reloadedUser.getId());
+            assertEquals("evict01", reloadedUser.getUserAccount());
+
+            // 验证缓存被重新写入
+            assertNotNull(cache.get(String.valueOf(userId)));
+        }
+
+        @Test
+        @DisplayName("角色变更后清除缓存，重新查询应返回新角色")
+        void shouldReturnNewRoleAfterCacheEviction() {
+            long userId = userService.userRegister("rolechange01", "password123", "password123");
+            User sessionUser = new User();
+            sessionUser.setId(userId);
+
+            // 第一次查询触发缓存，此时角色为 user
+            User userBeforeChange = userService.getLoginUser(sessionUser);
+            assertEquals(UserRoleEnum.USER.getCode(), userBeforeChange.getUserRole());
+
             // 变更用户角色
-            long operatorId = userService.userRegister("admin01", "password123", "password123");
-            // 需要先将操作者设为管理员
+            long operatorId = userService.userRegister("admin_role", "password123", "password123");
             User operator = new User();
             operator.setId(operatorId);
             operator.setUserRole(UserRoleEnum.ADMIN.getCode());
@@ -379,29 +447,29 @@ class UserServiceImplTest {
             boolean roleChanged = userService.updateUserRole(userId, UserRoleEnum.ADMIN, operatorId);
             assertTrue(roleChanged);
 
-            // 验证缓存已被清除
-            assertNull(cache.get(String.valueOf(userId)));
+            // 模拟事务提交后缓存被清除（测试环境事务不提交，手动清除）
+            userService.evictUserCache(userId);
+
+            // 清除缓存后重新查询，应返回新角色
+            User userAfterChange = userService.getLoginUser(sessionUser);
+            assertNotNull(userAfterChange);
+            assertEquals(UserRoleEnum.ADMIN.getCode(), userAfterChange.getUserRole(),
+                    "角色变更并清除缓存后，应返回新角色");
         }
 
         @Test
-        @DisplayName("删除用户后缓存被清除")
-        void shouldEvictCacheAfterUserDeletion() {
-            long userId = userService.userRegister("getuser04", "password123", "password123");
+        @DisplayName("删除用户后清除缓存，重新查询应抛出 NOT_LOGIN_ERROR")
+        void shouldThrowNotLoginAfterDeletionAndCacheEviction() {
+            long userId = userService.userRegister("deleteuser01", "password123", "password123");
             User sessionUser = new User();
             sessionUser.setId(userId);
 
-            // 第一次查询，缓存用户信息
+            // 第一次查询触发缓存
             User user = userService.getLoginUser(sessionUser);
             assertNotNull(user);
 
-            // 验证缓存存在
-            org.springframework.cache.Cache cache = cacheManager.getCache(CacheConfig.LOGIN_USER_CACHE_NAME);
-            assertNotNull(cache);
-            assertNotNull(cache.get(String.valueOf(userId)));
-
             // 删除用户
-            long operatorId = userService.userRegister("admin02", "password123", "password123");
-            // 需要先将操作者设为管理员
+            long operatorId = userService.userRegister("admin_del", "password123", "password123");
             User operator = new User();
             operator.setId(operatorId);
             operator.setUserRole(UserRoleEnum.ADMIN.getCode());
@@ -410,8 +478,78 @@ class UserServiceImplTest {
             boolean deleted = userService.deleteUser(userId, operatorId);
             assertTrue(deleted);
 
-            // 验证缓存已被清除
-            assertNull(cache.get(String.valueOf(userId)));
+            // 模拟事务提交后缓存被清除（测试环境事务不提交，手动清除）
+            userService.evictUserCache(userId);
+
+            // 清除缓存后重新查询，应抛出 NOT_LOGIN_ERROR
+            assertThrows(BusinessException.class,
+                    () -> userService.getLoginUser(sessionUser));
+        }
+
+        @Test
+        @Transactional(propagation = Propagation.NOT_SUPPORTED)
+        @DisplayName("角色变更事务提交后会自动清除缓存")
+        void shouldEvictCacheAutomaticallyAfterRoleChangeCommit() {
+            long userId = userService.userRegister("rolecommit01", "password123", "password123");
+            long operatorId = userService.userRegister("admincommit01", "password123", "password123");
+            try {
+                User sessionUser = new User();
+                sessionUser.setId(userId);
+                userService.getLoginUser(sessionUser);
+
+                org.springframework.cache.Cache cache = cacheManager.getCache(CacheConfig.LOGIN_USER_CACHE_NAME);
+                assertNotNull(cache);
+                assertNotNull(cache.get(String.valueOf(userId)));
+
+                User operator = new User();
+                operator.setId(operatorId);
+                operator.setUserRole(UserRoleEnum.ADMIN.getCode());
+                userService.updateById(operator);
+
+                boolean roleChanged = userService.updateUserRole(userId, UserRoleEnum.ADMIN, operatorId);
+                assertTrue(roleChanged);
+                assertNull(cache.get(String.valueOf(userId)), "角色变更事务提交后应自动清除缓存");
+
+                User userAfterChange = userService.getLoginUser(sessionUser);
+                assertEquals(UserRoleEnum.ADMIN.getCode(), userAfterChange.getUserRole());
+            } finally {
+                userService.evictUserCache(userId);
+                userService.evictUserCache(operatorId);
+                userService.removeById(userId);
+                userService.removeById(operatorId);
+            }
+        }
+
+        @Test
+        @Transactional(propagation = Propagation.NOT_SUPPORTED)
+        @DisplayName("删除用户事务提交后会自动清除缓存")
+        void shouldEvictCacheAutomaticallyAfterDeleteCommit() {
+            long userId = userService.userRegister("deletecommit01", "password123", "password123");
+            long operatorId = userService.userRegister("admindelcommit01", "password123", "password123");
+            try {
+                User sessionUser = new User();
+                sessionUser.setId(userId);
+                userService.getLoginUser(sessionUser);
+
+                org.springframework.cache.Cache cache = cacheManager.getCache(CacheConfig.LOGIN_USER_CACHE_NAME);
+                assertNotNull(cache);
+                assertNotNull(cache.get(String.valueOf(userId)));
+
+                User operator = new User();
+                operator.setId(operatorId);
+                operator.setUserRole(UserRoleEnum.ADMIN.getCode());
+                userService.updateById(operator);
+
+                boolean deleted = userService.deleteUser(userId, operatorId);
+                assertTrue(deleted);
+                assertNull(cache.get(String.valueOf(userId)), "删除用户事务提交后应自动清除缓存");
+
+                assertThrows(BusinessException.class, () -> userService.getLoginUser(sessionUser));
+            } finally {
+                userService.evictUserCache(userId);
+                userService.evictUserCache(operatorId);
+                userService.removeById(operatorId);
+            }
         }
     }
 

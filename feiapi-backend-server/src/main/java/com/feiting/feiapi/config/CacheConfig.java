@@ -33,7 +33,7 @@ public class CacheConfig {
     /**
      * 登录用户缓存名称
      */
-    public static final String LOGIN_USER_CACHE_NAME = "loginUser";
+    public static final String LOGIN_USER_CACHE_NAME = "loginUserSnapshot";
 
     /**
      * 登录用户缓存 TTL（分钟）

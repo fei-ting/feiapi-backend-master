@@ -8,6 +8,7 @@ import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.mapper.UserMapper;
 import com.feiting.feiapi.mapper.UserRoleChangeLogMapper;
 import com.feiting.feiapi.model.enums.UserRoleEnum;
+import com.feiting.feiapi.model.vo.LoginUserSnapshot;
 import com.feiting.feiapi.service.LoginAttemptService;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapicommon.model.entity.User;
@@ -19,6 +20,7 @@ import org.springframework.cache.Cache;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import jakarta.annotation.Resource;
@@ -165,7 +167,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
      * 获取当前登录用户
      * <p>
      * 优先从缓存读取，缓存未命中时再查询数据库
-     * 缓存 key 为用户 id，缓存内容为用户实体
+     * 缓存 key 为用户 id，缓存内容为登录用户快照对象（不包含敏感字段）
      * </p>
      *
      * @param sessionUser 会话中保存的用户快照
@@ -181,15 +183,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         long userId = sessionUser.getId();
         String cacheKey = String.valueOf(userId);
 
-        // 2. 尝试从缓存读取
+        // 2. 尝试从缓存读取快照对象
         Cache cache = cacheManager.getCache(CacheConfig.LOGIN_USER_CACHE_NAME);
         if (cache != null) {
             Cache.ValueWrapper valueWrapper = cache.get(cacheKey);
             if (valueWrapper != null) {
-                User cachedUser = (User) valueWrapper.get();
-                if (cachedUser != null) {
+                LoginUserSnapshot snapshot = (LoginUserSnapshot) valueWrapper.get();
+                if (snapshot != null) {
                     log.debug("从缓存获取用户信息，userId: {}", userId);
-                    return cachedUser;
+                    return snapshot.toUser(sessionUser);
                 }
             }
         }
@@ -200,9 +202,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
         }
 
-        // 4. 将用户信息放入缓存
+        // 4. 将用户信息转换为快照对象后放入缓存（不包含敏感字段）
         if (cache != null) {
-            cache.put(cacheKey, currentUser);
+            LoginUserSnapshot snapshot = LoginUserSnapshot.fromUser(currentUser);
+            cache.put(cacheKey, snapshot);
             log.debug("用户信息已缓存，userId: {}", userId);
         }
 
@@ -292,10 +295,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         targetUser.setUserRole(newRoleCode);
         boolean result = this.updateById(targetUser);
 
-        // 7. 角色变更成功后插入审计记录并清理缓存
+        // 7. 角色变更成功后插入审计记录，并在事务提交后清理缓存
         if (result) {
             insertAuditLog(operatorId, userId, oldRole, newRoleCode, "管理员通过专用接口变更用户角色");
-            evictUserCache(userId);
+            evictUserCacheAfterCommit(userId);
         }
 
         return result;
@@ -329,10 +332,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         // 3. 执行删除
         boolean result = this.removeById(userId);
 
-        // 4. 删除成功后记录审计日志并清理缓存
+        // 4. 删除成功后记录审计日志，并在事务提交后清理缓存
         if (result) {
             insertAuditLog(operatorId, userId, targetUser.getUserRole(), null, "管理员删除用户");
-            evictUserCache(userId);
+            evictUserCacheAfterCommit(userId);
         }
 
         return result;
@@ -364,7 +367,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     /**
      * 清除指定用户的缓存
      * <p>
-     * 用于用户资料变更、角色变更、用户删除等场景，确保缓存数据一致性
+     * 用于用户资料变更等非事务场景，确保缓存数据一致性
      * </p>
      *
      * @param userId 用户 id
@@ -379,6 +382,33 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             cache.evict(String.valueOf(userId));
             log.debug("已清除用户缓存，userId: {}", userId);
         }
+    }
+
+    /**
+     * 在事务提交后清除指定用户的缓存
+     * <p>
+     * 用于角色变更、用户删除等事务场景，避免事务提交前清理缓存导致并发请求读取旧数据
+     * </p>
+     *
+     * @param userId 用户 id
+     */
+    private void evictUserCacheAfterCommit(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        // 注册事务提交后的回调，确保缓存在数据库变更生效后才被清理
+        TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        Cache cache = cacheManager.getCache(CacheConfig.LOGIN_USER_CACHE_NAME);
+                        if (cache != null) {
+                            cache.evict(String.valueOf(userId));
+                            log.debug("事务提交后已清除用户缓存，userId: {}", userId);
+                        }
+                    }
+                }
+        );
     }
 
     /**

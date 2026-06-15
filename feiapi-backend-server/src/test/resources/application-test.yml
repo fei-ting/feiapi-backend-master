@@ -18,7 +18,7 @@ spring:
   cache:
     type: simple
     cache-names:
-      - loginUser
+      - loginUserSnapshot
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
