@@ -294,6 +294,32 @@ class UserControllerTest {
         }
 
         @Test
+        @DisplayName("按用户昵称分页查询时支持模糊匹配")
+        void shouldListUsersByFuzzyUserName() throws Exception {
+            MockHttpSession adminSession = registerAndLoginAdmin("listpage02", "password123");
+            User targetUser = new User();
+            targetUser.setUserName("分页模糊目标用户");
+            targetUser.setUserAccount("listpage_like_target");
+            targetUser.setUserPassword(userService.encodePassword("password123"));
+            targetUser.setUserRole(UserConstant.DEFAULT_ROLE);
+            userService.save(targetUser);
+
+            User otherUser = new User();
+            otherUser.setUserName("分页普通用户");
+            otherUser.setUserAccount("listpage_like_other");
+            otherUser.setUserPassword(userService.encodePassword("password123"));
+            otherUser.setUserRole(UserConstant.DEFAULT_ROLE);
+            userService.save(otherUser);
+
+            mockMvc.perform(get("/user/list/page")
+                            .param("userName", "模糊目标")
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.records[0].userAccount").value("listpage_like_target"));
+        }
+
+        @Test
         @DisplayName("直接调用分页方法时 pageSize > 50 返回参数错误")
         void shouldRejectOversizedPageWhenCalledDirectly() throws Exception {
             UserQueryRequest queryRequest = new UserQueryRequest();

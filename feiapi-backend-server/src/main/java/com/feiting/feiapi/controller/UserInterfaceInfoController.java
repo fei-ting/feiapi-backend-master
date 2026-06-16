@@ -196,11 +196,6 @@ public class UserInterfaceInfoController {
         if (userInterfaceInfoQueryRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        UserInterfaceInfo userInterfaceInfoQuery = new UserInterfaceInfo();
-        BeanUtils.copyProperties(userInterfaceInfoQueryRequest, userInterfaceInfoQuery);
-        if (forcedUserId != null) {
-            userInterfaceInfoQuery.setUserId(forcedUserId);
-        }
         long current = userInterfaceInfoQueryRequest.getCurrent();
         long size = userInterfaceInfoQueryRequest.getPageSize();
         String sortField = toDatabaseSortField(userInterfaceInfoQueryRequest.getSortField());
@@ -209,7 +204,14 @@ public class UserInterfaceInfoController {
         if (size > 50) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        QueryWrapper<UserInterfaceInfo> queryWrapper = new QueryWrapper<>(userInterfaceInfoQuery);
+        Long userId = forcedUserId != null ? forcedUserId : userInterfaceInfoQueryRequest.getUserId();
+        QueryWrapper<UserInterfaceInfo> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq(userInterfaceInfoQueryRequest.getId() != null, "id", userInterfaceInfoQueryRequest.getId());
+        queryWrapper.eq(userId != null, "user_id", userId);
+        queryWrapper.eq(userInterfaceInfoQueryRequest.getInterfaceInfoId() != null, "interface_info_id", userInterfaceInfoQueryRequest.getInterfaceInfoId());
+        queryWrapper.eq(userInterfaceInfoQueryRequest.getTotalNum() != null, "total_num", userInterfaceInfoQueryRequest.getTotalNum());
+        queryWrapper.eq(userInterfaceInfoQueryRequest.getLeftNum() != null, "left_num", userInterfaceInfoQueryRequest.getLeftNum());
+        queryWrapper.eq(userInterfaceInfoQueryRequest.getStatus() != null, "status", userInterfaceInfoQueryRequest.getStatus());
         queryWrapper.orderBy(StringUtils.isNotBlank(sortField),
                 CommonConstant.SORT_ORDER_ASC.equals(sortOrder), sortField);
         Page<UserInterfaceInfo> userInterfaceInfoPage = userInterfaceInfoService.page(new Page<>(current, size), queryWrapper);

@@ -265,16 +265,21 @@ public class UserController {
     public BaseResponse<Page<UserVO>> listUserByPage(@Valid UserQueryRequest userQueryRequest, HttpServletRequest request) {
         long current = 1;
         long size = 10;
-        User userQuery = new User();
         if (userQueryRequest != null) {
-            BeanUtils.copyProperties(userQueryRequest, userQuery);
             current = userQueryRequest.getCurrent();
             size = userQueryRequest.getPageSize();
         }
         if (size > 50) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        QueryWrapper<User> queryWrapper = new QueryWrapper<>(userQuery);
+        QueryWrapper<User> queryWrapper = new QueryWrapper<>();
+        if (userQueryRequest != null) {
+            queryWrapper.eq(userQueryRequest.getId() != null, "id", userQueryRequest.getId());
+            queryWrapper.like(StringUtils.isNotBlank(userQueryRequest.getUserName()), "user_name", userQueryRequest.getUserName());
+            queryWrapper.like(StringUtils.isNotBlank(userQueryRequest.getUserAccount()), "user_account", userQueryRequest.getUserAccount());
+            queryWrapper.eq(userQueryRequest.getGender() != null, "gender", userQueryRequest.getGender());
+            queryWrapper.eq(StringUtils.isNotBlank(userQueryRequest.getUserRole()), "user_role", userQueryRequest.getUserRole());
+        }
         Page<User> userPage = userService.page(new Page<>(current, size), queryWrapper);
         Page<UserVO> userVOPage = new PageDTO<>(userPage.getCurrent(), userPage.getSize(), userPage.getTotal());
         List<UserVO> userVOList = userPage.getRecords().stream().map(user -> {
