@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.plugins.pagination.PageDTO;
 import com.feiting.feiapi.annotation.AuthCheck;
 import com.feiting.feiapi.common.BaseResponse;
-import com.feiting.feiapi.common.DeleteRequest;
+import com.feiting.feiapi.common.IdRequest;
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.common.ResultUtils;
 import com.feiting.feiapi.component.UserSessionManager;
@@ -160,14 +160,14 @@ public class UserController {
      */
     @PostMapping("/delete")
     @AuthCheck(mustRole = UserRoleEnum.ADMIN)
-    public BaseResponse<Boolean> deleteUser(@Valid @RequestBody DeleteRequest deleteRequest, HttpServletRequest request) {
-        if (deleteRequest == null || deleteRequest.getId() <= 0) {
+    public BaseResponse<Boolean> deleteUser(@Valid @RequestBody IdRequest idRequest, HttpServletRequest request) {
+        if (idRequest == null || idRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         // 获取当前操作者 id
         User loginUser = getCurrentLoginUser(request);
         // 调用 Service 层的安全删除方法，包含最后管理员保护
-        boolean b = userService.deleteUser(deleteRequest.getId(), loginUser.getId());
+        boolean b = userService.deleteUser(idRequest.getId(), loginUser.getId());
         return ResultUtils.success(b);
     }
 

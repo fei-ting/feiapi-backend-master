@@ -5,15 +5,19 @@ package com.feiting.feiapi.constant;
  *
  * @author yupi
  */
-public interface CommonConstant {
+public final class CommonConstant {
+
+    private CommonConstant() {
+        // 防止实例化
+    }
 
     /**
      * 升序
      */
-    String SORT_ORDER_ASC = "ascend";
+    public static final String SORT_ORDER_ASC = "ascend";
 
     /**
      * 降序
      */
-    String SORT_ORDER_DESC = "descend";
+    public static final String SORT_ORDER_DESC = "descend";
 }

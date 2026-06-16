@@ -81,11 +81,11 @@ public class UserInterfaceInfoController {
      */
     @PostMapping("/delete")
     @AuthCheck(mustRole = UserRoleEnum.ADMIN)
-    public BaseResponse<Boolean> deleteUserInterfaceInfo(@Valid @RequestBody DeleteRequest deleteRequest) {
-        if (deleteRequest == null || deleteRequest.getId() <= 0) {
+    public BaseResponse<Boolean> deleteUserInterfaceInfo(@Valid @RequestBody IdRequest idRequest) {
+        if (idRequest == null || idRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        long id = deleteRequest.getId();
+        long id = idRequest.getId();
         // 判断是否存在
         UserInterfaceInfo oldUserInterfaceInfo = userInterfaceInfoService.getById(id);
         if (oldUserInterfaceInfo == null) {

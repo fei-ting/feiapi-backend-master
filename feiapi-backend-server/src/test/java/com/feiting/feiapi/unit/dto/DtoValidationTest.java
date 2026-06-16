@@ -1,6 +1,5 @@
 package com.feiting.feiapi.unit.dto;
 
-import com.feiting.feiapi.common.DeleteRequest;
 import com.feiting.feiapi.common.IdRequest;
 import com.feiting.feiapi.common.PageRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
@@ -132,12 +131,12 @@ class DtoValidationTest {
     @Test
     @DisplayName("通用 id 请求校验正数 id")
     void shouldValidateCommonIdRequests() {
-        DeleteRequest deleteRequest = new DeleteRequest();
         IdRequest idRequest = new IdRequest();
-        idRequest.setId(0L);
+        IdRequest idRequest2 = new IdRequest();
+        idRequest2.setId(0L);
 
-        assertThat(violationMessages(deleteRequest)).contains("id 不能为空");
-        assertThat(violationMessages(idRequest)).contains("id 必须大于 0");
+        assertThat(violationMessages(idRequest)).contains("id 不能为空");
+        assertThat(violationMessages(idRequest2)).contains("id 必须大于 0");
     }
 
     /**

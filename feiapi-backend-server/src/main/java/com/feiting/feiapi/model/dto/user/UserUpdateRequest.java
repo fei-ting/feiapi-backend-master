@@ -1,6 +1,5 @@
 package com.feiting.feiapi.model.dto.user;
 
-import com.baomidou.mybatisplus.annotation.TableField;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -57,6 +56,5 @@ public class UserUpdateRequest implements Serializable {
     @Size(max = 512, message = "密码长度不能超过 512")
     private String userPassword;
 
-    @TableField(exist = false)
     private static final long serialVersionUID = 1L;
 }

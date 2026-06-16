@@ -1,6 +1,5 @@
 package com.feiting.feiapi.model.dto.userinterfaceinfo;
 
-import com.baomidou.mybatisplus.annotation.TableField;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import lombok.Data;
@@ -30,7 +29,6 @@ public class UserInterfaceInfoAddRequest implements Serializable {
     /**
      * 序列化版本号
      */
-    @TableField(exist = false)
     private static final long serialVersionUID = 1L;
 
 }

@@ -106,11 +106,11 @@ public class InterfaceInfoController {
      */
     @PostMapping("/delete")
     @AuthCheck(mustRole = UserRoleEnum.ADMIN)
-    public BaseResponse<Boolean> deleteInterfaceInfo(@Valid @RequestBody DeleteRequest deleteRequest, HttpServletRequest request) {
-        if (deleteRequest == null || deleteRequest.getId() <= 0) {
+    public BaseResponse<Boolean> deleteInterfaceInfo(@Valid @RequestBody IdRequest idRequest, HttpServletRequest request) {
+        if (idRequest == null || idRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        long id = deleteRequest.getId();
+        long id = idRequest.getId();
         // 判断是否存在，接口维护入口仅允许管理员操作，不再按接口拥有者放行。
         InterfaceInfo oldInterfaceInfo = interfaceInfoService.getById(id);
         if (oldInterfaceInfo == null) {
@@ -179,24 +179,30 @@ public class InterfaceInfoController {
         if (interfaceInfoQueryRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        InterfaceInfo interfaceInfoQuery = new InterfaceInfo();
-        BeanUtils.copyProperties(interfaceInfoQueryRequest, interfaceInfoQuery);
-        if (!isCurrentUserAdmin(request)) {
-            interfaceInfoQuery.setStatus(InterfaceInfoStatusEnum.ONLINE.getValue());
-        }
         long current = interfaceInfoQueryRequest.getCurrent();
         long size = interfaceInfoQueryRequest.getPageSize();
         String sortField = toDatabaseSortField(interfaceInfoQueryRequest.getSortField());
         String sortOrder = interfaceInfoQueryRequest.getSortOrder();
-        String content = interfaceInfoQuery.getDescription();
-        // content 需支持模糊搜索
-        interfaceInfoQueryRequest.setDescription(null);
         // 限制爬虫
         if (size > 50) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        QueryWrapper<InterfaceInfo> queryWrapper = new QueryWrapper<>(interfaceInfoQuery);
-        queryWrapper.like(StringUtils.isNotBlank(content), "description", content);
+        QueryWrapper<InterfaceInfo> queryWrapper = new QueryWrapper<>();
+        Integer status = interfaceInfoQueryRequest.getStatus();
+        if (!isCurrentUserAdmin(request)) {
+            status = InterfaceInfoStatusEnum.ONLINE.getValue();
+        }
+        String descriptionKeyword = interfaceInfoQueryRequest.getDescription();
+        queryWrapper.eq(interfaceInfoQueryRequest.getId() != null, "id", interfaceInfoQueryRequest.getId());
+        queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getName()), "name", interfaceInfoQueryRequest.getName());
+        queryWrapper.like(StringUtils.isNotBlank(descriptionKeyword), "description", descriptionKeyword);
+        queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getUrl()), "url", interfaceInfoQueryRequest.getUrl());
+        queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getRequestParams()), "request_params", interfaceInfoQueryRequest.getRequestParams());
+        queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getRequestHeader()), "request_header", interfaceInfoQueryRequest.getRequestHeader());
+        queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getResponseHeader()), "response_header", interfaceInfoQueryRequest.getResponseHeader());
+        queryWrapper.eq(status != null, "status", status);
+        queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getMethod()), "method", interfaceInfoQueryRequest.getMethod());
+        queryWrapper.eq(interfaceInfoQueryRequest.getUserId() != null, "user_id", interfaceInfoQueryRequest.getUserId());
         queryWrapper.orderBy(StringUtils.isNotBlank(sortField),
                 CommonConstant.SORT_ORDER_ASC.equals(sortOrder), sortField);
         Page<InterfaceInfo> interfaceInfoPage = interfaceInfoService.page(new Page<>(current, size), queryWrapper);

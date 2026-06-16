@@ -7,13 +7,17 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
+import java.io.Serializable;
+
 /**
  * 分页请求
  *
  * @author yupi
  */
 @Data
-public class PageRequest {
+public class PageRequest implements Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     /**
      * 当前页号
