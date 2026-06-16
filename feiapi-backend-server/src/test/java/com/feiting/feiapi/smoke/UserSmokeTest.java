@@ -87,8 +87,8 @@ class UserSmokeTest {
             JsonNode loginData = objectMapper.readTree(loginResult.getResponse().getContentAsString())
                     .get("data");
             assertEquals(account, loginData.get("userAccount").asText());
-            assertNotNull(loginData.get("accessKey").asText());
-            assertNotNull(loginData.get("secretKey").asText());
+            assertFalse(loginData.has("accessKey"), "登录响应不应返回 accessKey");
+            assertFalse(loginData.has("secretKey"), "登录响应不应返回 secretKey");
 
             // 验证 session 中确实存储了用户
             Object sessionUser = session.getAttribute("userLoginState");
