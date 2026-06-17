@@ -43,6 +43,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DisplayName("UserInterfaceInfoController 集成测试")
 class UserInterfaceInfoControllerTest {
 
+    /**
+     * 测试接口真实后端服务地址
+     */
+    private static final String TEST_TARGET_HOST = "http://localhost:8123";
+
     @Resource
     private MockMvc mockMvc;
 
@@ -90,11 +95,13 @@ class UserInterfaceInfoControllerTest {
     /**
      * 创建一个接口并返回其 id
      */
-    private long createInterface(String name, String url) {
+    private long createInterface(String name, String path) {
         InterfaceInfo info = new InterfaceInfo();
         info.setName(name);
         info.setDescription("测试接口");
-        info.setUrl(url);
+        info.setPath(path);
+        info.setTargetHost(TEST_TARGET_HOST);
+        info.setUrl(TEST_TARGET_HOST + path);
         info.setRequestHeader("{\"Content-Type\":\"application/json\"}");
         info.setResponseHeader("{\"Content-Type\":\"application/json\"}");
         info.setMethod("GET");

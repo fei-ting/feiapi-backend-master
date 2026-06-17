@@ -16,6 +16,7 @@ import org.apache.dubbo.config.annotation.DubboReference;
 import org.reactivestreams.Publisher;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.cloud.gateway.support.ServerWebExchangeUtils;
 import org.springframework.core.Ordered;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferFactory;
@@ -25,6 +26,7 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.web.util.UriComponentsBuilder;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpRequestDecorator;
 import org.springframework.http.server.reactive.ServerHttpResponse;
@@ -35,6 +37,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.nio.charset.StandardCharsets;
+import java.net.URI;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
@@ -143,7 +146,6 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
         String requestPath = request.getPath().value();
-        String path = feiapiGatewayProperties.getNormalizedInterfaceHost() + requestPath;
         String method = request.getMethod() == null ? "UNKNOWN" : request.getMethod().toString();
         ServerHttpResponse response = exchange.getResponse();
 
@@ -221,7 +223,7 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
                                 // 步骤8：普通调用只走已上线接口链路
                                 InterfaceInfo interfaceInfo;
                                 try {
-                                    interfaceInfo = innerInterfaceInfoService.getInterfaceInfo(path, method);
+                                    interfaceInfo = innerInterfaceInfoService.getInterfaceInfo(requestPath, method);
                                 } catch (Exception e) {
                                     log.error("getInterfaceInfo error: {}", e.getMessage(), e);
                                     return handleInvokeError(response);
@@ -234,7 +236,8 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
                                                 if (!rateAllowed) {
                                                     return handleTooManyRequests(response);
                                                 }
-                                                return invokeOnlineInterface(decoratedExchange, chain, response, finalInvokeUser, interfaceInfo);
+                                                ServerWebExchange targetExchange = rewriteTargetExchange(decoratedExchange, interfaceInfo);
+                                                return invokeOnlineInterface(targetExchange, chain, response, finalInvokeUser, interfaceInfo);
                                             });
                                 }
 
@@ -255,7 +258,7 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
                                             // 步骤11：探测签名验证通过，查询发布验证中的接口。
                                             InterfaceInfo publishingInterfaceInfo;
                                             try {
-                                                publishingInterfaceInfo = innerInterfaceInfoService.getPublishingInterfaceInfo(path, method);
+                                                publishingInterfaceInfo = innerInterfaceInfoService.getPublishingInterfaceInfo(requestPath, method);
                                             } catch (Exception e) {
                                                 log.error("getPublishingInterfaceInfo error: {}", e.getMessage(), e);
                                                 return handleInvokeError(response);
@@ -266,7 +269,7 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
                                             }
 
                                             // 步骤12：发布探测只验证接口可调用性，不扣减用户次数，也不记录普通调用统计。
-                                            return chain.filter(decoratedExchange);
+                                            return chain.filter(rewriteTargetExchange(decoratedExchange, publishingInterfaceInfo));
                                         });
                             })
                             .onErrorResume(e -> {
@@ -471,6 +474,59 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
      */
     private boolean isPublishingInterface(InterfaceInfo interfaceInfo) {
         return Integer.valueOf(InterfaceInfoStatusEnum.PUBLISHING.getValue()).equals(interfaceInfo.getStatus());
+    }
+
+    /**
+     * 根据接口配置改写真实转发目标。
+     *
+     * <p>接口身份匹配使用 path，真实转发地址使用 targetHost + path。缺少 targetHost 时沿用网关默认路由。</p>
+     *
+     * @param exchange      请求上下文
+     * @param interfaceInfo 接口信息
+     * @return 改写后的请求上下文
+     */
+    private ServerWebExchange rewriteTargetExchange(ServerWebExchange exchange, InterfaceInfo interfaceInfo) {
+        if (interfaceInfo == null || interfaceInfo.getTargetHost() == null || interfaceInfo.getTargetHost().trim().isEmpty()) {
+            return exchange;
+        }
+        String normalizedTargetHost = interfaceInfo.getTargetHost().trim();
+        while (normalizedTargetHost.endsWith("/")) {
+            normalizedTargetHost = normalizedTargetHost.substring(0, normalizedTargetHost.length() - 1);
+        }
+        String targetPath = interfaceInfo.getPath();
+        if (targetPath == null || targetPath.trim().isEmpty()) {
+            targetPath = exchange.getRequest().getPath().value();
+        }
+        if (!targetPath.startsWith("/")) {
+            targetPath = "/" + targetPath;
+        }
+
+        // 以目标主机地址作为基础 URI
+        URI targetUri = UriComponentsBuilder.fromUriString(normalizedTargetHost)
+                // 设置路径部分
+                .path(targetPath)
+                // 保留原始请求的查询参数（例如 ?name=test&page=1）
+                .query(exchange.getRequest().getURI().getRawQuery())
+                .build(true)
+                .toUri();
+
+        // 改写请求对象：将原本的请求 URI 替换成上一步构建的 targetUri
+        ServerHttpRequest targetRequest = exchange.getRequest().mutate().uri(targetUri).build();
+
+        /**
+         * 将上下文中的请求替换为上一步改写后的新请求
+         * ServerWebExchange 是 Spring WebFlux 中贯穿整个请求生命周期的上下文对象，它持有 request、response、attributes 等。
+         * 只改写 request 不够，还需要把新 request 放回上下文，后续过滤器链和路由才能使用改写后的地址。
+         */
+        ServerWebExchange targetExchange = exchange.mutate().request(targetRequest).build();
+
+        /**
+         * 设置网关路由属性：
+         * ATEWAY_REQUEST_URL_ATTR 是 Spring Cloud Gateway 内部路由过滤器（如 NettyRoutingFilter）读取转发目标的约定 key。
+         * 设置这个属性后，Gateway 的路由层就知道应该把请求转发到 targetUri，而不是原始路由配置中的地址。
+         */
+        targetExchange.getAttributes().put(ServerWebExchangeUtils.GATEWAY_REQUEST_URL_ATTR, targetUri);
+        return targetExchange;
     }
 
     /**

@@ -20,19 +20,21 @@ CREATE TABLE IF NOT EXISTS `user` (
 
 CREATE TABLE IF NOT EXISTS `interface_info` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
-    `name` VARCHAR(256) DEFAULT NULL,
-    `description` VARCHAR(256) DEFAULT NULL,
+    `name` VARCHAR(50) DEFAULT NULL,
+    `description` VARCHAR(512) DEFAULT NULL,
     `url` VARCHAR(512) DEFAULT NULL,
+    `path` VARCHAR(512) DEFAULT NULL,
+    `target_host` VARCHAR(512) DEFAULT NULL,
     `request_params` TEXT DEFAULT NULL,
     `request_header` TEXT DEFAULT NULL,
     `response_header` TEXT DEFAULT NULL,
     `status` INT NOT NULL DEFAULT 0,
-    `method` VARCHAR(256) DEFAULT NULL,
+    `method` VARCHAR(16) DEFAULT NULL,
     `user_id` BIGINT DEFAULT NULL,
     `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
     `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
     `is_delete` TINYINT NOT NULL DEFAULT 0,
-    UNIQUE (`url`, `method`, `is_delete`)
+    UNIQUE (`path`, `method`, `is_delete`)
 );
 
 CREATE TABLE IF NOT EXISTS `user_interface_info` (

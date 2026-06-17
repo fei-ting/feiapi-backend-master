@@ -37,11 +37,25 @@ public class InterfaceInfoUpdateRequest implements Serializable {
     private String description;
 
     /**
-     * 接口地址
+     * 接口展示地址
      */
     @Pattern(regexp = ".*\\S.*", message = "接口地址不能为空白")
     @Size(max = 512, message = "接口地址长度不能超过 512")
     private String url;
+
+    /**
+     * 接口路径
+     */
+    @Pattern(regexp = ".*\\S.*", message = "接口路径不能为空白")
+    @Size(max = 512, message = "接口路径长度不能超过 512")
+    private String path;
+
+    /**
+     * 真实后端服务地址
+     */
+    @Pattern(regexp = ".*\\S.*", message = "真实后端服务地址不能为空白")
+    @Size(max = 512, message = "真实后端服务地址长度不能超过 512")
+    private String targetHost;
 
     /**
      * 请求参数
@@ -50,29 +64,29 @@ public class InterfaceInfoUpdateRequest implements Serializable {
     private String requestParams;
 
     /**
-     * 请求头
+     * 请求头文档，不参与网关鉴权和路由
      */
     @Size(max = 65535, message = "请求头长度不能超过 65535")
     private String requestHeader;
 
     /**
-     * 响应头
+     * 响应头文档，不参与网关运行时逻辑
      */
     @Size(max = 65535, message = "响应头长度不能超过 65535")
     private String responseHeader;
 
     /**
-     * 接口状态  0-关闭 1-开启
+     * 接口状态 0-下线 1-上线 2-发布验证中
      */
     @Min(value = 0, message = "接口状态不能小于 0")
     @Max(value = 2, message = "接口状态不能大于 2")
     private Integer status;
 
     /**
-     * 请求类型
+     * 请求方法
      */
     @Pattern(regexp = ".*\\S.*", message = "请求类型不能为空白")
-    @Size(max = 256, message = "请求类型长度不能超过 256")
+    @Size(max = 16, message = "请求类型长度不能超过 16")
     private String method;
 
     /**

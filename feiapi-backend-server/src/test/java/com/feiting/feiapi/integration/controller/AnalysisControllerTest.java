@@ -37,6 +37,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DisplayName("AnalysisController 集成测试")
 class AnalysisControllerTest {
 
+    /**
+     * 测试接口真实后端服务地址
+     */
+    private static final String TEST_TARGET_HOST = "http://localhost:8123";
+
     @Resource
     private MockMvc mockMvc;
 
@@ -70,12 +75,14 @@ class AnalysisControllerTest {
         return session;
     }
 
-    private void insertInterfaceInfo(long id, String name, String url) {
+    private void insertInterfaceInfo(long id, String name, String path) {
         InterfaceInfo info = new InterfaceInfo();
         info.setId(id);
         info.setName(name);
         info.setDescription("desc_" + name);
-        info.setUrl(url);
+        info.setPath(path);
+        info.setTargetHost(TEST_TARGET_HOST);
+        info.setUrl(TEST_TARGET_HOST + path);
         info.setRequestHeader("{}");
         info.setResponseHeader("{}");
         info.setMethod("GET");

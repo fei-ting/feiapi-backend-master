@@ -10,6 +10,7 @@ import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoQueryRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoUpdateRequest;
 import com.feiting.feiapi.model.enums.UserRoleEnum;
+import com.feiting.feiapi.model.vo.InterfaceInfoVO;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapi.annotation.AuthCheck;
 import com.feiting.feiapi.constant.CommonConstant;
@@ -20,6 +21,7 @@ import com.feiting.feiapi.utils.SortFieldUtils;
 import com.feiting.feiapiclientsdk.client.FeiApiClient;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.entity.User;
+import com.feiting.feiapicommon.model.enums.InterfaceInfoMethodEnum;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -32,6 +34,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.Date;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 接口管理
@@ -43,7 +46,7 @@ import java.util.Set;
 public class InterfaceInfoController {
 
     private static final Set<String> ALLOWED_SORT_FIELDS = SortFieldUtils.allowedFields(
-            "id", "name", "description", "url", "requestParams", "requestHeader",
+            "id", "name", "description", "url", "path", "targetHost", "requestParams", "requestHeader",
             "responseHeader", "status", "method", "userId", "createTime", "updateTime"
     );
 
@@ -85,6 +88,7 @@ public class InterfaceInfoController {
         }
         InterfaceInfo interfaceInfo = new InterfaceInfo();
         BeanUtils.copyProperties(interfaceInfoAddRequest, interfaceInfo);
+        normalizeInterfaceInfo(interfaceInfo);
         // 校验
         interfaceInfoService.validInterfaceInfo(interfaceInfo, true);
         User loginUser = getCurrentLoginUser(request);
@@ -145,6 +149,8 @@ public class InterfaceInfoController {
         if (oldInterfaceInfo == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
+        completeUpdateDisplayUrl(interfaceInfo, oldInterfaceInfo);
+        normalizeInterfaceInfo(interfaceInfo);
         boolean result = interfaceInfoService.updateById(interfaceInfo);
         return ResultUtils.success(result);
     }
@@ -156,7 +162,7 @@ public class InterfaceInfoController {
      * @return
      */
     @GetMapping("/get")
-    public BaseResponse<InterfaceInfo> getInterfaceInfoById(long id, HttpServletRequest request) {
+    public BaseResponse<InterfaceInfoVO> getInterfaceInfoById(long id, HttpServletRequest request) {
         if (id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
@@ -164,7 +170,7 @@ public class InterfaceInfoController {
         if (interfaceInfo != null && !isVisibleToCurrentUser(interfaceInfo, request)) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
-        return ResultUtils.success(interfaceInfo);
+        return ResultUtils.success(toInterfaceInfoVO(interfaceInfo));
     }
 
     /**
@@ -175,7 +181,7 @@ public class InterfaceInfoController {
      * @return
      */
     @GetMapping("/list/page")
-    public BaseResponse<Page<InterfaceInfo>> listInterfaceInfoByPage(@Valid InterfaceInfoQueryRequest interfaceInfoQueryRequest, HttpServletRequest request) {
+    public BaseResponse<Page<InterfaceInfoVO>> listInterfaceInfoByPage(@Valid InterfaceInfoQueryRequest interfaceInfoQueryRequest, HttpServletRequest request) {
         if (interfaceInfoQueryRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
@@ -197,16 +203,23 @@ public class InterfaceInfoController {
         queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getName()), "name", interfaceInfoQueryRequest.getName());
         queryWrapper.like(StringUtils.isNotBlank(descriptionKeyword), "description", descriptionKeyword);
         queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getUrl()), "url", interfaceInfoQueryRequest.getUrl());
+        queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getPath()), "path", interfaceInfoQueryRequest.getPath());
+        queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getTargetHost()), "target_host", interfaceInfoQueryRequest.getTargetHost());
         queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getRequestParams()), "request_params", interfaceInfoQueryRequest.getRequestParams());
         queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getRequestHeader()), "request_header", interfaceInfoQueryRequest.getRequestHeader());
         queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getResponseHeader()), "response_header", interfaceInfoQueryRequest.getResponseHeader());
         queryWrapper.eq(status != null, "status", status);
-        queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getMethod()), "method", interfaceInfoQueryRequest.getMethod());
+        queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getMethod()),
+                "method", InterfaceInfoMethodEnum.normalize(interfaceInfoQueryRequest.getMethod()));
         queryWrapper.eq(interfaceInfoQueryRequest.getUserId() != null, "user_id", interfaceInfoQueryRequest.getUserId());
         queryWrapper.orderBy(StringUtils.isNotBlank(sortField),
                 CommonConstant.SORT_ORDER_ASC.equals(sortOrder), sortField);
         Page<InterfaceInfo> interfaceInfoPage = interfaceInfoService.page(new Page<>(current, size), queryWrapper);
-        return ResultUtils.success(interfaceInfoPage);
+        Page<InterfaceInfoVO> interfaceInfoVOPage = new Page<>(interfaceInfoPage.getCurrent(), interfaceInfoPage.getSize(), interfaceInfoPage.getTotal());
+        interfaceInfoVOPage.setRecords(interfaceInfoPage.getRecords().stream()
+                .map(this::toInterfaceInfoVO)
+                .collect(Collectors.toList()));
+        return ResultUtils.success(interfaceInfoVOPage);
     }
 
     // endregion
@@ -346,6 +359,85 @@ public class InterfaceInfoController {
 
     private String toDatabaseSortField(String sortField) {
         return SortFieldUtils.resolveSortField(sortField, ALLOWED_SORT_FIELDS);
+    }
+
+    /**
+     * 标准化接口信息中的派生字段。
+     *
+     * <p>请求方法统一转为大写；当接口展示地址为空且接口路径、真实后端服务地址存在时，自动组装展示地址。</p>
+     *
+     * @param interfaceInfo 接口信息
+     */
+    private void normalizeInterfaceInfo(InterfaceInfo interfaceInfo) {
+        if (interfaceInfo == null) {
+            return;
+        }
+        if (StringUtils.isNotBlank(interfaceInfo.getMethod())) {
+            interfaceInfo.setMethod(InterfaceInfoMethodEnum.normalize(interfaceInfo.getMethod()));
+        }
+        if (StringUtils.isBlank(interfaceInfo.getUrl())
+                && StringUtils.isNotBlank(interfaceInfo.getTargetHost())
+                && StringUtils.isNotBlank(interfaceInfo.getPath())) {
+            interfaceInfo.setUrl(buildDisplayUrl(interfaceInfo.getTargetHost(), interfaceInfo.getPath()));
+        }
+    }
+
+    /**
+     * 更新接口时补齐展示地址。
+     *
+     * <p>如果本次更新未显式传入 url，但修改了 path 或 targetHost，则使用新旧字段组合生成新的展示地址。</p>
+     *
+     * @param interfaceInfo    本次更新的接口信息
+     * @param oldInterfaceInfo 原接口信息
+     */
+    private void completeUpdateDisplayUrl(InterfaceInfo interfaceInfo, InterfaceInfo oldInterfaceInfo) {
+        if (interfaceInfo == null || oldInterfaceInfo == null || StringUtils.isNotBlank(interfaceInfo.getUrl())) {
+            return;
+        }
+        boolean pathChanged = StringUtils.isNotBlank(interfaceInfo.getPath());
+        boolean targetHostChanged = StringUtils.isNotBlank(interfaceInfo.getTargetHost());
+        if (!pathChanged && !targetHostChanged) {
+            return;
+        }
+        String targetHost = targetHostChanged ? interfaceInfo.getTargetHost() : oldInterfaceInfo.getTargetHost();
+        String path = pathChanged ? interfaceInfo.getPath() : oldInterfaceInfo.getPath();
+        if (StringUtils.isNotBlank(targetHost) && StringUtils.isNotBlank(path)) {
+            interfaceInfo.setUrl(buildDisplayUrl(targetHost, path));
+        }
+    }
+
+    /**
+     * 构建接口展示地址。
+     *
+     * @param targetHost 真实后端服务地址
+     * @param path       接口路径
+     * @return 接口展示地址
+     */
+    private String buildDisplayUrl(String targetHost, String path) {
+        String normalizedTargetHost = targetHost.trim();
+        while (normalizedTargetHost.endsWith("/")) {
+            normalizedTargetHost = normalizedTargetHost.substring(0, normalizedTargetHost.length() - 1);
+        }
+        String normalizedPath = path.trim();
+        if (!normalizedPath.startsWith("/")) {
+            normalizedPath = "/" + normalizedPath;
+        }
+        return normalizedTargetHost + normalizedPath;
+    }
+
+    /**
+     * 将接口实体转换为接口视图对象。
+     *
+     * @param interfaceInfo 接口实体
+     * @return 接口视图对象
+     */
+    private InterfaceInfoVO toInterfaceInfoVO(InterfaceInfo interfaceInfo) {
+        if (interfaceInfo == null) {
+            return null;
+        }
+        InterfaceInfoVO interfaceInfoVO = new InterfaceInfoVO();
+        BeanUtils.copyProperties(interfaceInfo, interfaceInfoVO);
+        return interfaceInfoVO;
     }
 
     /**

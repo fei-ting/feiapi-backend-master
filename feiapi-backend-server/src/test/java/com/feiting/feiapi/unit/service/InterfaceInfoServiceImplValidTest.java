@@ -30,7 +30,7 @@ class InterfaceInfoServiceImplValidTest {
     class AddValidationTests {
 
         @Test
-        @DisplayName("必填字段（name、url、method）非空时校验通过")
+        @DisplayName("必填字段（name、path、targetHost、method）非空时校验通过")
         void shouldPassWhenRequiredFieldsPresent() {
             InterfaceInfo info = buildMinimalInterfaceInfo();
 
@@ -56,19 +56,37 @@ class InterfaceInfoServiceImplValidTest {
         }
 
         @Test
-        @DisplayName("url 为空时抛出异常")
-        void shouldThrowWhenUrlBlank() {
+        @DisplayName("path 为空时抛出异常")
+        void shouldThrowWhenPathBlank() {
             InterfaceInfo info = buildMinimalInterfaceInfo();
-            info.setUrl("");
+            info.setPath("");
 
             assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, true));
         }
 
         @Test
-        @DisplayName("url 为 null 时抛出异常")
-        void shouldThrowWhenUrlNull() {
+        @DisplayName("path 为 null 时抛出异常")
+        void shouldThrowWhenPathNull() {
             InterfaceInfo info = buildMinimalInterfaceInfo();
-            info.setUrl(null);
+            info.setPath(null);
+
+            assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, true));
+        }
+
+        @Test
+        @DisplayName("targetHost 为空时抛出异常")
+        void shouldThrowWhenTargetHostBlank() {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
+            info.setTargetHost("");
+
+            assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, true));
+        }
+
+        @Test
+        @DisplayName("targetHost 为 null 时抛出异常")
+        void shouldThrowWhenTargetHostNull() {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
+            info.setTargetHost(null);
 
             assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, true));
         }
@@ -302,6 +320,33 @@ class InterfaceInfoServiceImplValidTest {
         }
 
         @Test
+        @DisplayName("method 传入非法请求方法时抛出异常")
+        void shouldThrowWhenMethodInvalidOnUpdate() {
+            InterfaceInfo info = new InterfaceInfo();
+            info.setMethod("INVALID");
+
+            assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, false));
+        }
+
+        @Test
+        @DisplayName("path 传入正常值时通过校验")
+        void shouldPassWhenPathValid() {
+            InterfaceInfo info = new InterfaceInfo();
+            info.setPath("/api/updated");
+
+            assertDoesNotThrow(() -> service.validInterfaceInfo(info, false));
+        }
+
+        @Test
+        @DisplayName("path 不是以 / 开头时抛出异常")
+        void shouldThrowWhenPathWithoutSlash() {
+            InterfaceInfo info = new InterfaceInfo();
+            info.setPath("api/updated");
+
+            assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, false));
+        }
+
+        @Test
         @DisplayName("description 为空允许通过（可用于清空描述）")
         void shouldAllowDescriptionBlankOnUpdate() {
             InterfaceInfo info = new InterfaceInfo();
@@ -405,7 +450,9 @@ class InterfaceInfoServiceImplValidTest {
     private InterfaceInfo buildMinimalInterfaceInfo() {
         InterfaceInfo info = new InterfaceInfo();
         info.setName("testApi");
-        info.setUrl("/api/test");
+        info.setPath("/api/test");
+        info.setTargetHost("http://localhost:8123");
+        info.setUrl("http://localhost:8123/api/test");
         info.setMethod("GET");
         return info;
     }

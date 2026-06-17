@@ -26,11 +26,24 @@ public class InterfaceInfoAddRequest implements Serializable {
     private String description;
 
     /**
-     * 接口地址
+     * 接口展示地址
      */
-    @NotBlank(message = "接口地址不能为空")
     @Size(max = 512, message = "接口地址长度不能超过 512")
     private String url;
+
+    /**
+     * 接口路径
+     */
+    @NotBlank(message = "接口路径不能为空")
+    @Size(max = 512, message = "接口路径长度不能超过 512")
+    private String path;
+
+    /**
+     * 真实后端服务地址
+     */
+    @NotBlank(message = "真实后端服务地址不能为空")
+    @Size(max = 512, message = "真实后端服务地址长度不能超过 512")
+    private String targetHost;
 
     /**
      * 请求参数
@@ -39,23 +52,23 @@ public class InterfaceInfoAddRequest implements Serializable {
     private String requestParams;
 
     /**
-     * 请求头
+     * 请求头文档，不参与网关鉴权和路由
      */
     @Size(max = 65535, message = "请求头长度不能超过 65535")
     private String requestHeader;
 
     /**
-     * 响应头
+     * 响应头文档，不参与网关运行时逻辑
      */
     @Size(max = 65535, message = "响应头长度不能超过 65535")
     private String responseHeader;
 
 
     /**
-     * 请求类型
+     * 请求方法
      */
     @NotBlank(message = "请求类型不能为空")
-    @Size(max = 256, message = "请求类型长度不能超过 256")
+    @Size(max = 16, message = "请求类型长度不能超过 16")
     private String method;
 
 

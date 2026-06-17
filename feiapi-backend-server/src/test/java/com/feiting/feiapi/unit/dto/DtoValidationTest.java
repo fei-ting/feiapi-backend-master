@@ -84,7 +84,8 @@ class DtoValidationTest {
 
         assertThat(violationMessages(request))
                 .contains("接口名称不能为空",
-                        "接口地址不能为空",
+                        "接口路径不能为空",
+                        "真实后端服务地址不能为空",
                         "接口描述长度不能超过 512");
     }
 

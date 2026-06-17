@@ -7,7 +7,8 @@ import java.io.Serializable;
 import java.util.Date;
 
 /**
- * 接口信息
+ * 接口信息实体
+ *
  * @TableName interface_info
  */
 @TableName(value ="interface_info")
@@ -20,19 +21,29 @@ public class InterfaceInfo implements Serializable {
     private Long id;
 
     /**
-     * 名称
+     * 接口名称
      */
     private String name;
 
     /**
-     * 描述
+     * 接口描述
      */
     private String description;
 
     /**
-     * 接口地址
+     * 接口展示地址，主要用于前端展示和兼容旧数据
      */
     private String url;
+
+    /**
+     * 接口路径，用于网关路由和接口唯一身份匹配
+     */
+    private String path;
+
+    /**
+     * 真实后端服务地址，用于描述接口实际转发目标
+     */
+    private String targetHost;
 
     /**
      * 请求参数
@@ -43,22 +54,22 @@ public class InterfaceInfo implements Serializable {
     private String requestParams;
 
     /**
-     * 请求头
+     * 请求头文档，描述调用方需要传递的 Header，不参与网关鉴权和路由
      */
     private String requestHeader;
 
     /**
-     * 响应头
+     * 响应头文档，描述接口响应 Header，不参与网关运行时逻辑
      */
     private String responseHeader;
 
     /**
-     * 接口状态（0-关闭，1-开启）
+     * 接口状态（0-下线，1-上线，2-发布验证中）
      */
     private Integer status;
 
     /**
-     * 请求类型
+     * 请求方法
      */
     private String method;
 

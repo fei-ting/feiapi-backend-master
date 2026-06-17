@@ -42,6 +42,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DisplayName("接口调用冒烟测试")
 class InterfaceInvokeSmokeTest {
 
+    /**
+     * 测试接口真实后端服务地址
+     */
+    private static final String TEST_TARGET_HOST = "http://localhost:8123";
+
     @Resource
     private MockMvc mockMvc;
 
@@ -79,11 +84,13 @@ class InterfaceInvokeSmokeTest {
         return session;
     }
 
-    private long createInterfaceInfo(String name, String url, String method, long userId) {
+    private long createInterfaceInfo(String name, String path, String method, long userId) {
         InterfaceInfo interfaceInfo = new InterfaceInfo();
         interfaceInfo.setName(name);
         interfaceInfo.setDescription("desc_" + name);
-        interfaceInfo.setUrl(url);
+        interfaceInfo.setPath(path);
+        interfaceInfo.setTargetHost(TEST_TARGET_HOST);
+        interfaceInfo.setUrl(TEST_TARGET_HOST + path);
         interfaceInfo.setRequestHeader("{\"Content-Type\":\"application/json\"}");
         interfaceInfo.setResponseHeader("{\"Content-Type\":\"application/json\"}");
         interfaceInfo.setStatus(InterfaceInfoStatusEnum.OFFLINE.getValue());
@@ -122,7 +129,8 @@ class InterfaceInvokeSmokeTest {
             InterfaceInfoAddRequest addRequest = new InterfaceInfoAddRequest();
             addRequest.setName("getLoveWords");
             addRequest.setDescription("随机土味情话");
-            addRequest.setUrl("/api/love_words_" + suffix);
+            addRequest.setPath("/api/love_words_" + suffix);
+            addRequest.setTargetHost(TEST_TARGET_HOST);
             addRequest.setRequestHeader("{\"Content-Type\":\"application/json\"}");
             addRequest.setResponseHeader("{\"Content-Type\":\"application/json\"}");
             addRequest.setMethod("GET");
@@ -215,7 +223,8 @@ class InterfaceInvokeSmokeTest {
             InterfaceInfoAddRequest addRequest = new InterfaceInfoAddRequest();
             addRequest.setName("getLoveWords");
             addRequest.setDescription("随机土味情话");
-            addRequest.setUrl("/api/love_words_" + suffix);
+            addRequest.setPath("/api/love_words_" + suffix);
+            addRequest.setTargetHost(TEST_TARGET_HOST);
             addRequest.setRequestHeader("{\"Content-Type\":\"application/json\"}");
             addRequest.setResponseHeader("{\"Content-Type\":\"application/json\"}");
             addRequest.setMethod("GET");

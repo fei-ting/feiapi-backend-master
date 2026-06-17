@@ -20,13 +20,13 @@ public class InnerInterfaceInfoServiceImpl implements InnerInterfaceInfoService 
     private InterfaceInfoMapper interfaceInfoMapper;
 
     @Override
-    public InterfaceInfo getInterfaceInfo(String url, String method) {
-        if (StringUtils.isAnyBlank(url, method)) {
+    public InterfaceInfo getInterfaceInfo(String path, String method) {
+        if (StringUtils.isAnyBlank(path, method)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
 
         QueryWrapper<InterfaceInfo> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("url", url);
+        queryWrapper.eq("path", path);
         queryWrapper.eq("method", method);
         queryWrapper.eq("status", InterfaceInfoStatusEnum.ONLINE.getValue());
 
@@ -34,13 +34,13 @@ public class InnerInterfaceInfoServiceImpl implements InnerInterfaceInfoService 
     }
 
     @Override
-    public InterfaceInfo getPublishingInterfaceInfo(String url, String method) {
-        if (StringUtils.isAnyBlank(url, method)) {
+    public InterfaceInfo getPublishingInterfaceInfo(String path, String method) {
+        if (StringUtils.isAnyBlank(path, method)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
 
         QueryWrapper<InterfaceInfo> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("url", url);
+        queryWrapper.eq("path", path);
         queryWrapper.eq("method", method);
         queryWrapper.eq("status", InterfaceInfoStatusEnum.PUBLISHING.getValue());
 

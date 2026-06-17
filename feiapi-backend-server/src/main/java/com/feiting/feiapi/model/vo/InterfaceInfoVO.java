@@ -27,9 +27,19 @@ public class InterfaceInfoVO implements Serializable {
     private String description;
 
     /**
-     * 接口地址
+     * 接口展示地址
      */
     private String url;
+
+    /**
+     * 接口路径
+     */
+    private String path;
+
+    /**
+     * 真实后端服务地址
+     */
+    private String targetHost;
 
     /**
      * 请求参数
@@ -37,17 +47,17 @@ public class InterfaceInfoVO implements Serializable {
     private String requestParams;
 
     /**
-     * 请求头
+     * 请求头文档，不参与网关鉴权和路由
      */
     private String requestHeader;
 
     /**
-     * 响应头
+     * 响应头文档，不参与网关运行时逻辑
      */
     private String responseHeader;
 
     /**
-     * 接口状态（0-关闭，1-开启）
+     * 接口状态（0-下线，1-上线，2-发布验证中）
      */
     private Integer status;
 

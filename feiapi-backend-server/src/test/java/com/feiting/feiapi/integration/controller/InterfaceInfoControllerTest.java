@@ -8,6 +8,7 @@ import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoQueryRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoUpdateRequest;
+import com.feiting.feiapi.model.vo.InterfaceInfoVO;
 import com.feiting.feiapi.model.dto.user.UserLoginRequest;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.UserService;
@@ -46,6 +47,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 @DisplayName("InterfaceInfoController 集成测试")
 class InterfaceInfoControllerTest {
+
+    /**
+     * 测试接口真实后端服务地址
+     */
+    private static final String TEST_TARGET_HOST = "http://localhost:8123";
 
     @Resource
     private MockMvc mockMvc;
@@ -88,22 +94,26 @@ class InterfaceInfoControllerTest {
         return loginWithRole("user_if_" + System.currentTimeMillis(), "user");
     }
 
-    private InterfaceInfoAddRequest buildAddRequest(String name, String url, String method) {
+    private InterfaceInfoAddRequest buildAddRequest(String name, String path, String method) {
         InterfaceInfoAddRequest request = new InterfaceInfoAddRequest();
         request.setName(name);
         request.setDescription("desc_" + name);
-        request.setUrl(url);
+        request.setPath(path);
+        request.setTargetHost(TEST_TARGET_HOST);
+        request.setUrl(TEST_TARGET_HOST + path);
         request.setRequestHeader("{\"Content-Type\":\"application/json\"}");
         request.setResponseHeader("{\"Content-Type\":\"application/json\"}");
         request.setMethod(method);
         return request;
     }
 
-    private long createInterfaceInfo(String name, String url, String method, int status) {
+    private long createInterfaceInfo(String name, String path, String method, int status) {
         InterfaceInfo interfaceInfo = new InterfaceInfo();
         interfaceInfo.setName(name);
         interfaceInfo.setDescription("desc_" + name);
-        interfaceInfo.setUrl(url);
+        interfaceInfo.setPath(path);
+        interfaceInfo.setTargetHost(TEST_TARGET_HOST);
+        interfaceInfo.setUrl(TEST_TARGET_HOST + path);
         interfaceInfo.setRequestHeader("{\"Content-Type\":\"application/json\"}");
         interfaceInfo.setResponseHeader("{\"Content-Type\":\"application/json\"}");
         interfaceInfo.setStatus(status);
@@ -136,10 +146,11 @@ class InterfaceInfoControllerTest {
 
             // 验证数据库状态
             InterfaceInfo saved = interfaceInfoService.getById(id);
-            assertNotNull(saved);
-            assertEquals("addApi", saved.getName());
-            assertEquals("/api/add_test", saved.getUrl());
-            assertEquals(InterfaceInfoStatusEnum.OFFLINE.getValue(), saved.getStatus());
+        assertNotNull(saved);
+        assertEquals("addApi", saved.getName());
+        assertEquals("/api/add_test", saved.getPath());
+        assertEquals(TEST_TARGET_HOST + "/api/add_test", saved.getUrl());
+        assertEquals(InterfaceInfoStatusEnum.OFFLINE.getValue(), saved.getStatus());
         }
 
         @Test
@@ -208,10 +219,11 @@ class InterfaceInfoControllerTest {
             long id = createInterfaceInfo("getApi", "/api/get_test", "GET", InterfaceInfoStatusEnum.ONLINE.getValue());
 
             mockMvc.perform(get("/interfaceInfo/get").param("id", String.valueOf(id)))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(0))
-                    .andExpect(jsonPath("$.data.name").value("getApi"))
-                    .andExpect(jsonPath("$.data.url").value("/api/get_test"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.name").value("getApi"))
+                .andExpect(jsonPath("$.data.path").value("/api/get_test"))
+                .andExpect(jsonPath("$.data.url").value(TEST_TARGET_HOST + "/api/get_test"));
         }
 
         @Test
@@ -477,7 +489,7 @@ class InterfaceInfoControllerTest {
             MockHttpServletRequest servletRequest = new MockHttpServletRequest();
 
             InterfaceInfoController targetController = AopTestUtils.getTargetObject(interfaceInfoController);
-            BaseResponse<Page<InterfaceInfo>> response = targetController.listInterfaceInfoByPage(queryRequest, servletRequest);
+            BaseResponse<Page<InterfaceInfoVO>> response = targetController.listInterfaceInfoByPage(queryRequest, servletRequest);
 
             assertEquals(0, response.getCode());
             assertNotNull(response.getData());
