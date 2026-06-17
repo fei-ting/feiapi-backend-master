@@ -259,12 +259,11 @@ class InterfaceInfoControllerTest {
         }
 
         @Test
-        @DisplayName("不存在的 id 返回 null data")
+        @DisplayName("不存在的 id 返回数据不存在")
         void shouldReturnNullForNonExistent() throws Exception {
             mockMvc.perform(get("/interfaceInfo/get").param("id", "99999"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(0))
-                    .andExpect(jsonPath("$.data").doesNotExist());
+                    .andExpect(jsonPath("$.code").value(40400));
         }
     }
 

@@ -167,7 +167,7 @@ public class InterfaceInfoController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         InterfaceInfo interfaceInfo = interfaceInfoService.getById(id);
-        if (interfaceInfo != null && !isVisibleToCurrentUser(interfaceInfo, request)) {
+        if (interfaceInfo == null || !isVisibleToCurrentUser(interfaceInfo, request)) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
         return ResultUtils.success(toInterfaceInfoVO(interfaceInfo));
