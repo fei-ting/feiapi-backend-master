@@ -1,6 +1,7 @@
 package com.feiting.feiapigateway;
 
 import com.feiting.feiapicommon.service.InnerUserInterfaceInfoService;
+import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapigateway.config.FeiapiGatewayProperties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
+import java.net.URI;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 /**
@@ -81,5 +85,46 @@ class CustomGlobalFilterTest {
         }
 
         verify(innerService, times(1)).rollbackInvokeCount(1L, 2L);
+    }
+
+    @Test
+    @DisplayName("合法 targetHost 会改写为内部服务转发地址")
+    void shouldRewriteSafeTargetHost() {
+        CustomGlobalFilter filter = createFilter(mock(InnerUserInterfaceInfoService.class));
+        ServerWebExchange exchange = createExchange();
+        InterfaceInfo interfaceInfo = buildInterfaceInfo("http://feiapi-interface:8123");
+
+        ServerWebExchange targetExchange = ReflectionTestUtils.invokeMethod(filter,
+                "rewriteTargetExchange", exchange, interfaceInfo);
+
+        URI targetUri = targetExchange.getRequest().getURI();
+        assertThat(targetUri.toString()).isEqualTo("http://feiapi-interface:8123/api/test");
+    }
+
+    @Test
+    @DisplayName("危险 targetHost 会拒绝转发")
+    void shouldRejectUnsafeTargetHost() {
+        CustomGlobalFilter filter = createFilter(mock(InnerUserInterfaceInfoService.class));
+        ServerWebExchange exchange = createExchange();
+        InterfaceInfo interfaceInfo = buildInterfaceInfo("http://127.0.0.1:8123");
+
+        ServerWebExchange targetExchange = ReflectionTestUtils.invokeMethod(filter,
+                "rewriteTargetExchange", exchange, interfaceInfo);
+
+        assertThat(targetExchange).isNull();
+    }
+
+    /**
+     * 构建接口信息测试对象。
+     *
+     * @param targetHost 真实后端服务地址
+     * @return 接口信息
+     */
+    private InterfaceInfo buildInterfaceInfo(String targetHost) {
+        InterfaceInfo interfaceInfo = new InterfaceInfo();
+        interfaceInfo.setId(1L);
+        interfaceInfo.setPath("/api/test");
+        interfaceInfo.setTargetHost(targetHost);
+        return interfaceInfo;
     }
 }

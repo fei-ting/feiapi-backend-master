@@ -46,6 +46,8 @@ feiapi:
     secret-key: test-secret-key
     gateway-host: http://localhost:8090
     probe-secret: test-probe-secret
+  interface-target:
+    allowed-hostnames: feiapi-interface
 
 dubbo:
   registry:

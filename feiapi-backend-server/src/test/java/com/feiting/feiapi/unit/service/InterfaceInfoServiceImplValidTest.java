@@ -1,5 +1,6 @@
 package com.feiting.feiapi.unit.service;
 
+import com.feiting.feiapi.config.InterfaceTargetHostProperties;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.service.impl.InterfaceInfoServiceImpl;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
@@ -12,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @DisplayName("InterfaceInfoServiceImpl.validInterfaceInfo 校验逻辑测试")
 class InterfaceInfoServiceImplValidTest {
 
-    private final InterfaceInfoServiceImpl service = new InterfaceInfoServiceImpl();
+    private final InterfaceInfoServiceImpl service = new InterfaceInfoServiceImpl(new InterfaceTargetHostProperties());
 
     @Nested
     @DisplayName("通用校验")
@@ -87,6 +88,33 @@ class InterfaceInfoServiceImplValidTest {
         void shouldThrowWhenTargetHostNull() {
             InterfaceInfo info = buildMinimalInterfaceInfo();
             info.setTargetHost(null);
+
+            assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, true));
+        }
+
+        @Test
+        @DisplayName("targetHost 为 localhost 时抛出异常")
+        void shouldThrowWhenTargetHostLocalhost() {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
+            info.setTargetHost("http://localhost:8123");
+
+            assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, true));
+        }
+
+        @Test
+        @DisplayName("targetHost 为内网地址时抛出异常")
+        void shouldThrowWhenTargetHostPrivateAddress() {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
+            info.setTargetHost("http://192.168.1.10:8080");
+
+            assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, true));
+        }
+
+        @Test
+        @DisplayName("targetHost 不在白名单时抛出异常")
+        void shouldThrowWhenTargetHostNotInAllowlist() {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
+            info.setTargetHost("https://example.com");
 
             assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, true));
         }
@@ -451,8 +479,8 @@ class InterfaceInfoServiceImplValidTest {
         InterfaceInfo info = new InterfaceInfo();
         info.setName("testApi");
         info.setPath("/api/test");
-        info.setTargetHost("http://localhost:8123");
-        info.setUrl("http://localhost:8123/api/test");
+        info.setTargetHost("http://feiapi-interface:8123");
+        info.setUrl("http://feiapi-interface:8123/api/test");
         info.setMethod("GET");
         return info;
     }

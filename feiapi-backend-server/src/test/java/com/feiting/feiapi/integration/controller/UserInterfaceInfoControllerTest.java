@@ -46,7 +46,7 @@ class UserInterfaceInfoControllerTest {
     /**
      * 测试接口真实后端服务地址
      */
-    private static final String TEST_TARGET_HOST = "http://localhost:8123";
+    private static final String TEST_TARGET_HOST = "http://feiapi-interface:8123";
 
     @Resource
     private MockMvc mockMvc;

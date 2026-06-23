@@ -2,11 +2,13 @@ package com.feiting.feiapi.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.feiting.feiapi.common.ErrorCode;
+import com.feiting.feiapi.config.InterfaceTargetHostProperties;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.mapper.InterfaceInfoMapper;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoMethodEnum;
+import com.feiting.feiapicommon.utils.InterfaceTargetHostValidator;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +20,12 @@ import org.springframework.stereotype.Service;
 @Service
 public class InterfaceInfoServiceImpl extends ServiceImpl<InterfaceInfoMapper, InterfaceInfo>
     implements InterfaceInfoService {
+
+    private final InterfaceTargetHostProperties interfaceTargetHostProperties;
+
+    public InterfaceInfoServiceImpl(InterfaceTargetHostProperties interfaceTargetHostProperties) {
+        this.interfaceTargetHostProperties = interfaceTargetHostProperties;
+    }
 
     @Override
     public void validInterfaceInfo(InterfaceInfo interfaceInfo, boolean add) {
@@ -70,6 +78,10 @@ public class InterfaceInfoServiceImpl extends ServiceImpl<InterfaceInfoMapper, I
         }
         if (StringUtils.isNotBlank(path) && !path.trim().startsWith("/")) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "接口路径必须以 / 开头");
+        }
+        if (StringUtils.isNotBlank(targetHost)
+                && !InterfaceTargetHostValidator.isSafeTargetHost(targetHost, interfaceTargetHostProperties.getAllowedHostnames())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "真实后端服务地址不允许访问");
         }
     }
 }

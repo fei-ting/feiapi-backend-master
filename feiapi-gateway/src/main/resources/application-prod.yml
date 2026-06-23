@@ -37,6 +37,8 @@ feiapi:
   gateway:
     interface-host: ${FEIAPI_INTERFACE_HOST}
     probe-secret: ${FEIAPI_PROBE_SECRET}
+    interface-target:
+      allowed-hostnames: ${FEIAPI_INTERFACE_TARGET_ALLOWED_HOSTNAMES:feiapi-interface}
     rate-limit:
       max-requests: ${FEIAPI_RATE_LIMIT_MAX_REQUESTS:20}
       window-seconds: ${FEIAPI_RATE_LIMIT_WINDOW_SECONDS:1}

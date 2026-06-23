@@ -8,6 +8,7 @@ import com.feiting.feiapicommon.model.vo.InvokeUserVO;
 import com.feiting.feiapicommon.service.InnerInterfaceInfoService;
 import com.feiting.feiapicommon.service.InnerUserInterfaceInfoService;
 import com.feiting.feiapicommon.service.InnerUserService;
+import com.feiting.feiapicommon.utils.InterfaceTargetHostValidator;
 import com.feiting.feiapigateway.config.FeiapiGatewayProperties;
 import com.feiting.feiapigateway.utils.GatewayRequestUtils;
 import com.feiting.feiapigateway.utils.LogDesensitizeUtils;
@@ -237,6 +238,9 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
                                                     return handleTooManyRequests(response);
                                                 }
                                                 ServerWebExchange targetExchange = rewriteTargetExchange(decoratedExchange, interfaceInfo);
+                                                if (targetExchange == null) {
+                                                    return handleForbiddenTargetHost(response);
+                                                }
                                                 return invokeOnlineInterface(targetExchange, chain, response, finalInvokeUser, interfaceInfo);
                                             });
                                 }
@@ -269,7 +273,11 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
                                             }
 
                                             // 步骤12：发布探测只验证接口可调用性，不扣减用户次数，也不记录普通调用统计。
-                                            return chain.filter(rewriteTargetExchange(decoratedExchange, publishingInterfaceInfo));
+                                            ServerWebExchange targetExchange = rewriteTargetExchange(decoratedExchange, publishingInterfaceInfo);
+                                            if (targetExchange == null) {
+                                                return handleForbiddenTargetHost(response);
+                                            }
+                                            return chain.filter(targetExchange);
                                         });
                             })
                             .onErrorResume(e -> {
@@ -417,6 +425,14 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
     }
 
     /**
+     * 返回 403 响应，表示接口真实目标地址不允许访问。
+     */
+    private Mono<Void> handleForbiddenTargetHost(ServerHttpResponse response) {
+        response.setStatusCode(HttpStatus.FORBIDDEN);
+        return response.setComplete();
+    }
+
+    /**
      * 校验 nonce 格式是否合法。
      *
      * <p>nonce 必须是固定长度（32位）的字母数字字符串，避免特殊字符参与缓存键拼接。</p>
@@ -490,6 +506,11 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
             return exchange;
         }
         String normalizedTargetHost = interfaceInfo.getTargetHost().trim();
+        if (!InterfaceTargetHostValidator.isSafeTargetHost(normalizedTargetHost,
+                feiapiGatewayProperties.getInterfaceTarget().getAllowedHostnames())) {
+            log.warn("接口真实目标地址被拒绝，interfaceInfoId={}, targetHost={}", interfaceInfo.getId(), normalizedTargetHost);
+            return null;
+        }
         while (normalizedTargetHost.endsWith("/")) {
             normalizedTargetHost = normalizedTargetHost.substring(0, normalizedTargetHost.length() - 1);
         }

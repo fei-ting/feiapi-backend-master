@@ -44,3 +44,5 @@ feiapi:
     secret-key: ${FEIAPI_CLIENT_SECRET_KEY}
     gateway-host: ${FEIAPI_CLIENT_GATEWAY_HOST}
     probe-secret: ${FEIAPI_PROBE_SECRET}
+  interface-target:
+    allowed-hostnames: ${FEIAPI_INTERFACE_TARGET_ALLOWED_HOSTNAMES:feiapi-interface}
