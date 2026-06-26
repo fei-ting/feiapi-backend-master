@@ -103,9 +103,9 @@ class InterfaceInvokeSmokeTest {
     @Test
     @DisplayName("成功调用全链路: 创建 -> 发布(mock成功) -> ONLINE -> 调用 -> 返回 data")
     void fullSuccessfulInvokeLifecycle() throws Exception {
-        String suffix = String.valueOf(System.currentTimeMillis());
-        String adminAccount = "smoke_invoke_admin_" + suffix;
-        String userAccount = "smoke_invoke_user_" + suffix;
+        String suffix = String.valueOf(Math.abs(System.nanoTime() % 100000));
+        String adminAccount = "admi" + suffix;
+        String userAccount = "user" + suffix;
 
         long interfaceInfoId = -1;
         long adminId = -1;
@@ -202,9 +202,9 @@ class InterfaceInvokeSmokeTest {
     @Test
     @DisplayName("完整状态机: 创建(OFFLINE) -> 发布(失败回滚OFFLINE) -> 未上线不可调用")
     void fullStateMachineLifecycle() throws Exception {
-        String suffix = String.valueOf(System.currentTimeMillis());
-        String adminAccount = "smoke_admin_" + suffix;
-        String userAccount = "smoke_user_" + suffix;
+        String suffix = String.valueOf(Math.abs(System.nanoTime() % 100000));
+        String adminAccount = "adms" + suffix;
+        String userAccount = "usrs" + suffix;
 
         long interfaceInfoId = -1;
         long adminId = -1;

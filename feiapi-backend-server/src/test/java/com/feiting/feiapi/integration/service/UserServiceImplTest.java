@@ -135,10 +135,59 @@ class UserServiceImplTest {
         }
 
         @Test
+        @DisplayName("账号长度超过 10 位时抛出异常")
+        void shouldThrowWhenAccountTooLong() {
+            assertThrows(BusinessException.class,
+                    () -> userService.userRegister("account00123", "password123", "password123"));
+        }
+
+        @Test
+        @DisplayName("账号不是字母开头时抛出异常")
+        void shouldThrowWhenAccountNotStartWithLetter() {
+            assertThrows(BusinessException.class,
+                    () -> userService.userRegister("1user001", "password123", "password123"));
+        }
+
+        @Test
+        @DisplayName("账号包含非法字符时抛出异常")
+        void shouldThrowWhenAccountContainsInvalidCharacter() {
+            assertThrows(BusinessException.class,
+                    () -> userService.userRegister("user_001", "password123", "password123"));
+        }
+
+        @Test
         @DisplayName("密码长度不足 8 位时抛出异常")
         void shouldThrowWhenPasswordTooShort() {
             assertThrows(BusinessException.class,
                     () -> userService.userRegister("testuser04", "1234567", "1234567"));
+        }
+
+        @Test
+        @DisplayName("密码长度超过 16 位时抛出异常")
+        void shouldThrowWhenPasswordTooLong() {
+            assertThrows(BusinessException.class,
+                    () -> userService.userRegister("testuser04", "password123456789", "password123456789"));
+        }
+
+        @Test
+        @DisplayName("密码缺少数字时抛出异常")
+        void shouldThrowWhenPasswordWithoutDigit() {
+            assertThrows(BusinessException.class,
+                    () -> userService.userRegister("testuser04", "passwordonly", "passwordonly"));
+        }
+
+        @Test
+        @DisplayName("密码缺少字母时抛出异常")
+        void shouldThrowWhenPasswordWithoutLetter() {
+            assertThrows(BusinessException.class,
+                    () -> userService.userRegister("testuser04", "12345678", "12345678"));
+        }
+
+        @Test
+        @DisplayName("密码包含非法字符时抛出异常")
+        void shouldThrowWhenPasswordContainsInvalidCharacter() {
+            assertThrows(BusinessException.class,
+                    () -> userService.userRegister("testuser04", "password_123", "password_123"));
         }
 
         @Test
@@ -160,7 +209,7 @@ class UserServiceImplTest {
         @Test
         @DisplayName("并发注册同一账号时只成功一次，其余请求返回账号重复业务异常")
         void shouldTranslateDuplicateKeyWhenConcurrentRegisterSameAccount() throws Exception {
-            String userAccount = "concurrent" + System.nanoTime();
+            String userAccount = "conc" + Math.abs(System.nanoTime() % 1000000);
             int threadCount = 8;
             ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
             CountDownLatch readyLatch = new CountDownLatch(threadCount);
@@ -221,20 +270,20 @@ class UserServiceImplTest {
         @Test
         @DisplayName("正确账号密码登录成功，返回用户信息")
         void shouldLoginSuccessfully() {
-            userService.userRegister("loginuser01", "password123", "password123");
+            userService.userRegister("loginu01", "password123", "password123");
 
-            User user = userService.userLogin("loginuser01", "password123");
+            User user = userService.userLogin("loginu01", "password123");
 
             assertNotNull(user);
-            assertEquals("loginuser01", user.getUserAccount());
+            assertEquals("loginu01", user.getUserAccount());
         }
 
         @Test
         @DisplayName("登录成功后返回数据库用户 id")
         void shouldReturnUserIdAfterLogin() {
-            long userId = userService.userRegister("loginuser02", "password123", "password123");
+            long userId = userService.userRegister("loginu02", "password123", "password123");
 
-            User user = userService.userLogin("loginuser02", "password123");
+            User user = userService.userLogin("loginu02", "password123");
 
             assertNotNull(user);
             assertEquals(userId, user.getId());
@@ -248,40 +297,47 @@ class UserServiceImplTest {
         }
 
         @Test
-        @DisplayName("密码长度不足 8 位时抛出异常")
+        @DisplayName("密码格式非法时登录应抛出异常")
         void shouldThrowWhenPasswordTooShort() {
             assertThrows(BusinessException.class,
-                    () -> userService.userLogin("loginuser03", "1234567"));
+                    () -> userService.userLogin("loginu03", "1234567"));
+        }
+
+        @Test
+        @DisplayName("账号格式非法时登录应抛出异常")
+        void shouldThrowWhenAccountInvalidOnLogin() {
+            assertThrows(BusinessException.class,
+                    () -> userService.userLogin("1login03", "password123"));
         }
 
         @Test
         @DisplayName("账号不存在时抛出异常")
         void shouldThrowWhenAccountNotFound() {
             assertThrows(BusinessException.class,
-                    () -> userService.userLogin("nonexistent", "password123"));
+                    () -> userService.userLogin("nouser01", "password123"));
         }
 
         @Test
         @DisplayName("密码错误时抛出异常")
         void shouldThrowWhenPasswordWrong() {
-            userService.userRegister("loginuser04", "password123", "password123");
+            userService.userRegister("loginu04", "password123", "password123");
 
             assertThrows(BusinessException.class,
-                    () -> userService.userLogin("loginuser04", "wrongpassword"));
+                    () -> userService.userLogin("loginu04", "wrongpwd1"));
         }
 
         @Test
         @DisplayName("连续失败 5 次后第 6 次登录直接返回锁定提示")
         void shouldBlockAfterFiveFailures() {
-            userService.userRegister("loginuser05", "password123", "password123");
+            userService.userRegister("loginu05", "password123", "password123");
 
             for (int i = 0; i < 5; i++) {
                 assertThrows(BusinessException.class,
-                        () -> userService.userLogin("loginuser05", "wrongpassword"));
+                        () -> userService.userLogin("loginu05", "wrongpwd1"));
             }
 
             BusinessException exception = assertThrows(BusinessException.class,
-                    () -> userService.userLogin("loginuser05", "password123"));
+                    () -> userService.userLogin("loginu05", "password123"));
 
             assertEquals(ErrorCode.FORBIDDEN_ERROR.getCode(), exception.getCode());
             assertEquals("登录失败次数过多，请稍后再试", exception.getMessage());
@@ -290,18 +346,18 @@ class UserServiceImplTest {
         @Test
         @DisplayName("登录成功后会清理失败记录")
         void shouldClearFailureRecordsAfterSuccess() {
-            userService.userRegister("loginuser06", "password123", "password123");
+            userService.userRegister("loginu06", "password123", "password123");
 
             for (int i = 0; i < 4; i++) {
                 assertThrows(BusinessException.class,
-                        () -> userService.userLogin("loginuser06", "wrongpassword"));
+                        () -> userService.userLogin("loginu06", "wrongpwd1"));
             }
 
-            User user = userService.userLogin("loginuser06", "password123");
+            User user = userService.userLogin("loginu06", "password123");
             assertNotNull(user);
 
             assertThrows(BusinessException.class,
-                    () -> userService.userLogin("loginuser06", "wrongpassword"));
+                    () -> userService.userLogin("loginu06", "wrongpwd1"));
         }
     }
 
@@ -429,7 +485,7 @@ class UserServiceImplTest {
         @Test
         @DisplayName("角色变更后清除缓存，重新查询应返回新角色")
         void shouldReturnNewRoleAfterCacheEviction() {
-            long userId = userService.userRegister("rolechange01", "password123", "password123");
+            long userId = userService.userRegister("rolechg01", "password123", "password123");
             User sessionUser = new User();
             sessionUser.setId(userId);
 
@@ -438,7 +494,7 @@ class UserServiceImplTest {
             assertEquals(UserRoleEnum.USER.getCode(), userBeforeChange.getUserRole());
 
             // 变更用户角色
-            long operatorId = userService.userRegister("admin_role", "password123", "password123");
+            long operatorId = userService.userRegister("adminrole", "password123", "password123");
             User operator = new User();
             operator.setId(operatorId);
             operator.setUserRole(UserRoleEnum.ADMIN.getCode());
@@ -460,7 +516,7 @@ class UserServiceImplTest {
         @Test
         @DisplayName("删除用户后清除缓存，重新查询应抛出 NOT_LOGIN_ERROR")
         void shouldThrowNotLoginAfterDeletionAndCacheEviction() {
-            long userId = userService.userRegister("deleteuser01", "password123", "password123");
+            long userId = userService.userRegister("deluser01", "password123", "password123");
             User sessionUser = new User();
             sessionUser.setId(userId);
 
@@ -469,7 +525,7 @@ class UserServiceImplTest {
             assertNotNull(user);
 
             // 删除用户
-            long operatorId = userService.userRegister("admin_del", "password123", "password123");
+            long operatorId = userService.userRegister("admindel", "password123", "password123");
             User operator = new User();
             operator.setId(operatorId);
             operator.setUserRole(UserRoleEnum.ADMIN.getCode());
@@ -490,8 +546,8 @@ class UserServiceImplTest {
         @Transactional(propagation = Propagation.NOT_SUPPORTED)
         @DisplayName("角色变更事务提交后会自动清除缓存")
         void shouldEvictCacheAutomaticallyAfterRoleChangeCommit() {
-            long userId = userService.userRegister("rolecommit01", "password123", "password123");
-            long operatorId = userService.userRegister("admincommit01", "password123", "password123");
+            long userId = userService.userRegister("rolecmt01", "password123", "password123");
+            long operatorId = userService.userRegister("admincmt1", "password123", "password123");
             try {
                 User sessionUser = new User();
                 sessionUser.setId(userId);
@@ -524,8 +580,8 @@ class UserServiceImplTest {
         @Transactional(propagation = Propagation.NOT_SUPPORTED)
         @DisplayName("删除用户事务提交后会自动清除缓存")
         void shouldEvictCacheAutomaticallyAfterDeleteCommit() {
-            long userId = userService.userRegister("deletecommit01", "password123", "password123");
-            long operatorId = userService.userRegister("admindelcommit01", "password123", "password123");
+            long userId = userService.userRegister("delcmt01", "password123", "password123");
+            long operatorId = userService.userRegister("admindel1", "password123", "password123");
             try {
                 User sessionUser = new User();
                 sessionUser.setId(userId);

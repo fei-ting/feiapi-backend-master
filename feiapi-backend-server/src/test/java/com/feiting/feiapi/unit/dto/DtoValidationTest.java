@@ -54,7 +54,7 @@ class DtoValidationTest {
     }
 
     /**
-     * 注册请求应校验账号和密码的必填与长度
+     * 注册请求应校验账号和密码的格式规则
      */
     @Test
     @DisplayName("注册请求校验账号和密码边界")
@@ -65,9 +65,23 @@ class DtoValidationTest {
         request.setCheckPassword("");
 
         assertThat(violationMessages(request))
-                .contains("账号长度必须在 4 到 256 之间",
-                        "密码长度必须在 8 到 512 之间",
+                .contains("账号长度 4-10 位，以字母开头，只能包含大小写字母和数字",
+                        "密码长度 8-16 位，只能包含大小写字母和数字，且必须同时包含字母和数字",
                         "确认密码不能为空");
+    }
+
+    /**
+     * 注册确认密码只校验必填，一致性由 Service 层业务逻辑校验
+     */
+    @Test
+    @DisplayName("注册确认密码不重复校验密码格式")
+    void shouldNotValidateCheckPasswordPattern() {
+        UserRegisterRequest request = new UserRegisterRequest();
+        request.setUserAccount("testuser01");
+        request.setUserPassword("password123");
+        request.setCheckPassword("invalid_password");
+
+        assertThat(violationMessages(request)).isEmpty();
     }
 
     /**

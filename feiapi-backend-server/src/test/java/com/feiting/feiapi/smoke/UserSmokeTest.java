@@ -46,7 +46,7 @@ class UserSmokeTest {
     @Test
     @DisplayName("完整链路: 注册 -> 登录 -> 获取登录用户 -> 注销 -> 验证注销")
     void fullUserLifecycle() throws Exception {
-        String account = "smoke_lifecycle_" + System.currentTimeMillis();
+        String account = "smokelif1";
         String password = "password123";
         long userId = -1;
 
@@ -129,7 +129,7 @@ class UserSmokeTest {
     @Test
     @DisplayName("注册重复账号应失败")
     void registerDuplicateAccountShouldFail() throws Exception {
-        String account = "smoke_dup_" + System.currentTimeMillis();
+        String account = "smokedup1";
         long userId = -1;
 
         try {
@@ -164,7 +164,7 @@ class UserSmokeTest {
     @Test
     @DisplayName("错误密码登录应失败")
     void loginWithWrongPasswordShouldFail() throws Exception {
-        String account = "smoke_wrongpw_" + System.currentTimeMillis();
+        String account = "smokewrg1";
         long userId = -1;
 
         try {

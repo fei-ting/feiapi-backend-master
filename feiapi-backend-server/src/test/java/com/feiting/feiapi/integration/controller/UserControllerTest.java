@@ -150,10 +150,10 @@ class UserControllerTest {
         @Test
         @DisplayName("正确账号密码登录成功")
         void shouldLoginSuccessfully() throws Exception {
-            userService.userRegister("loginctrl01", "password123", "password123");
+             userService.userRegister("loginctl01", "password123", "password123");
 
             UserLoginRequest request = new UserLoginRequest();
-            request.setUserAccount("loginctrl01");
+            request.setUserAccount("loginctl01");
             request.setUserPassword("password123");
 
             mockMvc.perform(post("/user/login")
@@ -161,7 +161,7 @@ class UserControllerTest {
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(0))
-                    .andExpect(jsonPath("$.data.userAccount").value("loginctrl01"))
+                    .andExpect(jsonPath("$.data.userAccount").value("loginctl01"))
                     .andExpect(jsonPath("$.data.userPassword").doesNotExist())
                     .andExpect(jsonPath("$.data.accessKey").doesNotExist())
                     .andExpect(jsonPath("$.data.secretKey").doesNotExist());
@@ -170,10 +170,10 @@ class UserControllerTest {
         @Test
         @DisplayName("密码错误返回参数错误")
         void shouldFailWhenPasswordWrong() throws Exception {
-            userService.userRegister("loginctrl02", "password123", "password123");
+            userService.userRegister("loginctl02", "password123", "password123");
 
             UserLoginRequest request = new UserLoginRequest();
-            request.setUserAccount("loginctrl02");
+            request.setUserAccount("loginctl02");
             request.setUserPassword("wrongpassword");
 
             mockMvc.perform(post("/user/login")
@@ -191,7 +191,7 @@ class UserControllerTest {
         @Test
         @DisplayName("已登录用户注销成功")
         void shouldLogoutSuccessfully() throws Exception {
-            MockHttpSession session = registerAndLogin("logoutctrl01", "password123");
+            MockHttpSession session = registerAndLogin("logoutc01", "password123");
 
             mockMvc.perform(post("/user/logout").session(session))
                     .andExpect(status().isOk())
@@ -368,10 +368,10 @@ class UserControllerTest {
         @Test
         @DisplayName("管理员通过 update 接口不能修改用户角色")
         void shouldNotAllowAdminToChangeRoleViaUpdate() throws Exception {
-            MockHttpSession adminSession = registerAndLoginAdmin("updaterole01", "password123");
+            MockHttpSession adminSession = registerAndLoginAdmin("updrole01", "password123");
 
             // 创建一个普通用户
-            long userId = userService.userRegister("updatetarget01", "password123", "password123");
+            long userId = userService.userRegister("updtgt01", "password123", "password123");
             User targetUser = userService.getById(userId);
             org.assertj.core.api.Assertions.assertThat(targetUser.getUserRole())
                     .as("新注册用户角色应为普通用户")
@@ -409,7 +409,7 @@ class UserControllerTest {
             MockHttpSession adminSession = registerAndLoginAdmin("roleapi01", "password123");
 
             // 创建一个普通用户
-            long userId = userService.userRegister("roletarget01", "password123", "password123");
+            long userId = userService.userRegister("roletgt01", "password123", "password123");
 
             String requestBody = "{\"id\":" + userId + ",\"userRole\":\"admin\"}";
 
@@ -433,7 +433,7 @@ class UserControllerTest {
         void shouldRejectInvalidRole() throws Exception {
             MockHttpSession adminSession = registerAndLoginAdmin("roleapi02", "password123");
 
-            long userId = userService.userRegister("roletarget02", "password123", "password123");
+            long userId = userService.userRegister("roletgt02", "password123", "password123");
 
             String requestBody = "{\"id\":" + userId + ",\"userRole\":\"superadmin\"}";
 
@@ -456,7 +456,7 @@ class UserControllerTest {
         void shouldRejectBlankRole() throws Exception {
             MockHttpSession adminSession = registerAndLoginAdmin("roleapi03", "password123");
 
-            long userId = userService.userRegister("roletarget03", "password123", "password123");
+            long userId = userService.userRegister("roletgt03", "password123", "password123");
 
             String requestBody = "{\"id\":" + userId + ",\"userRole\":\"\"}";
 
@@ -477,7 +477,7 @@ class UserControllerTest {
             User adminUser = (User) adminSession.getAttribute(UserConstant.USER_LOGIN_STATE);
             Long operatorId = adminUser.getId();
 
-            long userId = userService.userRegister("roletarget04", "password123", "password123");
+            long userId = userService.userRegister("roletgt04", "password123", "password123");
 
             // 将用户提升为 admin
             userService.updateUserRole(userId, UserRoleEnum.ADMIN, operatorId);
@@ -514,7 +514,7 @@ class UserControllerTest {
         void shouldRejectNonAdminAccessToUpdateRole() throws Exception {
             MockHttpSession userSession = registerAndLogin("roleapi06", "password123");
 
-            long userId = userService.userRegister("roletarget06", "password123", "password123");
+            long userId = userService.userRegister("roletgt06", "password123", "password123");
 
             String requestBody = "{\"id\":" + userId + ",\"userRole\":\"admin\"}";
 
@@ -562,7 +562,7 @@ class UserControllerTest {
             Long operatorId = adminUser.getId();
 
             // 创建一个普通用户
-            long targetUserId = userService.userRegister("roletarget08", "password123", "password123");
+            long targetUserId = userService.userRegister("roletgt08", "password123", "password123");
 
             // 记录变更前审计记录数量
             long logCountBefore = userRoleChangeLogMapper.selectCount(null);
@@ -612,7 +612,7 @@ class UserControllerTest {
         @Test
         @DisplayName("最后一个管理员不能被删除")
         void shouldNotAllowDeleteLastAdmin() throws Exception {
-            MockHttpSession adminSession = registerAndLoginAdmin("deleteadmin01", "password123");
+            MockHttpSession adminSession = registerAndLoginAdmin("deladm01", "password123");
 
             // 获取当前管理员用户
             User adminUser = (User) adminSession.getAttribute(UserConstant.USER_LOGIN_STATE);
@@ -641,10 +641,10 @@ class UserControllerTest {
         @Test
         @DisplayName("有多个管理员时可以删除其中一个")
         void shouldAllowDeleteAdminWhenMultipleAdminsExist() throws Exception {
-            MockHttpSession adminSession = registerAndLoginAdmin("deleteadmin02", "password123");
+            MockHttpSession adminSession = registerAndLoginAdmin("deladm02", "password123");
 
             // 创建第二个管理员
-            long secondAdminId = userService.userRegister("deleteadmin03", "password123", "password123");
+            long secondAdminId = userService.userRegister("deladm03", "password123", "password123");
             userService.updateUserRole(secondAdminId, UserRoleEnum.ADMIN,
                     ((User) adminSession.getAttribute(UserConstant.USER_LOGIN_STATE)).getId());
 
@@ -669,10 +669,10 @@ class UserControllerTest {
         @Test
         @DisplayName("删除普通用户不受最后管理员保护限制")
         void shouldAllowDeleteNormalUser() throws Exception {
-            MockHttpSession adminSession = registerAndLoginAdmin("deleteadmin04", "password123");
+            MockHttpSession adminSession = registerAndLoginAdmin("deladm04", "password123");
 
             // 创建一个普通用户
-            long normalUserId = userService.userRegister("deleteuser01", "password123", "password123");
+            long normalUserId = userService.userRegister("delusr01", "password123", "password123");
 
             // 删除普通用户
             String requestBody = "{\"id\":" + normalUserId + "}";

@@ -55,6 +55,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     private static final int SECRET_KEY_RANDOM_BYTE_LENGTH = 48;
 
     /**
+     * 用户账号格式：4-10 位，以字母开头，只能包含大小写字母和数字
+     */
+    private static final String USER_ACCOUNT_PATTERN = "^[a-zA-Z][a-zA-Z0-9]{3,9}$";
+
+    /**
+     * 用户密码格式：8-16 位，只能包含大小写字母和数字，且必须同时包含字母和数字
+     */
+    private static final String USER_PASSWORD_PATTERN = "^(?=.*[a-zA-Z])(?=.*[0-9])[a-zA-Z0-9]{8,16}$";
+
+    /**
      * 安全随机数生成器
      */
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
@@ -75,16 +85,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
     @Override
     public long userRegister(String userAccount, String userPassword, String checkPassword) {
-        // 1. 校验
+        // 1. 校验基础参数和账号密码格式，避免绕过 Web 层直接调用 Service 写入非法数据
         if (StringUtils.isAnyBlank(userAccount, userPassword, checkPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
         }
-        if (userAccount.length() < 4) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户账号过短");
-        }
-        if (userPassword.length() < 8 || checkPassword.length() < 8) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户密码过短");
-        }
+        validateUserAccount(userAccount);
+        validateUserPassword(userPassword);
         // 密码和校验密码相同
         if (!userPassword.equals(checkPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "两次输入的密码不一致");
@@ -135,16 +141,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
     @Override
     public User userLogin(String userAccount, String userPassword) {
-        // 1. 校验
+        // 1. 校验基础参数和账号密码格式，避免非 Web 入口绕过业务规则
         if (StringUtils.isAnyBlank(userAccount, userPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
         }
-        if (userAccount.length() < 4) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号错误");
-        }
-        if (userPassword.length() < 8) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "密码错误");
-        }
+        validateUserAccount(userAccount);
+        validateUserPassword(userPassword);
         if (!loginAttemptService.isLoginAllowed(userAccount)) {
             throw new BusinessException(ErrorCode.FORBIDDEN_ERROR, LOGIN_ATTEMPT_LOCK_MESSAGE);
         }
@@ -161,6 +163,28 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         // 3. 记录登录成功，HTTP 会话写入由 Web 层负责
         loginAttemptService.recordLoginSuccess(userAccount);
         return user;
+    }
+
+    /**
+     * 校验用户账号格式
+     *
+     * @param userAccount 用户账号
+     */
+    private void validateUserAccount(String userAccount) {
+        if (!userAccount.matches(USER_ACCOUNT_PATTERN)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号长度 4-10 位，以字母开头，只能包含大小写字母和数字");
+        }
+    }
+
+    /**
+     * 校验用户密码格式
+     *
+     * @param userPassword 用户密码
+     */
+    private void validateUserPassword(String userPassword) {
+        if (!userPassword.matches(USER_PASSWORD_PATTERN)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "密码长度 8-16 位，只能包含大小写字母和数字，且必须同时包含字母和数字");
+        }
     }
 
     /**
