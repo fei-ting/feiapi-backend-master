@@ -12,6 +12,7 @@ import com.feiting.feiapi.component.UserSessionManager;
 import com.feiting.feiapi.constant.UserConstant;
 import com.feiting.feiapi.model.dto.user.*;
 import com.feiting.feiapi.model.enums.UserRoleEnum;
+import com.feiting.feiapi.model.vo.UserKeyVO;
 import com.feiting.feiapi.model.vo.UserVO;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapi.exception.BusinessException;
@@ -117,6 +118,25 @@ public class UserController {
         UserVO userVO = new UserVO();
         BeanUtils.copyProperties(user, userVO);
         return ResultUtils.success(userVO);
+    }
+
+    /**
+     * 获取当前登录用户访问密钥
+     *
+     * @param request HTTP 请求
+     * @return 当前登录用户访问密钥
+     */
+    @GetMapping("/get/keys")
+    public BaseResponse<UserKeyVO> getCurrentUserKeys(HttpServletRequest request) {
+        User loginUser = getCurrentLoginUser(request);
+        User currentUser = userService.getById(loginUser.getId());
+        if (currentUser == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
+        }
+        UserKeyVO userKeyVO = new UserKeyVO();
+        userKeyVO.setAccessKey(currentUser.getAccessKey());
+        userKeyVO.setSecretKey(currentUser.getSecretKey());
+        return ResultUtils.success(userKeyVO);
     }
 
     // endregion

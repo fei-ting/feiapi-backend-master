@@ -212,13 +212,40 @@ class UserControllerTest {
             mockMvc.perform(get("/user/get/login").session(session))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(0))
-                    .andExpect(jsonPath("$.data.userAccount").value("getlogin01"));
+                    .andExpect(jsonPath("$.data.userAccount").value("getlogin01"))
+                    .andExpect(jsonPath("$.data.accessKey").doesNotExist())
+                    .andExpect(jsonPath("$.data.secretKey").doesNotExist());
         }
 
         @Test
         @DisplayName("未登录返回未登录错误")
         void shouldFailWhenNotLoggedIn() throws Exception {
             mockMvc.perform(get("/user/get/login"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40100));
+        }
+    }
+
+    @Nested
+    @DisplayName("GET /user/get/keys 获取当前用户访问密钥")
+    class GetCurrentUserKeysTests {
+
+        @Test
+        @DisplayName("已登录用户返回访问密钥")
+        void shouldReturnCurrentUserKeys() throws Exception {
+            MockHttpSession session = registerAndLogin("getkeys01", "password123");
+
+            mockMvc.perform(get("/user/get/keys").session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.accessKey").isNotEmpty())
+                    .andExpect(jsonPath("$.data.secretKey").isNotEmpty());
+        }
+
+        @Test
+        @DisplayName("未登录访问密钥接口返回未登录错误")
+        void shouldFailWhenNotLoggedIn() throws Exception {
+            mockMvc.perform(get("/user/get/keys"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(40100));
         }
