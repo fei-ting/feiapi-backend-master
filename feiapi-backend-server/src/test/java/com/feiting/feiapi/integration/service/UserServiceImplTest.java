@@ -209,7 +209,8 @@ class UserServiceImplTest {
         @Test
         @DisplayName("并发注册同一账号时只成功一次，其余请求返回账号重复业务异常")
         void shouldTranslateDuplicateKeyWhenConcurrentRegisterSameAccount() throws Exception {
-            String userAccount = "conc" + Math.abs(System.nanoTime() % 1000000);
+            // 使用短前缀 + 3位随机数，确保账号长度符合 4-10 位规则
+            String userAccount = "con" + Math.abs(System.nanoTime() % 1000);
             int threadCount = 8;
             ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
             CountDownLatch readyLatch = new CountDownLatch(threadCount);

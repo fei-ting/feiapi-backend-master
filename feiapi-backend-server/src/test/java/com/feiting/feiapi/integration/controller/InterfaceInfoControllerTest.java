@@ -87,11 +87,14 @@ class InterfaceInfoControllerTest {
     }
 
     private MockHttpSession loginAsAdmin() throws Exception {
-        return loginWithRole("admin_if_" + System.currentTimeMillis(), "admin");
+        // 使用短前缀 + 时间戳后4位，确保账号长度符合 4-10 位规则
+        String timestamp = String.valueOf(System.currentTimeMillis());
+        return loginWithRole("aif" + timestamp.substring(timestamp.length() - 4), "admin");
     }
 
     private MockHttpSession loginAsUser() throws Exception {
-        return loginWithRole("user_if_" + System.currentTimeMillis(), "user");
+        String timestamp = String.valueOf(System.currentTimeMillis());
+        return loginWithRole("uif" + timestamp.substring(timestamp.length() - 4), "user");
     }
 
     private InterfaceInfoAddRequest buildAddRequest(String name, String path, String method) {
@@ -405,7 +408,8 @@ class InterfaceInfoControllerTest {
         @Test
         @DisplayName("管理员删除接口成功")
         void shouldAllowAdminToDelete() throws Exception {
-            MockHttpSession adminSession = loginWithRole("admin_del_" + System.currentTimeMillis(), "admin");
+            String timestamp = String.valueOf(System.currentTimeMillis());
+            MockHttpSession adminSession = loginWithRole("adl" + timestamp.substring(timestamp.length() - 4), "admin");
             long id = createInterfaceInfo("adminDelApi", "/api/admin_del", "GET", InterfaceInfoStatusEnum.OFFLINE.getValue());
             String deleteJson = "{\"id\":" + id + "}";
             mockMvc.perform(post("/interfaceInfo/delete")
@@ -552,7 +556,8 @@ class InterfaceInfoControllerTest {
         @Test
         @DisplayName("非管理员发布应返回无权限")
         void shouldDenyNonAdmin() throws Exception {
-            MockHttpSession userSession = loginWithRole("user_online2_" + System.currentTimeMillis(), "user");
+            String timestamp = String.valueOf(System.currentTimeMillis());
+            MockHttpSession userSession = loginWithRole("uon" + timestamp.substring(timestamp.length() - 4), "user");
             long id = createInterfaceInfo("onlineApi2", "/api/online_test2", "GET", InterfaceInfoStatusEnum.OFFLINE.getValue());
 
             String onlineJson = "{\"id\":" + id + "}";
@@ -636,7 +641,8 @@ class InterfaceInfoControllerTest {
         @Test
         @DisplayName("非管理员下线应返回无权限")
         void shouldDenyNonAdmin() throws Exception {
-            MockHttpSession userSession = loginWithRole("user_offline2_" + System.currentTimeMillis(), "user");
+            String timestamp = String.valueOf(System.currentTimeMillis());
+            MockHttpSession userSession = loginWithRole("uof" + timestamp.substring(timestamp.length() - 4), "user");
             long id = createInterfaceInfo("offlineApi2", "/api/offline_test2", "GET", InterfaceInfoStatusEnum.ONLINE.getValue());
 
             // 非管理员尝试下线

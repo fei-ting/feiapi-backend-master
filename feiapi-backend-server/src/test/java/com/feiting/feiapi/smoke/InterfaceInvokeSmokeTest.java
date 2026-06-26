@@ -103,9 +103,10 @@ class InterfaceInvokeSmokeTest {
     @Test
     @DisplayName("成功调用全链路: 创建 -> 发布(mock成功) -> ONLINE -> 调用 -> 返回 data")
     void fullSuccessfulInvokeLifecycle() throws Exception {
-        String suffix = String.valueOf(Math.abs(System.nanoTime() % 100000));
-        String adminAccount = "admi" + suffix;
-        String userAccount = "user" + suffix;
+        // 使用短前缀 + 3位随机数，确保账号长度符合 4-10 位规则
+        String suffix = String.valueOf(Math.abs(System.nanoTime() % 1000));
+        String adminAccount = "ai" + suffix;
+        String userAccount = "us" + suffix;
 
         long interfaceInfoId = -1;
         long adminId = -1;
@@ -202,9 +203,9 @@ class InterfaceInvokeSmokeTest {
     @Test
     @DisplayName("完整状态机: 创建(OFFLINE) -> 发布(失败回滚OFFLINE) -> 未上线不可调用")
     void fullStateMachineLifecycle() throws Exception {
-        String suffix = String.valueOf(Math.abs(System.nanoTime() % 100000));
-        String adminAccount = "adms" + suffix;
-        String userAccount = "usrs" + suffix;
+        String suffix = String.valueOf(Math.abs(System.nanoTime() % 1000));
+        String adminAccount = "as" + suffix;
+        String userAccount = "us" + suffix;
 
         long interfaceInfoId = -1;
         long adminId = -1;
@@ -293,9 +294,10 @@ class InterfaceInvokeSmokeTest {
     @Test
     @DisplayName("普通用户删除平台接口应失败")
     void deleteOthersInterfaceShouldFail() throws Exception {
-        String suffix = String.valueOf(System.currentTimeMillis());
-        String ownerAccount = "smoke_owner_" + suffix;
-        String otherAccount = "smoke_other_" + suffix;
+        // 使用短后缀，确保账号长度符合 4-10 位规则
+        String suffix = String.valueOf(System.currentTimeMillis() % 1000);
+        String ownerAccount = "so" + suffix;
+        String otherAccount = "sr" + suffix;
 
         long interfaceInfoId = -1;
         long ownerId = -1;

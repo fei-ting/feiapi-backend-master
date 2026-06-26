@@ -66,7 +66,7 @@ class AuthInterceptorTest {
         @Test
         @DisplayName("管理员访问 /user/list/page 成功")
         void shouldAllowAdminAccess() throws Exception {
-            MockHttpSession session = loginWithRole("auth_admin01", "admin");
+            MockHttpSession session = loginWithRole("aut01", "admin");
 
             mockMvc.perform(get("/user/list/page").session(session))
                     .andExpect(status().isOk())
@@ -76,7 +76,7 @@ class AuthInterceptorTest {
         @Test
         @DisplayName("普通用户访问 /user/list/page 返回无权限")
         void shouldDenyNormalUser() throws Exception {
-            MockHttpSession session = loginWithRole("auth_user01", "user");
+            MockHttpSession session = loginWithRole("auu01", "user");
 
             mockMvc.perform(get("/user/list/page").session(session))
                     .andExpect(status().isOk())

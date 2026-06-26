@@ -134,8 +134,8 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("普通用户新增调用关系失败")
         void shouldFailWhenNormalUserAdd() throws Exception {
-            MockHttpSession session = loginAsUser("uii_add_01");
-            User user = userService.lambdaQuery().eq(User::getUserAccount, "uii_add_01").one();
+            MockHttpSession session = loginAsUser("uaa01");
+            User user = userService.lambdaQuery().eq(User::getUserAccount, "uaa01").one();
             long interfaceInfoId = createInterface("addApi", "/api/add_01");
 
             String json = "{\"userId\":" + user.getId()
@@ -159,9 +159,9 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("管理员新增成功且忽略调用次数和状态字段")
         void shouldAddByAdminAndIgnoreQuotaFields() throws Exception {
-            MockHttpSession session = loginAsAdmin("uii_add_admin_01");
-            loginAsUser("uii_add_target_01");
-            User user = userService.lambdaQuery().eq(User::getUserAccount, "uii_add_target_01").one();
+            MockHttpSession session = loginAsAdmin("uba01");
+            loginAsUser("ubt01");
+            User user = userService.lambdaQuery().eq(User::getUserAccount, "ubt01").one();
             long interfaceInfoId = createInterface("addAdminApi", "/api/add_admin_01");
 
             String json = "{\"userId\":" + user.getId()
@@ -193,7 +193,7 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("请求体为空返回参数错误")
         void shouldFailWhenBodyNull() throws Exception {
-            MockHttpSession session = loginAsUser("uii_add_02");
+            MockHttpSession session = loginAsUser("uba02");
 
             mockMvc.perform(post("/userInterfaceInfo/add")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -210,8 +210,8 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("普通用户根据 id 获取自己的调用关系成功")
         void shouldGetOwnRecordById() throws Exception {
-            MockHttpSession session = loginAsUser("uii_get_01");
-            User user = userService.lambdaQuery().eq(User::getUserAccount, "uii_get_01").one();
+            MockHttpSession session = loginAsUser("uga01");
+            User user = userService.lambdaQuery().eq(User::getUserAccount, "uga01").one();
             long interfaceInfoId = createInterface("getApi", "/api/get_01");
             long id = createUserInterfaceInfo(user.getId(), interfaceInfoId, 0, 0, 0);
 
@@ -228,13 +228,13 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("普通用户根据 id 获取他人的调用关系失败")
         void shouldFailWhenGetOtherUserRecordById() throws Exception {
-            MockHttpSession ownerSession = loginAsUser("uii_get_owner");
+            MockHttpSession ownerSession = loginAsUser("ugo01");
             assertNotNull(ownerSession);
-            User owner = userService.lambdaQuery().eq(User::getUserAccount, "uii_get_owner").one();
+            User owner = userService.lambdaQuery().eq(User::getUserAccount, "ugo01").one();
             long interfaceInfoId = createInterface("getOtherApi", "/api/get_other_01");
             long id = createUserInterfaceInfo(owner.getId(), interfaceInfoId, 0, 0, 0);
 
-            MockHttpSession otherSession = loginAsUser("uii_get_other");
+            MockHttpSession otherSession = loginAsUser("ugr01");
             mockMvc.perform(get("/userInterfaceInfo/my/get")
                             .param("id", String.valueOf(id))
                             .session(otherSession))
@@ -245,9 +245,9 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("管理员根据 id 获取任意调用关系成功")
         void shouldAdminGetRecordById() throws Exception {
-            MockHttpSession adminSession = loginAsAdmin("uii_get_admin");
-            loginAsUser("uii_get_target");
-            User user = userService.lambdaQuery().eq(User::getUserAccount, "uii_get_target").one();
+            MockHttpSession adminSession = loginAsAdmin("ugb01");
+            loginAsUser("ugt01");
+            User user = userService.lambdaQuery().eq(User::getUserAccount, "ugt01").one();
             long interfaceInfoId = createInterface("getAdminApi", "/api/get_admin_01");
             long id = createUserInterfaceInfo(user.getId(), interfaceInfoId, 0, 0, 0);
 
@@ -263,7 +263,7 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("id <= 0 返回参数错误")
         void shouldFailWhenIdInvalid() throws Exception {
-            MockHttpSession session = loginAsUser("uii_get_02");
+            MockHttpSession session = loginAsUser("uga02");
             mockMvc.perform(get("/userInterfaceInfo/my/get")
                             .param("id", "0")
                             .session(session))
@@ -274,7 +274,7 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("不存在的 id 返回 null data")
         void shouldReturnNullForNonExistentId() throws Exception {
-            MockHttpSession session = loginAsUser("uii_get_03");
+            MockHttpSession session = loginAsUser("uga03");
             mockMvc.perform(get("/userInterfaceInfo/my/get")
                             .param("id", "99999")
                             .session(session))
@@ -291,8 +291,8 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("普通用户删除自己的调用关系失败")
         void shouldFailWhenNormalUserDeleteOwnRecord() throws Exception {
-            MockHttpSession session = loginAsUser("uii_del_01");
-            User user = userService.lambdaQuery().eq(User::getUserAccount, "uii_del_01").one();
+            MockHttpSession session = loginAsUser("uda01");
+            User user = userService.lambdaQuery().eq(User::getUserAccount, "uda01").one();
             long interfaceInfoId = createInterface("delApi", "/api/del_01");
             long id = createUserInterfaceInfo(user.getId(), interfaceInfoId, 0, 0, 0);
 
@@ -311,9 +311,9 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("管理员删除调用关系成功")
         void shouldAdminDeleteRecord() throws Exception {
-            MockHttpSession adminSession = loginAsAdmin("uii_del_admin_01");
-            loginAsUser("uii_del_target_01");
-            User user = userService.lambdaQuery().eq(User::getUserAccount, "uii_del_target_01").one();
+            MockHttpSession adminSession = loginAsAdmin("udb01");
+            loginAsUser("udt01");
+            User user = userService.lambdaQuery().eq(User::getUserAccount, "udt01").one();
             long interfaceInfoId = createInterface("delAdminApi", "/api/del_admin_01");
             long id = createUserInterfaceInfo(user.getId(), interfaceInfoId, 0, 0, 0);
 
@@ -332,7 +332,7 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("id <= 0 返回参数错误")
         void shouldFailWhenIdInvalid() throws Exception {
-            MockHttpSession session = loginAsAdmin("uii_del_02");
+            MockHttpSession session = loginAsAdmin("uda02");
             String json = "{\"id\":0}";
 
             mockMvc.perform(post("/userInterfaceInfo/delete")
@@ -346,7 +346,7 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("记录不存在返回数据不存在")
         void shouldFailWhenNotFound() throws Exception {
-            MockHttpSession session = loginAsAdmin("uii_del_03");
+            MockHttpSession session = loginAsAdmin("uda03");
             String json = "{\"id\":99999}";
 
             mockMvc.perform(post("/userInterfaceInfo/delete")
@@ -361,13 +361,13 @@ class UserInterfaceInfoControllerTest {
         @DisplayName("普通用户删除他人调用关系失败")
         void shouldFailWhenNormalUserDeleteOtherRecord() throws Exception {
             // 用户1创建
-            MockHttpSession session1 = loginAsUser("uii_del_owner");
-            User user1 = userService.lambdaQuery().eq(User::getUserAccount, "uii_del_owner").one();
+            MockHttpSession session1 = loginAsUser("udo01");
+            User user1 = userService.lambdaQuery().eq(User::getUserAccount, "udo01").one();
             long interfaceInfoId = createInterface("delApi2", "/api/del_04");
             long id = createUserInterfaceInfo(user1.getId(), interfaceInfoId, 0, 0, 0);
 
             // 用户2尝试删除
-            MockHttpSession session2 = loginAsUser("uii_del_other");
+            MockHttpSession session2 = loginAsUser("udr01");
             String deleteJson = "{\"id\":" + id + "}";
             mockMvc.perform(post("/userInterfaceInfo/delete")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -388,8 +388,8 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("普通用户更新自己的调用关系失败")
         void shouldFailWhenNormalUserUpdateOwnRecord() throws Exception {
-            MockHttpSession session = loginAsUser("uii_upd_01");
-            User user = userService.lambdaQuery().eq(User::getUserAccount, "uii_upd_01").one();
+            MockHttpSession session = loginAsUser("upa01");
+            User user = userService.lambdaQuery().eq(User::getUserAccount, "upa01").one();
             long interfaceInfoId = createInterface("updApi", "/api/upd_01");
             long id = createUserInterfaceInfo(user.getId(), interfaceInfoId, 10, 2, 0);
 
@@ -410,9 +410,9 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("管理员更新时忽略调用次数和状态字段")
         void shouldIgnoreQuotaFieldsWhenAdminUpdate() throws Exception {
-            MockHttpSession adminSession = loginAsAdmin("uii_upd_admin_01");
-            loginAsUser("uii_upd_target_01");
-            User user = userService.lambdaQuery().eq(User::getUserAccount, "uii_upd_target_01").one();
+            MockHttpSession adminSession = loginAsAdmin("upb01");
+            loginAsUser("upt01");
+            User user = userService.lambdaQuery().eq(User::getUserAccount, "upt01").one();
             long oldInterfaceInfoId = createInterface("updAdminApiOld", "/api/upd_admin_old_01");
             long newInterfaceInfoId = createInterface("updAdminApiNew", "/api/upd_admin_new_01");
             long id = createUserInterfaceInfo(user.getId(), oldInterfaceInfoId, 10, 2, 0);
@@ -437,7 +437,7 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("id <= 0 返回参数错误")
         void shouldFailWhenIdInvalid() throws Exception {
-            MockHttpSession session = loginAsAdmin("uii_upd_02");
+            MockHttpSession session = loginAsAdmin("upa02");
             String json = "{\"id\":0}";
 
             mockMvc.perform(post("/userInterfaceInfo/update")
@@ -451,7 +451,7 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("记录不存在返回数据不存在")
         void shouldFailWhenNotFound() throws Exception {
-            MockHttpSession session = loginAsAdmin("uii_upd_03");
+            MockHttpSession session = loginAsAdmin("upa03");
             String json = "{\"id\":99999,\"leftNum\":50}";
 
             mockMvc.perform(post("/userInterfaceInfo/update")
@@ -470,7 +470,7 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("普通用户无参数时使用默认分页返回自己的调用关系")
         void shouldReturnMyRecordsWithDefaults() throws Exception {
-            MockHttpSession session = loginAsUser("uii_page_default");
+            MockHttpSession session = loginAsUser("upd01");
             mockMvc.perform(get("/userInterfaceInfo/my/list/page").session(session))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(0));
@@ -479,7 +479,7 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("pageSize > 50 返回参数错误")
         void shouldFailWhenPageSizeTooLarge() throws Exception {
-            MockHttpSession session = loginAsUser("uii_page_size");
+            MockHttpSession session = loginAsUser("ups01");
             mockMvc.perform(get("/userInterfaceInfo/my/list/page")
                             .param("pageSize", "51")
                             .session(session))
@@ -490,12 +490,12 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("普通用户分页查询只返回自己的调用关系")
         void shouldReturnOnlyMyPaginatedData() throws Exception {
-            MockHttpSession session = loginAsUser("uii_page_01");
-            User user = userService.lambdaQuery().eq(User::getUserAccount, "uii_page_01").one();
+            MockHttpSession session = loginAsUser("up001");
+            User user = userService.lambdaQuery().eq(User::getUserAccount, "up001").one();
             long interfaceInfoId = createInterface("pageApi", "/api/page_01");
             createUserInterfaceInfo(user.getId(), interfaceInfoId, 0, 0, 0);
-            loginAsUser("uii_page_other");
-            User otherUser = userService.lambdaQuery().eq(User::getUserAccount, "uii_page_other").one();
+            loginAsUser("upo01");
+            User otherUser = userService.lambdaQuery().eq(User::getUserAccount, "upo01").one();
             long otherInterfaceInfoId = createInterface("pageOtherApi", "/api/page_other_01");
             createUserInterfaceInfo(otherUser.getId(), otherInterfaceInfoId, 0, 0, 0);
 
@@ -514,9 +514,9 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("管理员分页查询可返回任意用户调用关系")
         void shouldAdminReturnPaginatedData() throws Exception {
-            MockHttpSession adminSession = loginAsAdmin("uii_page_admin");
-            loginAsUser("uii_page_target");
-            User user = userService.lambdaQuery().eq(User::getUserAccount, "uii_page_target").one();
+            MockHttpSession adminSession = loginAsAdmin("upb01");
+            loginAsUser("upt02");
+            User user = userService.lambdaQuery().eq(User::getUserAccount, "upt02").one();
             long interfaceInfoId = createInterface("pageAdminApi", "/api/page_admin_01");
             createUserInterfaceInfo(user.getId(), interfaceInfoId, 0, 0, 0);
 
@@ -548,7 +548,7 @@ class UserInterfaceInfoControllerTest {
         @Test
         @DisplayName("普通用户访问管理员分页接口失败")
         void shouldFailWhenNormalUserAccessAdminPage() throws Exception {
-            MockHttpSession session = loginAsUser("uii_page_normal_admin");
+            MockHttpSession session = loginAsUser("upn01");
 
             mockMvc.perform(get("/userInterfaceInfo/admin/list/page")
                             .param("current", "1")

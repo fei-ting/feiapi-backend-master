@@ -110,8 +110,8 @@ class AnalysisControllerTest {
         @Test
         @DisplayName("管理员查询 top 接口调用排行，验证排序正确")
         void shouldReturnTopInvokeInterfaceInfoSortedByTotalNum() throws Exception {
-            MockHttpSession session = loginWithRole("admin_analysis01", "admin");
-            User user = userService.lambdaQuery().eq(User::getUserAccount, "admin_analysis01").one();
+            MockHttpSession session = loginWithRole("ana01", "admin");
+            User user = userService.lambdaQuery().eq(User::getUserAccount, "ana01").one();
 
             // 插入 3 个接口
             insertInterfaceInfo(1001L, "api_low", "/api/low");
@@ -155,7 +155,7 @@ class AnalysisControllerTest {
         @Test
         @DisplayName("无调用数据时返回空列表")
         void shouldReturnEmptyListWhenNoData() throws Exception {
-            MockHttpSession session = loginWithRole("admin_analysis_empty", "admin");
+            MockHttpSession session = loginWithRole("ane01", "admin");
 
             mockMvc.perform(get("/analysis/top/interface/invoke").session(session))
                     .andExpect(status().isOk())
@@ -167,7 +167,7 @@ class AnalysisControllerTest {
         @Test
         @DisplayName("非管理员查询返回无权限")
         void shouldFailWhenNotAdmin() throws Exception {
-            MockHttpSession session = loginWithRole("user_analysis01", "user");
+            MockHttpSession session = loginWithRole("una01", "user");
 
             mockMvc.perform(get("/analysis/top/interface/invoke").session(session))
                     .andExpect(status().isOk())
