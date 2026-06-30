@@ -16,6 +16,7 @@
             <result property="responseHeader" column="response_header" jdbcType="VARCHAR"/>
             <result property="status" column="status" jdbcType="INTEGER"/>
             <result property="method" column="method" jdbcType="VARCHAR"/>
+            <result property="quotaType" column="quota_type" jdbcType="VARCHAR"/>
             <result property="userId" column="user_id" jdbcType="BIGINT"/>
             <result property="createTime" column="create_time" jdbcType="TIMESTAMP"/>
             <result property="updateTime" column="update_time" jdbcType="TIMESTAMP"/>
@@ -26,7 +27,7 @@
         id,name,description,
         url,path,target_host,
         request_params,request_header,response_header,
-        status,method,
+        status,method,quota_type,
         user_id,create_time,update_time,
         is_delete
     </sql>

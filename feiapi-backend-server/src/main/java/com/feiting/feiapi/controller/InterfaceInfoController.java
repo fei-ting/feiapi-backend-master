@@ -16,6 +16,7 @@ import com.feiting.feiapi.annotation.AuthCheck;
 import com.feiting.feiapi.constant.CommonConstant;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.service.InterfaceInfoService;
+import com.feiting.feiapi.service.InterfaceQuotaConfigService;
 import com.feiting.feiapi.component.SdkMethodRegistry;
 import com.feiting.feiapi.utils.SortFieldUtils;
 import com.feiting.feiapiclientsdk.client.FeiApiClient;
@@ -23,6 +24,7 @@ import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.entity.User;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoMethodEnum;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
+import com.feiting.feiapicommon.model.enums.InterfaceQuotaTypeEnum;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
@@ -47,7 +49,7 @@ public class InterfaceInfoController {
 
     private static final Set<String> ALLOWED_SORT_FIELDS = SortFieldUtils.allowedFields(
             "id", "name", "description", "url", "path", "targetHost", "requestParams", "requestHeader",
-            "responseHeader", "status", "method", "userId", "createTime", "updateTime"
+            "responseHeader", "status", "method", "quotaType", "userId", "createTime", "updateTime"
     );
 
     /** 发布验证超时时间（毫秒），超过此时间的 PUBLISHING 状态将被视为超时并自动恢复为 OFFLINE */
@@ -55,6 +57,9 @@ public class InterfaceInfoController {
 
     @Resource
     private InterfaceInfoService interfaceInfoService;
+
+    @Resource
+    private InterfaceQuotaConfigService interfaceQuotaConfigService;
 
     @Resource
     private UserService userService;
@@ -211,6 +216,8 @@ public class InterfaceInfoController {
         queryWrapper.eq(status != null, "status", status);
         queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getMethod()),
                 "method", InterfaceInfoMethodEnum.normalize(interfaceInfoQueryRequest.getMethod()));
+        queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getQuotaType()),
+                "quota_type", interfaceInfoQueryRequest.getQuotaType());
         queryWrapper.eq(interfaceInfoQueryRequest.getUserId() != null, "user_id", interfaceInfoQueryRequest.getUserId());
         queryWrapper.orderBy(StringUtils.isNotBlank(sortField),
                 CommonConstant.SORT_ORDER_ASC.equals(sortOrder), sortField);
@@ -375,6 +382,11 @@ public class InterfaceInfoController {
         if (StringUtils.isNotBlank(interfaceInfo.getMethod())) {
             interfaceInfo.setMethod(InterfaceInfoMethodEnum.normalize(interfaceInfo.getMethod()));
         }
+        if (StringUtils.isBlank(interfaceInfo.getQuotaType())) {
+            interfaceInfo.setQuotaType(InterfaceQuotaTypeEnum.BASIC_QUOTA.getValue());
+        } else {
+            interfaceInfo.setQuotaType(interfaceInfo.getQuotaType().trim());
+        }
         if (StringUtils.isBlank(interfaceInfo.getUrl())
                 && StringUtils.isNotBlank(interfaceInfo.getTargetHost())
                 && StringUtils.isNotBlank(interfaceInfo.getPath())) {
@@ -437,6 +449,11 @@ public class InterfaceInfoController {
         }
         InterfaceInfoVO interfaceInfoVO = new InterfaceInfoVO();
         BeanUtils.copyProperties(interfaceInfo, interfaceInfoVO);
+        InterfaceQuotaTypeEnum quotaTypeEnum = InterfaceQuotaTypeEnum.getEnumByValue(interfaceInfo.getQuotaType());
+        if (quotaTypeEnum != null) {
+            interfaceInfoVO.setQuotaTypeText(quotaTypeEnum.getText());
+            interfaceInfoVO.setInitialQuota(interfaceQuotaConfigService.getInitialQuota(quotaTypeEnum));
+        }
         return interfaceInfoVO;
     }
 

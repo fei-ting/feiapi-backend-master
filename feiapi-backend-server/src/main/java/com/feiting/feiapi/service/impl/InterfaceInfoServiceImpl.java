@@ -8,6 +8,7 @@ import com.feiting.feiapi.mapper.InterfaceInfoMapper;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoMethodEnum;
+import com.feiting.feiapicommon.model.enums.InterfaceQuotaTypeEnum;
 import com.feiting.feiapicommon.utils.InterfaceTargetHostValidator;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
@@ -39,6 +40,7 @@ public class InterfaceInfoServiceImpl extends ServiceImpl<InterfaceInfoMapper, I
         String path = interfaceInfo.getPath();
         String targetHost = interfaceInfo.getTargetHost();
         String method = interfaceInfo.getMethod();
+        String quotaType = interfaceInfo.getQuotaType();
 
         // 创建时，必填字段强制校验：name、path、targetHost、method 不能为空。
         if (add) {
@@ -75,6 +77,9 @@ public class InterfaceInfoServiceImpl extends ServiceImpl<InterfaceInfoMapper, I
         }
         if (StringUtils.isNotBlank(method) && !InterfaceInfoMethodEnum.isValid(method)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求方法不合法");
+        }
+        if (StringUtils.isNotBlank(quotaType) && !InterfaceQuotaTypeEnum.isValid(quotaType)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "配额类型不合法");
         }
         if (StringUtils.isNotBlank(path) && !path.trim().startsWith("/")) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "接口路径必须以 / 开头");
