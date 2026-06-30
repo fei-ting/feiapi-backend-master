@@ -30,7 +30,7 @@ insert into user (user_name, user_account, user_role, user_password, access_key,
 select '管理员',
        'admin',
        'admin',
-       '$2a$10$vB0k5F8jA3ny0mFkEQMroezxtYpDT4q0/EGfra9VCEd9uuh.5TWjO',
+       '$2a$10$ZQ4BuFtcYf9963e/GSGrmu1BcFDKM0cZKg5G0UEaioME2jF8ORZbS',
        'test-admin-access-key',
        'test-admin-secret-key'
 where not exists (
