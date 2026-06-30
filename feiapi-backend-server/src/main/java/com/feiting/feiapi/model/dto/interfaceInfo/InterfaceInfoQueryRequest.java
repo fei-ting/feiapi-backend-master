@@ -88,6 +88,12 @@ public class InterfaceInfoQueryRequest extends PageRequest implements Serializab
     private String method;
 
     /**
+     * 接口配额类型
+     */
+    @Size(max = 32, message = "配额类型长度不能超过 32")
+    private String quotaType;
+
+    /**
      * 创建人
      */
     @Positive(message = "创建人 id 必须大于 0")

@@ -11,6 +11,7 @@ import com.feiting.feiapi.model.dto.userinterfaceinfo.UserInterfaceInfoAddReques
 import com.feiting.feiapi.model.dto.userinterfaceinfo.UserInterfaceInfoQueryRequest;
 import com.feiting.feiapi.model.dto.userinterfaceinfo.UserInterfaceInfoUpdateRequest;
 import com.feiting.feiapi.model.enums.UserRoleEnum;
+import com.feiting.feiapi.model.vo.UserInterfaceInfoVO;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapi.utils.SortFieldUtils;
@@ -180,9 +181,10 @@ public class UserInterfaceInfoController {
      * @return 分页调用关系列表
      */
     @GetMapping("/my/list/page")
-    public BaseResponse<Page<UserInterfaceInfo>> listMyUserInterfaceInfoByPage(@Valid UserInterfaceInfoQueryRequest userInterfaceInfoQueryRequest, HttpServletRequest request) {
+    public BaseResponse<Page<UserInterfaceInfoVO>> listMyUserInterfaceInfoByPage(@Valid UserInterfaceInfoQueryRequest userInterfaceInfoQueryRequest, HttpServletRequest request) {
         User loginUser = getCurrentLoginUser(request);
-        return listUserInterfaceInfoPage(userInterfaceInfoQueryRequest, loginUser.getId());
+        Page<UserInterfaceInfoVO> quotaPage = userInterfaceInfoService.listMyQuotaPage(userInterfaceInfoQueryRequest, loginUser.getId());
+        return ResultUtils.success(quotaPage);
     }
 
     /**

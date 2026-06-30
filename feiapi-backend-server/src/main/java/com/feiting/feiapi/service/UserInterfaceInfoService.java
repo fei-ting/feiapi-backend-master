@@ -1,6 +1,9 @@
 package com.feiting.feiapi.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.feiting.feiapi.model.dto.userinterfaceinfo.UserInterfaceInfoQueryRequest;
+import com.feiting.feiapi.model.vo.UserInterfaceInfoVO;
 import com.feiting.feiapicommon.model.entity.UserInterfaceInfo;
 
 import java.util.List;
@@ -44,6 +47,22 @@ public interface UserInterfaceInfoService extends IService<UserInterfaceInfo> {
      * @return 剩余次数是否足够
      */
     boolean leftNumIsEnough(long userId, long interfaceInfoId);
+
+    /**
+     * 为新注册用户发放未删除有限额度接口的初始额度。
+     *
+     * @param userId 用户 ID
+     */
+    void grantInitialQuotaForNewUser(long userId);
+
+    /**
+     * 分页查询当前用户的接口额度视图。
+     *
+     * @param queryRequest 查询请求
+     * @param userId       用户 ID
+     * @return 用户接口额度分页视图
+     */
+    Page<UserInterfaceInfoVO> listMyQuotaPage(UserInterfaceInfoQueryRequest queryRequest, long userId);
 
     /**
      * 接口调用次数排行的集合

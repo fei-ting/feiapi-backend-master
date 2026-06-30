@@ -90,6 +90,13 @@ public class InterfaceInfoUpdateRequest implements Serializable {
     private String method;
 
     /**
+     * 接口配额类型
+     */
+    @Pattern(regexp = ".*\\S.*", message = "配额类型不能为空白")
+    @Size(max = 32, message = "配额类型长度不能超过 32")
+    private String quotaType;
+
+    /**
      * 创建人
      */
     @Positive(message = "创建人 id 必须大于 0")

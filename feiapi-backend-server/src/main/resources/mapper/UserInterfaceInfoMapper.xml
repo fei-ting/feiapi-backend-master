@@ -37,4 +37,31 @@
         on duplicate key update
             is_delete = 0
     </insert>
+
+    <insert id="batchInsertIgnoreIfAbsent">
+        insert into user_interface_info (user_id, interface_info_id, left_num, total_num, status, is_delete)
+        values
+        <foreach collection="userInterfaceInfoList" item="item" separator=",">
+            (#{item.userId}, #{item.interfaceInfoId}, #{item.leftNum}, #{item.totalNum}, #{item.status}, 0)
+        </foreach>
+        on duplicate key update
+            is_delete = 0
+    </insert>
+
+    <insert id="insertOrIncreaseTotalNum">
+        insert into user_interface_info (user_id, interface_info_id, left_num, total_num, is_delete)
+        values (#{userId}, #{interfaceInfoId}, 0, 1, 0)
+        on duplicate key update
+            total_num = total_num + 1,
+            is_delete = 0
+    </insert>
+
+    <update id="decreaseTotalNumOnly">
+        update user_interface_info
+        set total_num = total_num - 1
+        where user_id = #{userId}
+          and interface_info_id = #{interfaceInfoId}
+          and is_delete = 0
+          and total_num > 0
+    </update>
 </mapper>

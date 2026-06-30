@@ -4,8 +4,14 @@ import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.config.CacheConfig;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.model.enums.UserRoleEnum;
+import com.feiting.feiapi.service.InterfaceInfoService;
+import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapi.service.UserService;
+import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.entity.User;
+import com.feiting.feiapicommon.model.entity.UserInterfaceInfo;
+import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
+import com.feiting.feiapicommon.model.enums.InterfaceQuotaTypeEnum;
 import jakarta.annotation.Resource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -63,6 +69,31 @@ class UserServiceImplTest {
     @Resource
     private CacheManager cacheManager;
 
+    @Resource
+    private InterfaceInfoService interfaceInfoService;
+
+    @Resource
+    private UserInterfaceInfoService userInterfaceInfoService;
+
+    private long insertInterfaceInfo(String quotaType, int status) {
+        InterfaceInfo interfaceInfo = new InterfaceInfo();
+        long uniqueId = System.nanoTime();
+        interfaceInfo.setName("registerQuotaInterface" + uniqueId);
+        interfaceInfo.setDescription("注册发放测试接口");
+        interfaceInfo.setUrl("http://feiapi-interface:8123/api/register-quota/" + uniqueId);
+        interfaceInfo.setPath("/api/register-quota/" + uniqueId);
+        interfaceInfo.setTargetHost("http://feiapi-interface:8123");
+        interfaceInfo.setRequestParams("");
+        interfaceInfo.setRequestHeader("");
+        interfaceInfo.setResponseHeader("");
+        interfaceInfo.setStatus(status);
+        interfaceInfo.setMethod("GET");
+        interfaceInfo.setQuotaType(quotaType);
+        interfaceInfo.setUserId(1L);
+        interfaceInfoService.save(interfaceInfo);
+        return interfaceInfo.getId();
+    }
+
     @Nested
     @DisplayName("userRegister 用户注册")
     class UserRegisterTests {
@@ -118,6 +149,35 @@ class UserServiceImplTest {
             assertNotNull(user);
             assertNotEquals("password123", user.getUserPassword());
             assertTrue(user.getUserPassword().startsWith("$2a$"));
+        }
+
+        @Test
+        @DisplayName("注册后发放未删除有限额度接口，不给免费无限接口批量创建关系")
+        void shouldGrantLimitedQuotaAfterRegister() {
+            long basicInterfaceId = insertInterfaceInfo(InterfaceQuotaTypeEnum.BASIC_QUOTA.getValue(), InterfaceInfoStatusEnum.OFFLINE.getValue());
+            long advancedInterfaceId = insertInterfaceInfo(InterfaceQuotaTypeEnum.ADVANCED_TRIAL.getValue(), InterfaceInfoStatusEnum.ONLINE.getValue());
+            long freeInterfaceId = insertInterfaceInfo(InterfaceQuotaTypeEnum.FREE_UNLIMITED.getValue(), InterfaceInfoStatusEnum.ONLINE.getValue());
+
+            long userId = userService.userRegister("quotausr1", "password123", "password123");
+
+            UserInterfaceInfo basicRelation = userInterfaceInfoService.lambdaQuery()
+                    .eq(UserInterfaceInfo::getUserId, userId)
+                    .eq(UserInterfaceInfo::getInterfaceInfoId, basicInterfaceId)
+                    .one();
+            UserInterfaceInfo advancedRelation = userInterfaceInfoService.lambdaQuery()
+                    .eq(UserInterfaceInfo::getUserId, userId)
+                    .eq(UserInterfaceInfo::getInterfaceInfoId, advancedInterfaceId)
+                    .one();
+            long freeRelationCount = userInterfaceInfoService.lambdaQuery()
+                    .eq(UserInterfaceInfo::getUserId, userId)
+                    .eq(UserInterfaceInfo::getInterfaceInfoId, freeInterfaceId)
+                    .count();
+
+            assertNotNull(basicRelation);
+            assertEquals(100, basicRelation.getLeftNum());
+            assertNotNull(advancedRelation);
+            assertEquals(3, advancedRelation.getLeftNum());
+            assertEquals(0, freeRelationCount);
         }
 
         @Test

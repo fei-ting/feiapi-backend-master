@@ -10,6 +10,7 @@ import com.feiting.feiapi.mapper.UserRoleChangeLogMapper;
 import com.feiting.feiapi.model.enums.UserRoleEnum;
 import com.feiting.feiapi.model.vo.LoginUserSnapshot;
 import com.feiting.feiapi.service.LoginAttemptService;
+import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapicommon.model.entity.User;
 import com.feiting.feiapicommon.model.entity.UserRoleChangeLog;
@@ -79,11 +80,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     private LoginAttemptService loginAttemptService;
 
     @Resource
+    private UserInterfaceInfoService userInterfaceInfoService;
+
+    @Resource
     private CacheManager cacheManager;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public long userRegister(String userAccount, String userPassword, String checkPassword) {
         // 1. 校验基础参数和账号密码格式，避免绕过 Web 层直接调用 Service 写入非法数据
         if (StringUtils.isAnyBlank(userAccount, userPassword, checkPassword)) {
@@ -124,6 +129,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         if (!saveResult) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "注册失败，数据库错误");
         }
+        userInterfaceInfoService.grantInitialQuotaForNewUser(user.getId());
         return user.getId();
     }
 

@@ -74,6 +74,11 @@ public class InterfaceInfo implements Serializable {
     private String method;
 
     /**
+     * 接口配额类型
+     */
+    private String quotaType;
+
+    /**
      * 创建人
      */
     private Long userId;
