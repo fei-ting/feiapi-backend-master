@@ -30,12 +30,36 @@ CREATE TABLE IF NOT EXISTS `interface_info` (
     `response_header` TEXT DEFAULT NULL,
     `status` INT NOT NULL DEFAULT 0,
     `method` VARCHAR(16) DEFAULT NULL,
+    `quota_type` VARCHAR(32) NOT NULL DEFAULT 'BASIC_QUOTA',
     `user_id` BIGINT DEFAULT NULL,
     `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
     `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
     `is_delete` TINYINT NOT NULL DEFAULT 0,
     UNIQUE (`path`, `method`, `is_delete`)
 );
+
+CREATE TABLE IF NOT EXISTS `interface_quota_config` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `quota_type` VARCHAR(32) NOT NULL,
+    `initial_quota` INT NOT NULL DEFAULT 0,
+    `description` VARCHAR(256) DEFAULT NULL,
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `is_delete` TINYINT NOT NULL DEFAULT 0,
+    UNIQUE (`quota_type`, `is_delete`)
+);
+
+INSERT INTO `interface_quota_config` (`quota_type`, `initial_quota`, `description`)
+SELECT 'FREE_UNLIMITED', 0, '免费无限接口'
+WHERE NOT EXISTS (SELECT 1 FROM `interface_quota_config` WHERE `quota_type` = 'FREE_UNLIMITED' AND `is_delete` = 0);
+
+INSERT INTO `interface_quota_config` (`quota_type`, `initial_quota`, `description`)
+SELECT 'BASIC_QUOTA', 100, '基础额度接口'
+WHERE NOT EXISTS (SELECT 1 FROM `interface_quota_config` WHERE `quota_type` = 'BASIC_QUOTA' AND `is_delete` = 0);
+
+INSERT INTO `interface_quota_config` (`quota_type`, `initial_quota`, `description`)
+SELECT 'ADVANCED_TRIAL', 3, '高级体验接口'
+WHERE NOT EXISTS (SELECT 1 FROM `interface_quota_config` WHERE `quota_type` = 'ADVANCED_TRIAL' AND `is_delete` = 0);
 
 CREATE TABLE IF NOT EXISTS `user_interface_info` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY,

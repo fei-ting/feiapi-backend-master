@@ -67,6 +67,21 @@ public class InterfaceInfoVO implements Serializable {
     private String method;
 
     /**
+     * 接口配额类型
+     */
+    private String quotaType;
+
+    /**
+     * 接口配额类型说明
+     */
+    private String quotaTypeText;
+
+    /**
+     * 当前配额类型初始额度
+     */
+    private Integer initialQuota;
+
+    /**
      * 创建人 id
      */
     private Long userId;

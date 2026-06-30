@@ -71,6 +71,12 @@ public class InterfaceInfoAddRequest implements Serializable {
     @Size(max = 16, message = "请求类型长度不能超过 16")
     private String method;
 
+    /**
+     * 接口配额类型
+     */
+    @Size(max = 32, message = "配额类型长度不能超过 32")
+    private String quotaType;
+
 
     private static final long serialVersionUID = 1L;
 }
