@@ -24,7 +24,7 @@ create table if not exists feiapi.`interface_info`
 
 -- 初始化土味情话接口
 insert into feiapi.interface_info (`name`, `description`, `url`, `path`, `target_host`, `request_params`, `request_header`, `response_header`, `status`, `method`, `quota_type`, `user_id`)
-select 'getLoveWords',
+select '土味情话',
        '随机获取一条土味情话',
        'http://feiapi-interface:8123/api/love_words',
        '/api/love_words',
@@ -42,7 +42,7 @@ where not exists (
 
 -- 初始化用户名称查询接口
 insert into feiapi.interface_info (`name`, `description`, `url`, `path`, `target_host`, `request_params`, `request_header`, `response_header`, `status`, `method`, `quota_type`, `user_id`)
-select 'getUsernameByPost',
+select '测试接口',
        '根据用户对象获取用户名（测试接口）',
        'http://feiapi-interface:8123/api/name/user',
        '/api/name/user',
