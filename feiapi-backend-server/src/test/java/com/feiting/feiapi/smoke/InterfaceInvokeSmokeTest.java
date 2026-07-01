@@ -87,6 +87,7 @@ class InterfaceInvokeSmokeTest {
     private long createInterfaceInfo(String name, String path, String method, long userId) {
         InterfaceInfo interfaceInfo = new InterfaceInfo();
         interfaceInfo.setName(name);
+        interfaceInfo.setSdkMethodName("getLoveWords");
         interfaceInfo.setDescription("desc_" + name);
         interfaceInfo.setPath(path);
         interfaceInfo.setTargetHost(TEST_TARGET_HOST);
@@ -128,7 +129,8 @@ class InterfaceInvokeSmokeTest {
 
             // ======== Step1: 创建接口（OFFLINE） ========
             InterfaceInfoAddRequest addRequest = new InterfaceInfoAddRequest();
-            addRequest.setName("getLoveWords");
+            addRequest.setName("随机土味情话");
+            addRequest.setSdkMethodName("getLoveWords");
             addRequest.setDescription("随机土味情话");
             addRequest.setPath("/api/love_words_" + suffix);
             addRequest.setTargetHost(TEST_TARGET_HOST);
@@ -222,7 +224,8 @@ class InterfaceInvokeSmokeTest {
 
             // ======== Step1: 创建接口，初始状态为 OFFLINE ========
             InterfaceInfoAddRequest addRequest = new InterfaceInfoAddRequest();
-            addRequest.setName("getLoveWords");
+            addRequest.setName("随机土味情话");
+            addRequest.setSdkMethodName("getLoveWords");
             addRequest.setDescription("随机土味情话");
             addRequest.setPath("/api/love_words_" + suffix);
             addRequest.setTargetHost(TEST_TARGET_HOST);

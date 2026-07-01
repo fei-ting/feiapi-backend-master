@@ -26,6 +26,11 @@ public class InterfaceInfo implements Serializable {
     private String name;
 
     /**
+     * SDK 方法名，用于发布验证和在线调用
+     */
+    private String sdkMethodName;
+
+    /**
      * 接口描述
      */
     private String description;

@@ -31,6 +31,13 @@ public class InterfaceInfoUpdateRequest implements Serializable {
     private String name;
 
     /**
+     * SDK 方法名
+     */
+    @Pattern(regexp = ".*\\S.*", message = "SDK 方法名不能为空白")
+    @Size(max = 128, message = "SDK 方法名长度不能超过 128")
+    private String sdkMethodName;
+
+    /**
      * 描述
      */
     @Size(max = 512, message = "接口描述长度不能超过 512")

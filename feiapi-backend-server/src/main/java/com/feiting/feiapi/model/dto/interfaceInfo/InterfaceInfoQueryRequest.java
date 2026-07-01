@@ -33,6 +33,12 @@ public class InterfaceInfoQueryRequest extends PageRequest implements Serializab
     private String name;
 
     /**
+     * SDK 方法名
+     */
+    @Size(max = 128, message = "SDK 方法名长度不能超过 128")
+    private String sdkMethodName;
+
+    /**
      * 描述
      */
     @Size(max = 512, message = "接口描述长度不能超过 512")

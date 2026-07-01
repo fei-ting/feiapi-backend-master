@@ -48,7 +48,7 @@ import java.util.stream.Collectors;
 public class InterfaceInfoController {
 
     private static final Set<String> ALLOWED_SORT_FIELDS = SortFieldUtils.allowedFields(
-            "id", "name", "description", "url", "path", "targetHost", "requestParams", "requestHeader",
+            "id", "name", "sdkMethodName", "description", "url", "path", "targetHost", "requestParams", "requestHeader",
             "responseHeader", "status", "method", "quotaType", "userId", "createTime", "updateTime"
     );
 
@@ -206,6 +206,8 @@ public class InterfaceInfoController {
         String descriptionKeyword = interfaceInfoQueryRequest.getDescription();
         queryWrapper.eq(interfaceInfoQueryRequest.getId() != null, "id", interfaceInfoQueryRequest.getId());
         queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getName()), "name", interfaceInfoQueryRequest.getName());
+        queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getSdkMethodName()),
+                "sdk_method_name", interfaceInfoQueryRequest.getSdkMethodName());
         queryWrapper.like(StringUtils.isNotBlank(descriptionKeyword), "description", descriptionKeyword);
         queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getUrl()), "url", interfaceInfoQueryRequest.getUrl());
         queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getPath()), "path", interfaceInfoQueryRequest.getPath());
@@ -263,6 +265,7 @@ public class InterfaceInfoController {
             }
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口仅支持从下线状态发布");
         }
+        String sdkMethodName = getRequiredSdkMethodName(oldInterfaceInfo);
 
         // 条件更新：只在当前状态为 OFFLINE 时才更新为 PUBLISHING
         updateInterfaceStatus(id,
@@ -272,7 +275,7 @@ public class InterfaceInfoController {
 
         try {
             feiApiClient.enableProbeMode();
-            Object invoke = sdkMethodRegistry.invoke(feiApiClient, oldInterfaceInfo.getName(), oldInterfaceInfo.getRequestParams());
+            Object invoke = sdkMethodRegistry.invoke(feiApiClient, sdkMethodName, oldInterfaceInfo.getRequestParams());
             if(invoke == null){
                 throw new BusinessException(ErrorCode.SYSTEM_ERROR,"接口验证失败");
             }
@@ -360,8 +363,21 @@ public class InterfaceInfoController {
 
         //调用模拟接口
         FeiApiClient tempClient = new FeiApiClient(accessKey, secretKey, gatewayHost);
-        Object invoke = sdkMethodRegistry.invoke(tempClient, oldInterfaceInfo.getName(), userRequestParams);
+        Object invoke = sdkMethodRegistry.invoke(tempClient, getRequiredSdkMethodName(oldInterfaceInfo), userRequestParams);
         return ResultUtils.success(invoke);
+    }
+
+    /**
+     * 获取接口绑定的 SDK 方法名。
+     *
+     * @param interfaceInfo 接口信息
+     * @return SDK 方法名
+     */
+    private String getRequiredSdkMethodName(InterfaceInfo interfaceInfo) {
+        if (interfaceInfo == null || StringUtils.isBlank(interfaceInfo.getSdkMethodName())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "接口未配置 SDK 方法名");
+        }
+        return interfaceInfo.getSdkMethodName().trim();
     }
 
     private String toDatabaseSortField(String sortField) {
@@ -381,6 +397,9 @@ public class InterfaceInfoController {
         }
         if (StringUtils.isNotBlank(interfaceInfo.getMethod())) {
             interfaceInfo.setMethod(InterfaceInfoMethodEnum.normalize(interfaceInfo.getMethod()));
+        }
+        if (StringUtils.isNotBlank(interfaceInfo.getSdkMethodName())) {
+            interfaceInfo.setSdkMethodName(interfaceInfo.getSdkMethodName().trim());
         }
         if (StringUtils.isBlank(interfaceInfo.getQuotaType())) {
             interfaceInfo.setQuotaType(InterfaceQuotaTypeEnum.BASIC_QUOTA.getValue());
