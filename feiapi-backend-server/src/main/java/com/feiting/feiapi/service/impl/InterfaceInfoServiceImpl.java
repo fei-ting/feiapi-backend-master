@@ -36,6 +36,7 @@ public class InterfaceInfoServiceImpl extends ServiceImpl<InterfaceInfoMapper, I
         }
 
         String name = interfaceInfo.getName();
+        String sdkMethodName = interfaceInfo.getSdkMethodName();
         String url = interfaceInfo.getUrl();
         String path = interfaceInfo.getPath();
         String targetHost = interfaceInfo.getTargetHost();
@@ -74,6 +75,12 @@ public class InterfaceInfoServiceImpl extends ServiceImpl<InterfaceInfoMapper, I
         // name 长度校验（创建和更新都适用）
         if (StringUtils.isNotBlank(name) && name.length() > 50) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "名称过长");
+        }
+        if (sdkMethodName != null && sdkMethodName.trim().isEmpty()) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "SDK 方法名不能为空白");
+        }
+        if (StringUtils.isNotBlank(sdkMethodName) && sdkMethodName.length() > 128) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "SDK 方法名过长");
         }
         if (StringUtils.isNotBlank(method) && !InterfaceInfoMethodEnum.isValid(method)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求方法不合法");

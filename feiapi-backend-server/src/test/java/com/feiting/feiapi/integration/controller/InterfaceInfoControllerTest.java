@@ -100,6 +100,7 @@ class InterfaceInfoControllerTest {
     private InterfaceInfoAddRequest buildAddRequest(String name, String path, String method) {
         InterfaceInfoAddRequest request = new InterfaceInfoAddRequest();
         request.setName(name);
+        request.setSdkMethodName("getLoveWords");
         request.setDescription("desc_" + name);
         request.setPath(path);
         request.setTargetHost(TEST_TARGET_HOST);
@@ -113,6 +114,7 @@ class InterfaceInfoControllerTest {
     private long createInterfaceInfo(String name, String path, String method, int status) {
         InterfaceInfo interfaceInfo = new InterfaceInfo();
         interfaceInfo.setName(name);
+        interfaceInfo.setSdkMethodName("getLoveWords");
         interfaceInfo.setDescription("desc_" + name);
         interfaceInfo.setPath(path);
         interfaceInfo.setTargetHost(TEST_TARGET_HOST);
@@ -151,6 +153,7 @@ class InterfaceInfoControllerTest {
             InterfaceInfo saved = interfaceInfoService.getById(id);
         assertNotNull(saved);
         assertEquals("addApi", saved.getName());
+        assertEquals("getLoveWords", saved.getSdkMethodName());
         assertEquals("/api/add_test", saved.getPath());
         assertEquals(TEST_TARGET_HOST + "/api/add_test", saved.getUrl());
         assertEquals(InterfaceInfoStatusEnum.OFFLINE.getValue(), saved.getStatus());
@@ -283,6 +286,7 @@ class InterfaceInfoControllerTest {
             InterfaceInfoUpdateRequest updateRequest = new InterfaceInfoUpdateRequest();
             updateRequest.setId(id);
             updateRequest.setName("updatedApi");
+            updateRequest.setSdkMethodName("getUsernameByPost");
             updateRequest.setDescription("已更新");
             updateRequest.setUrl("/api/updated");
             updateRequest.setRequestHeader("{\"Content-Type\":\"application/json\"}");
@@ -299,6 +303,7 @@ class InterfaceInfoControllerTest {
             // 验证数据库状态已变化
             InterfaceInfo updated = interfaceInfoService.getById(id);
             assertEquals("updatedApi", updated.getName());
+            assertEquals("getUsernameByPost", updated.getSdkMethodName());
             assertEquals("/api/updated", updated.getUrl());
             assertEquals("POST", updated.getMethod());
         }
