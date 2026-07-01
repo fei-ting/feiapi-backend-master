@@ -5,6 +5,7 @@ create table if not exists feiapi.`interface_info`
 (
     `id` bigint not null auto_increment comment '主键' primary key,
     `name` varchar(50) not null comment '接口名称',
+    `sdk_method_name` varchar(128) null comment 'SDK 方法名，用于发布验证和在线调用',
     `description` varchar(512) null comment '描述',
     `url` varchar(512) not null comment '接口展示地址，主要用于前端展示和兼容旧数据',
     `path` varchar(512) not null comment '接口路径，用于网关路由和接口唯一身份匹配',
@@ -23,8 +24,9 @@ create table if not exists feiapi.`interface_info`
     ) comment '接口信息';
 
 -- 初始化土味情话接口
-insert into feiapi.interface_info (`name`, `description`, `url`, `path`, `target_host`, `request_params`, `request_header`, `response_header`, `status`, `method`, `quota_type`, `user_id`)
-select 'getLoveWords',
+insert into feiapi.interface_info (`name`, `sdk_method_name`, `description`, `url`, `path`, `target_host`, `request_params`, `request_header`, `response_header`, `status`, `method`, `quota_type`, `user_id`)
+select '土味情话',
+       'getLoveWords',
        '随机获取一条土味情话',
        'http://feiapi-interface:8123/api/love_words',
        '/api/love_words',
@@ -37,12 +39,13 @@ select 'getLoveWords',
        'BASIC_QUOTA',
        (select id from feiapi.user where user_account = 'admin' limit 1)
 where not exists (
-    select 1 from feiapi.interface_info where `name` = 'getLoveWords' and `method` = 'GET'
+    select 1 from feiapi.interface_info where `path` = '/api/love_words' and `method` = 'GET' and `is_delete` = 0
 );
 
 -- 初始化用户名称查询接口
-insert into feiapi.interface_info (`name`, `description`, `url`, `path`, `target_host`, `request_params`, `request_header`, `response_header`, `status`, `method`, `quota_type`, `user_id`)
-select 'getUsernameByPost',
+insert into feiapi.interface_info (`name`, `sdk_method_name`, `description`, `url`, `path`, `target_host`, `request_params`, `request_header`, `response_header`, `status`, `method`, `quota_type`, `user_id`)
+select '测试接口',
+       'getUsernameByPost',
        '根据用户对象获取用户名（测试接口）',
        'http://feiapi-interface:8123/api/name/user',
        '/api/name/user',
@@ -55,5 +58,5 @@ select 'getUsernameByPost',
        'BASIC_QUOTA',
        (select id from feiapi.user where user_account = 'admin' limit 1)
 where not exists (
-    select 1 from feiapi.interface_info where `name` = 'getUsernameByPost' and `method` = 'POST'
+    select 1 from feiapi.interface_info where `path` = '/api/name/user' and `method` = 'POST' and `is_delete` = 0
 );
