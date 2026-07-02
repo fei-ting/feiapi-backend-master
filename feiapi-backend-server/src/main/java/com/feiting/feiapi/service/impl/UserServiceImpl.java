@@ -26,8 +26,10 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import jakarta.annotation.Resource;
 import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 
 
 /**
@@ -64,6 +66,28 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
      * 用户密码格式：8-16 位，只能包含大小写字母和数字，且必须同时包含字母和数字
      */
     private static final String USER_PASSWORD_PATTERN = "^(?=.*[a-zA-Z])(?=.*[0-9])[a-zA-Z0-9]{8,16}$";
+
+    /**
+     * 用户昵称格式：2-16 位，只能包含中文、英文字母和数字
+     */
+    private static final String USER_NAME_PATTERN = "^[\\p{IsHan}A-Za-z0-9]{2,16}$";
+
+    /**
+     * 默认昵称前缀
+     */
+    private static final String DEFAULT_USER_NAME_PREFIX = "用户";
+
+    /**
+     * 默认昵称随机数上限
+     */
+    private static final int DEFAULT_USER_NAME_RANDOM_BOUND = 1_000_000;
+
+     /**
+     * 昵称敏感词字典
+     */
+    private static final List<String> USER_NAME_SENSITIVE_WORDS = Arrays.asList(
+            "admin", "root", "管理员", "系统", "官方", "客服", "feiapi", "色情", "赌博", "毒品"
+    );
 
     /**
      * 安全随机数生成器
@@ -117,6 +141,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         // 4. 插入数据，并将并发注册触发的唯一键冲突转为业务异常
         User user = new User();
         user.setUserAccount(userAccount);
+        user.setUserName(generateDefaultUserName());
         user.setUserPassword(encryptPassword);
         user.setAccessKey(accessKey);
         user.setSecretKey(secretKey);
@@ -143,6 +168,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         byte[] randomBytes = new byte[byteLength];
         SECURE_RANDOM.nextBytes(randomBytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
+    }
+
+    /**
+     * 生成默认用户昵称
+     *
+     * @return 默认用户昵称
+     */
+    private String generateDefaultUserName() {
+        return DEFAULT_USER_NAME_PREFIX + String.format(Locale.ROOT, "%06d",
+                SECURE_RANDOM.nextInt(DEFAULT_USER_NAME_RANDOM_BOUND));
     }
 
     @Override
@@ -191,6 +226,32 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         if (!userPassword.matches(USER_PASSWORD_PATTERN)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "密码长度 8-16 位，只能包含大小写字母和数字，且必须同时包含字母和数字");
         }
+    }
+
+    /**
+     * 校验并规范化用户昵称
+     *
+     * @param userName 用户昵称
+     * @return 规范化后的用户昵称
+     */
+    private String validateAndNormalizeUserName(String userName) {
+        if (StringUtils.isBlank(userName)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "请输入昵称");
+        }
+        String normalizedUserName = userName.trim();
+        if (normalizedUserName.length() < 2 || normalizedUserName.length() > 16) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "昵称需为 2-16 位");
+        }
+        if (!normalizedUserName.matches(USER_NAME_PATTERN)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "昵称只能包含中文、英文和数字");
+        }
+        String lowerUserName = normalizedUserName.toLowerCase(Locale.ROOT);
+        boolean containsSensitiveWord = USER_NAME_SENSITIVE_WORDS.stream()
+                .anyMatch(lowerUserName::contains);
+        if (containsSensitiveWord) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "昵称包含不允许使用的内容");
+        }
+        return normalizedUserName;
     }
 
     /**
@@ -270,19 +331,20 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean updateCurrentUserProfile(Long userId, String userName, Integer gender) {
-        if (userId == null || userId <= 0 || StringUtils.isBlank(userName) || gender == null) {
+        if (userId == null || userId <= 0 || gender == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         if (gender < 0 || gender > 1) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "非法的性别值");
         }
+        String normalizedUserName = validateAndNormalizeUserName(userName);
         User currentUser = this.getById(userId);
         if (currentUser == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
         }
         User updateUser = new User();
         updateUser.setId(userId);
-        updateUser.setUserName(userName.trim());
+        updateUser.setUserName(normalizedUserName);
         updateUser.setGender(gender);
         boolean result = this.updateById(updateUser);
         if (result) {

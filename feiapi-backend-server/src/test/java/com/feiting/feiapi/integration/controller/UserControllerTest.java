@@ -112,12 +112,19 @@ class UserControllerTest {
             request.setUserPassword("password123");
             request.setCheckPassword("password123");
 
-            mockMvc.perform(post("/user/register")
+            String response = mockMvc.perform(post("/user/register")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(0))
-                    .andExpect(jsonPath("$.data").isNumber());
+                    .andExpect(jsonPath("$.data").isNumber())
+                    .andReturn().getResponse().getContentAsString();
+
+            Long userId = objectMapper.readTree(response).get("data").asLong();
+            User user = userService.getById(userId);
+            org.assertj.core.api.Assertions.assertThat(user.getUserName())
+                    .as("注册用户应自动生成默认昵称")
+                    .matches("用户\\d{6}");
         }
 
         @Test
@@ -309,9 +316,52 @@ class UserControllerTest {
         }
 
         @Test
+        @DisplayName("昵称长度非法返回参数错误")
+        void shouldRejectInvalidUserNameLength() throws Exception {
+            MockHttpSession session = registerAndLogin("profile05", "password123");
+            String requestBody = "{\"userName\":\"短\",\"gender\":1}";
+
+            mockMvc.perform(post("/user/update/my/profile")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000));
+        }
+
+        @Test
+        @DisplayName("昵称包含非法字符返回参数错误")
+        void shouldRejectInvalidUserNameCharacters() throws Exception {
+            MockHttpSession session = registerAndLogin("profile06", "password123");
+            String requestBody = "{\"userName\":\"昵称_01\",\"gender\":1}";
+
+            mockMvc.perform(post("/user/update/my/profile")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000));
+        }
+
+        @Test
+        @DisplayName("昵称包含敏感词返回参数错误")
+        void shouldRejectSensitiveUserName() throws Exception {
+            MockHttpSession session = registerAndLogin("profile07", "password123");
+            String requestBody = "{\"userName\":\"官方用户\",\"gender\":1}";
+
+            mockMvc.perform(post("/user/update/my/profile")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000))
+                    .andExpect(jsonPath("$.message").value("昵称包含不允许使用的内容"));
+        }
+
+        @Test
         @DisplayName("非法性别返回参数错误")
         void shouldRejectInvalidGender() throws Exception {
-            MockHttpSession session = registerAndLogin("profile04", "password123");
+            MockHttpSession session = registerAndLogin("profile08", "password123");
             String requestBody = "{\"userName\":\"昵称\",\"gender\":2}";
 
             mockMvc.perform(post("/user/update/my/profile")

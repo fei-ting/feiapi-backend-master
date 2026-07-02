@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
@@ -19,7 +20,8 @@ public class CurrentUserProfileUpdateRequest implements Serializable {
      * 用户昵称
      */
     @NotBlank(message = "用户昵称不能为空")
-    @Size(max = 256, message = "用户昵称长度不能超过 256")
+    @Size(min = 2, max = 16, message = "昵称需为 2-16 位")
+    @Pattern(regexp = "^[\\p{IsHan}A-Za-z0-9]{2,16}$", message = "昵称只能包含中文、英文和数字")
     private String userName;
 
     /**

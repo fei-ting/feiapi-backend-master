@@ -19,6 +19,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -96,7 +98,7 @@ class DtoValidationTest {
         request.setName(" ");
         request.setUrl("");
         request.setMethod("POST");
-        request.setDescription("a".repeat(513));
+        request.setDescription(IntStream.range(0, 513).mapToObj(index -> "a").collect(Collectors.joining()));
 
         assertThat(violationMessages(request))
                 .contains("接口名称不能为空",
@@ -136,7 +138,10 @@ class DtoValidationTest {
         request.setGender(2);
 
         assertThat(violationMessages(request))
-                .contains("用户昵称不能为空", "性别不能大于 1");
+                .contains("用户昵称不能为空",
+                        "昵称需为 2-16 位",
+                        "昵称只能包含中文、英文和数字",
+                        "性别不能大于 1");
     }
 
     /**
@@ -227,6 +232,6 @@ class DtoValidationTest {
     private Set<String> violationMessages(Object target) {
         return validator.validate(target).stream()
                 .map(ConstraintViolation::getMessage)
-                .collect(java.util.stream.Collectors.toSet());
+                .collect(Collectors.toSet());
     }
 }
