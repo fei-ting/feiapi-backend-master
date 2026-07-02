@@ -64,6 +64,14 @@ public interface UserInterfaceInfoMapper extends BaseMapper<UserInterfaceInfo> {
     int decreaseTotalNumOnly(@Param("userId") long userId,
                              @Param("interfaceInfoId") long interfaceInfoId);
 
+    /**
+     * 批量查询接口调用总数。
+     *
+     * @param interfaceInfoIds 接口 ID 列表
+     * @return 仅包含接口 ID 和调用总数的统计结果
+     */
+    List<UserInterfaceInfo> listTotalNumByInterfaceInfoIds(@Param("interfaceInfoIds") List<Long> interfaceInfoIds);
+
 }
 
 
