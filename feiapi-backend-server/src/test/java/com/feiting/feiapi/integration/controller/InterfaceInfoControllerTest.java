@@ -11,9 +11,11 @@ import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoUpdateRequest;
 import com.feiting.feiapi.model.vo.InterfaceInfoVO;
 import com.feiting.feiapi.model.dto.user.UserLoginRequest;
 import com.feiting.feiapi.service.InterfaceInfoService;
+import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.entity.User;
+import com.feiting.feiapicommon.model.entity.UserInterfaceInfo;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
 import jakarta.annotation.Resource;
 import org.junit.jupiter.api.DisplayName;
@@ -61,6 +63,9 @@ class InterfaceInfoControllerTest {
 
     @Resource
     private InterfaceInfoService interfaceInfoService;
+
+    @Resource
+    private UserInterfaceInfoService userInterfaceInfoService;
 
     @Resource
     private ObjectMapper objectMapper;
@@ -126,6 +131,16 @@ class InterfaceInfoControllerTest {
         interfaceInfo.setUserId(1L);
         assertTrue(interfaceInfoService.save(interfaceInfo), "测试接口数据应创建成功");
         return interfaceInfo.getId();
+    }
+
+    private void insertUserInterfaceInfo(long userId, long interfaceInfoId, int totalNum) {
+        UserInterfaceInfo userInterfaceInfo = new UserInterfaceInfo();
+        userInterfaceInfo.setUserId(userId);
+        userInterfaceInfo.setInterfaceInfoId(interfaceInfoId);
+        userInterfaceInfo.setLeftNum(0);
+        userInterfaceInfo.setTotalNum(totalNum);
+        userInterfaceInfo.setStatus(0);
+        assertTrue(userInterfaceInfoService.save(userInterfaceInfo), "测试调用关系应创建成功");
     }
 
     @Nested
@@ -465,6 +480,42 @@ class InterfaceInfoControllerTest {
             assertNotNull(data.get("records"), "应包含 records 字段");
             assertNotNull(data.get("total"), "应包含 total 字段");
             assertNotNull(data.get("current"), "应包含 current 字段");
+        }
+
+        @Test
+        @DisplayName("分页查询返回接口调用总数汇总")
+        void shouldReturnTotalNumSummary() throws Exception {
+            MockHttpSession session = loginAsAdmin();
+            long calledInterfaceId = createInterfaceInfo("totalNumApi", "/api/total_num", "GET", InterfaceInfoStatusEnum.ONLINE.getValue());
+            long notCalledInterfaceId = createInterfaceInfo("zeroTotalNumApi", "/api/zero_total_num", "GET", InterfaceInfoStatusEnum.ONLINE.getValue());
+            insertUserInterfaceInfo(10001L, calledInterfaceId, 7);
+            insertUserInterfaceInfo(10002L, calledInterfaceId, 5);
+
+            MvcResult result = mockMvc.perform(get("/interfaceInfo/list/page")
+                            .param("current", "1")
+                            .param("pageSize", "50")
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andReturn();
+
+            com.fasterxml.jackson.databind.JsonNode records = objectMapper
+                    .readTree(result.getResponse().getContentAsString())
+                    .get("data")
+                    .get("records");
+            com.fasterxml.jackson.databind.JsonNode calledInterface = StreamSupport.stream(records.spliterator(), false)
+                    .filter(record -> record.get("id").asLong() == calledInterfaceId)
+                    .findFirst()
+                    .orElse(null);
+            com.fasterxml.jackson.databind.JsonNode notCalledInterface = StreamSupport.stream(records.spliterator(), false)
+                    .filter(record -> record.get("id").asLong() == notCalledInterfaceId)
+                    .findFirst()
+                    .orElse(null);
+
+            assertNotNull(calledInterface, "应返回有调用记录的接口");
+            assertEquals(12, calledInterface.get("totalNum").asInt(), "调用总数应按接口汇总所有用户记录");
+            assertNotNull(notCalledInterface, "应返回无调用记录的接口");
+            assertEquals(0, notCalledInterface.get("totalNum").asInt(), "没有调用记录时调用总数应返回 0");
         }
 
         @Test

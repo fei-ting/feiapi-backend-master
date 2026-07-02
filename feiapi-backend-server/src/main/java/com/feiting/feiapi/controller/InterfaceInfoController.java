@@ -17,6 +17,7 @@ import com.feiting.feiapi.constant.CommonConstant;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.InterfaceQuotaConfigService;
+import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapi.component.SdkMethodRegistry;
 import com.feiting.feiapi.utils.SortFieldUtils;
 import com.feiting.feiapiclientsdk.client.FeiApiClient;
@@ -34,7 +35,11 @@ import org.springframework.web.bind.annotation.*;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.util.Collections;
 import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -72,6 +77,9 @@ public class InterfaceInfoController {
 
     @Resource
     private SdkMethodRegistry sdkMethodRegistry;
+
+    @Resource
+    private UserInterfaceInfoService userInterfaceInfoService;
 
     @Value("${feiapi.client.gateway-host}")
     private String gatewayHost;
@@ -225,8 +233,13 @@ public class InterfaceInfoController {
                 CommonConstant.SORT_ORDER_ASC.equals(sortOrder), sortField);
         Page<InterfaceInfo> interfaceInfoPage = interfaceInfoService.page(new Page<>(current, size), queryWrapper);
         Page<InterfaceInfoVO> interfaceInfoVOPage = new Page<>(interfaceInfoPage.getCurrent(), interfaceInfoPage.getSize(), interfaceInfoPage.getTotal());
+        List<Long> interfaceInfoIds = interfaceInfoPage.getRecords().stream()
+                .map(InterfaceInfo::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        Map<Long, Integer> totalNumMap = userInterfaceInfoService.listTotalNumByInterfaceInfoIds(interfaceInfoIds);
         interfaceInfoVOPage.setRecords(interfaceInfoPage.getRecords().stream()
-                .map(this::toInterfaceInfoVO)
+                .map(interfaceInfo -> toInterfaceInfoVO(interfaceInfo, totalNumMap))
                 .collect(Collectors.toList()));
         return ResultUtils.success(interfaceInfoVOPage);
     }
@@ -466,6 +479,23 @@ public class InterfaceInfoController {
         if (interfaceInfo == null) {
             return null;
         }
+        Map<Long, Integer> totalNumMap = userInterfaceInfoService.listTotalNumByInterfaceInfoIds(
+                Collections.singletonList(interfaceInfo.getId())
+        );
+        return toInterfaceInfoVO(interfaceInfo, totalNumMap);
+    }
+
+    /**
+     * 将接口实体转换为接口视图对象，并填充调用总数。
+     *
+     * @param interfaceInfo 接口实体
+     * @param totalNumMap   接口 ID 与调用总数映射
+     * @return 接口视图对象
+     */
+    private InterfaceInfoVO toInterfaceInfoVO(InterfaceInfo interfaceInfo, Map<Long, Integer> totalNumMap) {
+        if (interfaceInfo == null) {
+            return null;
+        }
         InterfaceInfoVO interfaceInfoVO = new InterfaceInfoVO();
         BeanUtils.copyProperties(interfaceInfo, interfaceInfoVO);
         InterfaceQuotaTypeEnum quotaTypeEnum = InterfaceQuotaTypeEnum.getEnumByValue(interfaceInfo.getQuotaType());
@@ -473,6 +503,7 @@ public class InterfaceInfoController {
             interfaceInfoVO.setQuotaTypeText(quotaTypeEnum.getText());
             interfaceInfoVO.setInitialQuota(interfaceQuotaConfigService.getInitialQuota(quotaTypeEnum));
         }
+        interfaceInfoVO.setTotalNum(totalNumMap.getOrDefault(interfaceInfo.getId(), 0));
         return interfaceInfoVO;
     }
 
