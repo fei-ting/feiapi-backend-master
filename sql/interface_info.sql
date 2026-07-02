@@ -36,7 +36,7 @@ select '土味情话',
        '',
        1,
        'GET',
-       'BASIC_QUOTA',
+       'FREE_UNLIMITED',
        (select id from feiapi.user where user_account = 'admin' limit 1)
 where not exists (
     select 1 from feiapi.interface_info where `path` = '/api/love_words' and `method` = 'GET' and `is_delete` = 0
@@ -55,7 +55,7 @@ select '测试接口',
        '',
        1,
        'POST',
-       'BASIC_QUOTA',
+       'FREE_UNLIMITED',
        (select id from feiapi.user where user_account = 'admin' limit 1)
 where not exists (
     select 1 from feiapi.interface_info where `path` = '/api/name/user' and `method` = 'POST' and `is_delete` = 0
