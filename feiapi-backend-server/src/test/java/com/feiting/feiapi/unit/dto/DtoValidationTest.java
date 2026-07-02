@@ -4,6 +4,8 @@ import com.feiting.feiapi.common.IdRequest;
 import com.feiting.feiapi.common.PageRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
+import com.feiting.feiapi.model.dto.user.CurrentUserPasswordUpdateRequest;
+import com.feiting.feiapi.model.dto.user.CurrentUserProfileUpdateRequest;
 import com.feiting.feiapi.model.dto.user.UserRegisterRequest;
 import com.feiting.feiapi.model.dto.user.UserUpdateRequest;
 import com.feiting.feiapi.model.dto.userinterfaceinfo.UserInterfaceInfoQueryRequest;
@@ -121,6 +123,37 @@ class DtoValidationTest {
 
         assertThat(violationMessages(shortPasswordRequest))
                 .contains("密码为空或长度至少 8");
+    }
+
+    /**
+     * 当前用户资料更新请求应校验昵称和性别边界
+     */
+    @Test
+    @DisplayName("当前用户资料更新请求校验昵称和性别")
+    void shouldValidateCurrentUserProfileUpdateRequest() {
+        CurrentUserProfileUpdateRequest request = new CurrentUserProfileUpdateRequest();
+        request.setUserName(" ");
+        request.setGender(2);
+
+        assertThat(violationMessages(request))
+                .contains("用户昵称不能为空", "性别不能大于 1");
+    }
+
+    /**
+     * 当前用户密码更新请求应校验必填字段和新密码格式
+     */
+    @Test
+    @DisplayName("当前用户密码更新请求校验必填字段和新密码格式")
+    void shouldValidateCurrentUserPasswordUpdateRequest() {
+        CurrentUserPasswordUpdateRequest request = new CurrentUserPasswordUpdateRequest();
+        request.setOldPassword("");
+        request.setNewPassword("short");
+        request.setCheckPassword("");
+
+        assertThat(violationMessages(request))
+                .contains("旧密码不能为空",
+                        "新密码长度 8-16 位，只能包含大小写字母和数字，且必须同时包含字母和数字",
+                        "确认密码不能为空");
     }
 
     /**

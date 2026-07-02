@@ -260,6 +260,77 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     }
 
     /**
+     * 更新当前登录用户个人资料
+     *
+     * @param userId   当前登录用户 id
+     * @param userName 用户昵称
+     * @param gender   性别
+     * @return 是否更新成功
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateCurrentUserProfile(Long userId, String userName, Integer gender) {
+        if (userId == null || userId <= 0 || StringUtils.isBlank(userName) || gender == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        if (gender < 0 || gender > 1) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "非法的性别值");
+        }
+        User currentUser = this.getById(userId);
+        if (currentUser == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
+        }
+        User updateUser = new User();
+        updateUser.setId(userId);
+        updateUser.setUserName(userName.trim());
+        updateUser.setGender(gender);
+        boolean result = this.updateById(updateUser);
+        if (result) {
+            evictUserCacheAfterCommit(userId);
+        }
+        return result;
+    }
+
+    /**
+     * 更新当前登录用户密码
+     *
+     * @param userId        当前登录用户 id
+     * @param oldPassword   旧密码
+     * @param newPassword   新密码
+     * @param checkPassword 确认密码
+     * @return 是否更新成功
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateCurrentUserPassword(Long userId, String oldPassword, String newPassword, String checkPassword) {
+        if (userId == null || userId <= 0 || StringUtils.isAnyBlank(oldPassword, newPassword, checkPassword)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        validateUserPassword(newPassword);
+        if (!newPassword.equals(checkPassword)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "两次输入的密码不一致");
+        }
+        User currentUser = this.getById(userId);
+        if (currentUser == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
+        }
+        if (!passwordEncoder.matches(oldPassword, currentUser.getUserPassword())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "旧密码错误");
+        }
+        if (passwordEncoder.matches(newPassword, currentUser.getUserPassword())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "新密码不能与旧密码相同");
+        }
+        User updateUser = new User();
+        updateUser.setId(userId);
+        updateUser.setUserPassword(passwordEncoder.encode(newPassword));
+        boolean result = this.updateById(updateUser);
+        if (result) {
+            evictUserCacheAfterCommit(userId);
+        }
+        return result;
+    }
+
+    /**
      * 用户注销
      *
      * @param sessionUser 会话中保存的用户快照

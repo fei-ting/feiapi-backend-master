@@ -14,12 +14,14 @@ import com.feiting.feiapi.model.dto.user.*;
 import com.feiting.feiapi.model.enums.UserRoleEnum;
 import com.feiting.feiapi.model.vo.UserKeyVO;
 import com.feiting.feiapi.model.vo.UserVO;
+import com.feiting.feiapi.service.ObjectStorageService;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapicommon.model.entity.User;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
@@ -41,6 +43,9 @@ public class UserController {
 
     @Resource
     private UserSessionManager userSessionManager;
+
+    @Resource
+    private ObjectStorageService objectStorageService;
 
     // region 登录相关
 
@@ -137,6 +142,67 @@ public class UserController {
         userKeyVO.setAccessKey(currentUser.getAccessKey());
         userKeyVO.setSecretKey(currentUser.getSecretKey());
         return ResultUtils.success(userKeyVO);
+    }
+
+    /**
+     * 更新当前登录用户个人资料
+     *
+     * @param currentUserProfileUpdateRequest 当前登录用户个人资料更新请求
+     * @param request                         HTTP 请求
+     * @return 是否更新成功
+     */
+    @PostMapping("/update/my/profile")
+    public BaseResponse<Boolean> updateCurrentUserProfile(
+            @Valid @RequestBody CurrentUserProfileUpdateRequest currentUserProfileUpdateRequest,
+            HttpServletRequest request) {
+        if (currentUserProfileUpdateRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        User loginUser = getCurrentLoginUser(request);
+        boolean result = userService.updateCurrentUserProfile(
+                loginUser.getId(),
+                currentUserProfileUpdateRequest.getUserName(),
+                currentUserProfileUpdateRequest.getGender()
+        );
+        return ResultUtils.success(result);
+    }
+
+    /**
+     * 更新当前登录用户密码
+     *
+     * @param currentUserPasswordUpdateRequest 当前登录用户密码更新请求
+     * @param request                          HTTP 请求
+     * @return 是否更新成功
+     */
+    @PostMapping("/update/my/password")
+    public BaseResponse<Boolean> updateCurrentUserPassword(
+            @Valid @RequestBody CurrentUserPasswordUpdateRequest currentUserPasswordUpdateRequest,
+            HttpServletRequest request) {
+        if (currentUserPasswordUpdateRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        User loginUser = getCurrentLoginUser(request);
+        boolean result = userService.updateCurrentUserPassword(
+                loginUser.getId(),
+                currentUserPasswordUpdateRequest.getOldPassword(),
+                currentUserPasswordUpdateRequest.getNewPassword(),
+                currentUserPasswordUpdateRequest.getCheckPassword()
+        );
+        return ResultUtils.success(result);
+    }
+
+    /**
+     * 上传当前登录用户头像
+     *
+     * @param file    头像文件
+     * @param request HTTP 请求
+     * @return 头像访问地址
+     */
+    @PostMapping("/avatar/upload")
+    public BaseResponse<String> uploadCurrentUserAvatar(@RequestPart("file") MultipartFile file, HttpServletRequest request) {
+        User loginUser = getCurrentLoginUser(request);
+        String avatarUrl = objectStorageService.uploadUserAvatar(file, loginUser.getId());
+        return ResultUtils.success(avatarUrl);
     }
 
     // endregion
