@@ -1,10 +1,13 @@
 package com.feiting.feiapi.service.impl;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.config.InterfaceTargetHostProperties;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.mapper.InterfaceInfoMapper;
+import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoQueryRequest;
+import com.feiting.feiapi.model.vo.InterfaceInfoVO;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoMethodEnum;
@@ -95,6 +98,24 @@ public class InterfaceInfoServiceImpl extends ServiceImpl<InterfaceInfoMapper, I
                 && !InterfaceTargetHostValidator.isSafeTargetHost(targetHost, interfaceTargetHostProperties.getAllowedHostnames())) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "真实后端服务地址不允许访问");
         }
+    }
+
+    /**
+     * 按接口调用总数分页查询接口视图。
+     *
+     * @param queryRequest 查询条件
+     * @param status       接口状态过滤值
+     * @param asc          是否按调用总数升序排序
+     * @return 接口视图分页结果
+     */
+    @Override
+    public Page<InterfaceInfoVO> listPageOrderByTotalNum(InterfaceInfoQueryRequest queryRequest, Integer status, boolean asc) {
+        if (queryRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        String method = InterfaceInfoMethodEnum.normalize(queryRequest.getMethod());
+        Page<InterfaceInfoVO> page = new Page<>(queryRequest.getCurrent(), queryRequest.getPageSize());
+        return baseMapper.selectPageOrderByTotalNum(page, queryRequest, status, method, asc);
     }
 }
 

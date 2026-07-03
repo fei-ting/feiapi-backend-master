@@ -52,6 +52,9 @@ import java.util.stream.Collectors;
 @Slf4j
 public class InterfaceInfoController {
 
+    /** 调用总数字段名，用于触发聚合排序查询 */
+    private static final String TOTAL_NUM_SORT_FIELD = "totalNum";
+
     private static final Set<String> ALLOWED_SORT_FIELDS = SortFieldUtils.allowedFields(
             "id", "name", "sdkMethodName", "description", "url", "path", "targetHost", "requestParams", "requestHeader",
             "responseHeader", "status", "method", "quotaType", "userId", "createTime", "updateTime"
@@ -210,6 +213,9 @@ public class InterfaceInfoController {
         Integer status = interfaceInfoQueryRequest.getStatus();
         if (!isCurrentUserAdmin(request)) {
             status = InterfaceInfoStatusEnum.ONLINE.getValue();
+        }
+        if (isTotalNumSortField(interfaceInfoQueryRequest.getSortField())) {
+            return ResultUtils.success(listInterfaceInfoByTotalNumPage(interfaceInfoQueryRequest, status, sortOrder));
         }
         String descriptionKeyword = interfaceInfoQueryRequest.getDescription();
         queryWrapper.eq(interfaceInfoQueryRequest.getId() != null, "id", interfaceInfoQueryRequest.getId());
@@ -395,6 +401,56 @@ public class InterfaceInfoController {
 
     private String toDatabaseSortField(String sortField) {
         return SortFieldUtils.resolveSortField(sortField, ALLOWED_SORT_FIELDS);
+    }
+
+    /**
+     * 判断是否按接口调用总数排序。
+     *
+     * @param sortField 排序字段
+     * @return 是否为调用总数字段
+     */
+    private boolean isTotalNumSortField(String sortField) {
+        return TOTAL_NUM_SORT_FIELD.equals(sortField);
+    }
+
+    /**
+     * 按接口调用总数分页查询接口视图。
+     *
+     * @param queryRequest 查询请求
+     * @param status       接口状态过滤值
+     * @param sortOrder    排序方向
+     * @return 接口视图分页结果
+     */
+    private Page<InterfaceInfoVO> listInterfaceInfoByTotalNumPage(InterfaceInfoQueryRequest queryRequest,
+                                                                  Integer status,
+                                                                  String sortOrder) {
+        boolean asc = CommonConstant.SORT_ORDER_ASC.equals(sortOrder);
+        Page<InterfaceInfoVO> interfaceInfoVOPage = interfaceInfoService.listPageOrderByTotalNum(queryRequest, status, asc);
+        interfaceInfoVOPage.setRecords(interfaceInfoVOPage.getRecords().stream()
+                .map(this::completeQuotaInfo)
+                .collect(Collectors.toList()));
+        return interfaceInfoVOPage;
+    }
+
+    /**
+     * 补齐接口视图中的配额展示信息。
+     *
+     * @param interfaceInfoVO 接口视图对象
+     * @return 补齐配额展示信息后的接口视图对象
+     */
+    private InterfaceInfoVO completeQuotaInfo(InterfaceInfoVO interfaceInfoVO) {
+        if (interfaceInfoVO == null) {
+            return null;
+        }
+        InterfaceQuotaTypeEnum quotaTypeEnum = InterfaceQuotaTypeEnum.getEnumByValue(interfaceInfoVO.getQuotaType());
+        if (quotaTypeEnum != null) {
+            interfaceInfoVO.setQuotaTypeText(quotaTypeEnum.getText());
+            interfaceInfoVO.setInitialQuota(interfaceQuotaConfigService.getInitialQuota(quotaTypeEnum));
+        }
+        if (interfaceInfoVO.getTotalNum() == null) {
+            interfaceInfoVO.setTotalNum(0);
+        }
+        return interfaceInfoVO;
     }
 
     /**

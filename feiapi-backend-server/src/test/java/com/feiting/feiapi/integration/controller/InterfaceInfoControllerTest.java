@@ -32,6 +32,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -516,6 +519,52 @@ class InterfaceInfoControllerTest {
             assertEquals(12, calledInterface.get("totalNum").asInt(), "调用总数应按接口汇总所有用户记录");
             assertNotNull(notCalledInterface, "应返回无调用记录的接口");
             assertEquals(0, notCalledInterface.get("totalNum").asInt(), "没有调用记录时调用总数应返回 0");
+        }
+
+        @Test
+        @DisplayName("支持按接口调用总数升序和降序排序")
+        void shouldSortByTotalNum() throws Exception {
+            MockHttpSession session = loginAsAdmin();
+            long lowInterfaceId = createInterfaceInfo("sortTotalLow", "/api/sort_total_low", "GET", InterfaceInfoStatusEnum.ONLINE.getValue());
+            long midInterfaceId = createInterfaceInfo("sortTotalMid", "/api/sort_total_mid", "GET", InterfaceInfoStatusEnum.ONLINE.getValue());
+            long highInterfaceId = createInterfaceInfo("sortTotalHigh", "/api/sort_total_high", "GET", InterfaceInfoStatusEnum.ONLINE.getValue());
+            insertUserInterfaceInfo(10003L, midInterfaceId, 5);
+            insertUserInterfaceInfo(10004L, highInterfaceId, 12);
+            insertUserInterfaceInfo(10005L, highInterfaceId, 8);
+
+            List<Long> descendIds = queryTotalNumSortedIds(session, "descend");
+            List<Long> ascendIds = queryTotalNumSortedIds(session, "ascend");
+
+            assertEquals(Arrays.asList(highInterfaceId, midInterfaceId, lowInterfaceId), descendIds, "调用总数降序排序应正确");
+            assertEquals(Arrays.asList(lowInterfaceId, midInterfaceId, highInterfaceId), ascendIds, "调用总数升序排序应正确");
+        }
+
+        /**
+         * 查询按调用总数排序后的接口 ID 列表。
+         *
+         * @param session   管理员会话
+         * @param sortOrder 排序方向
+         * @return 接口 ID 列表
+         */
+        private List<Long> queryTotalNumSortedIds(MockHttpSession session, String sortOrder) throws Exception {
+            MvcResult result = mockMvc.perform(get("/interfaceInfo/list/page")
+                            .param("current", "1")
+                            .param("pageSize", "10")
+                            .param("description", "sortTotal")
+                            .param("sortField", "totalNum")
+                            .param("sortOrder", sortOrder)
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andReturn();
+
+            com.fasterxml.jackson.databind.JsonNode records = objectMapper
+                    .readTree(result.getResponse().getContentAsString())
+                    .get("data")
+                    .get("records");
+            return StreamSupport.stream(records.spliterator(), false)
+                    .map(record -> record.get("id").asLong())
+                    .collect(Collectors.toList());
         }
 
         @Test
