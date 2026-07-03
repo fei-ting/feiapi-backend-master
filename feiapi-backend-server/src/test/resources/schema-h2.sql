@@ -75,6 +75,20 @@ CREATE TABLE IF NOT EXISTS `user_interface_info` (
     UNIQUE (`user_id`, `interface_info_id`)
 );
 
+CREATE TABLE IF NOT EXISTS `interface_invoke_log` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `user_id` BIGINT NOT NULL,
+    `interface_info_id` BIGINT NOT NULL,
+    `path` VARCHAR(512) NOT NULL,
+    `method` VARCHAR(16) NOT NULL,
+    `status_code` INT DEFAULT NULL,
+    `success` TINYINT NOT NULL DEFAULT 0,
+    `response_time_ms` BIGINT NOT NULL DEFAULT 0,
+    `invoke_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `is_delete` TINYINT NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS `user_role_change_log` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
     `operator_id` BIGINT NOT NULL,
