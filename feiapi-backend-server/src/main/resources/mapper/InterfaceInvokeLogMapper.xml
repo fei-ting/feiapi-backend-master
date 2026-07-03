@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feiting.feiapi.mapper.InterfaceInvokeLogMapper">
+
+    <resultMap id="HomeInvokeAggregateMap" type="com.feiting.feiapi.model.vo.HomeInvokeAggregateVO">
+        <result property="totalInvocations" column="total_invocations"/>
+        <result property="successInvocations" column="success_invocations"/>
+        <result property="averageResponseTimeMs" column="average_response_time_ms"/>
+    </resultMap>
+
+    <select id="getHomeInvokeAggregate" resultMap="HomeInvokeAggregateMap">
+        select count(*) as total_invocations,
+               coalesce(sum(case when success = 1 then 1 else 0 end), 0) as success_invocations,
+               avg(response_time_ms) as average_response_time_ms
+        from interface_invoke_log
+        where is_delete = 0
+          and invoke_time <![CDATA[>=]]> #{startTime}
+          and invoke_time <![CDATA[<]]> #{endTime}
+    </select>
+</mapper>

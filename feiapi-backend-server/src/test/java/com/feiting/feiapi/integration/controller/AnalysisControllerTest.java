@@ -3,6 +3,7 @@ package com.feiting.feiapi.integration.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.feiting.feiapi.model.dto.user.UserLoginRequest;
 import com.feiting.feiapi.service.InterfaceInfoService;
+import com.feiting.feiapi.service.InterfaceInvokeLogService;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
@@ -22,6 +23,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -53,6 +55,9 @@ class AnalysisControllerTest {
 
     @Resource
     private UserInterfaceInfoService userInterfaceInfoService;
+
+    @Resource
+    private InterfaceInvokeLogService interfaceInvokeLogService;
 
     @Resource
     private ObjectMapper objectMapper;
@@ -101,6 +106,42 @@ class AnalysisControllerTest {
         info.setStatus(0);
         info.setIsDelete(0);
         userInterfaceInfoService.save(info);
+    }
+
+    @Nested
+    @DisplayName("GET /analysis/home/stats")
+    class HomeStatsTests {
+
+        @Test
+        @DisplayName("未登录用户可查询首页统计，无调用时运行指标为空")
+        void shouldReturnHomeStatsWithoutLoginWhenNoInvokeLog() throws Exception {
+            insertInterfaceInfo(1101L, "home_api", "/api/home");
+
+            mockMvc.perform(get("/analysis/home/stats"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.platformInterfaceCount").value(1))
+                    .andExpect(jsonPath("$.data.todayInvocations").value(0))
+                    .andExpect(jsonPath("$.data.availabilityRate").value(nullValue()))
+                    .andExpect(jsonPath("$.data.averageResponseTimeMs").value(nullValue()));
+        }
+
+        @Test
+        @DisplayName("按今日调用日志计算首页运行指标")
+        void shouldCalculateHomeStatsByTodayInvokeLogs() throws Exception {
+            insertInterfaceInfo(1201L, "home_stat_api", "/api/home-stat");
+            interfaceInvokeLogService.recordInvoke(1L, 1201L, "/api/home-stat", "GET", 200, true, 100L);
+            interfaceInvokeLogService.recordInvoke(1L, 1201L, "/api/home-stat", "GET", 200, true, 300L);
+            interfaceInvokeLogService.recordInvoke(1L, 1201L, "/api/home-stat", "GET", 500, false, 500L);
+
+            mockMvc.perform(get("/analysis/home/stats"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.platformInterfaceCount").value(1))
+                    .andExpect(jsonPath("$.data.todayInvocations").value(3))
+                    .andExpect(jsonPath("$.data.availabilityRate").value(66.7))
+                    .andExpect(jsonPath("$.data.averageResponseTimeMs").value(300));
+        }
     }
 
     @Nested
