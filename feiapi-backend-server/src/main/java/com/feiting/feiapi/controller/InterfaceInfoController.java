@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.feiting.feiapi.common.*;
+import com.feiting.feiapi.component.InterfaceRequestParamValidator;
 import com.feiting.feiapi.component.UserSessionManager;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
@@ -83,6 +84,9 @@ public class InterfaceInfoController {
 
     @Resource
     private UserInterfaceInfoService userInterfaceInfoService;
+
+    @Resource
+    private InterfaceRequestParamValidator interfaceRequestParamValidator;
 
     @Value("${feiapi.client.gateway-host}")
     private String gatewayHost;
@@ -375,6 +379,7 @@ public class InterfaceInfoController {
         if(oldInterfaceInfo.getStatus() != InterfaceInfoStatusEnum.ONLINE.getValue()){
             throw new BusinessException(ErrorCode.SYSTEM_ERROR,"接口未上线或正在发布验证中");
         }
+        interfaceRequestParamValidator.validate(oldInterfaceInfo.getRequestParams(), userRequestParams);
 
         User loginUser = getCurrentLoginUser(request);
         String accessKey = loginUser.getAccessKey();
