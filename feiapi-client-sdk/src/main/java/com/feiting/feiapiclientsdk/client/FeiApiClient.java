@@ -104,6 +104,22 @@ public class FeiApiClient {
     }
 
     /**
+     * 生成二维码
+     *
+     * 根据传入的请求参数生成二维码图片，返回 Base64 编码和 Data URI。
+     * 请求参数示例：{"content": "https://example.com", "width": 300, "height": 300}
+     *
+     * @param requestParam 请求参数 JSON 字符串
+     * @return 响应结果（包含 base64 和 dataUri）
+     */
+    @SdkInvoke(needParams = true)
+    public String generateQrCode(String requestParam) {
+        return executeRequest(HttpRequest.post(gatewayHost + "/api/qrcode/generate")
+                .addHeaders(getHeaderMap("POST", "/api/qrcode/generate", requestParam))
+                .body(requestParam));
+    }
+
+    /**
      * 构造请求头
      * 
      * 整改后，这里不再把 body 放到 header 中传输。
