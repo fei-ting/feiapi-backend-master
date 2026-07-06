@@ -120,6 +120,20 @@ class InterfaceInfoControllerTest {
     }
 
     private long createInterfaceInfo(String name, String path, String method, int status) {
+        return createInterfaceInfo(name, path, method, status, null);
+    }
+
+    /**
+     * 创建测试接口信息。
+     *
+     * @param name          接口名称
+     * @param path          接口路径
+     * @param method        请求方法
+     * @param status        接口状态
+     * @param requestParams 请求参数模板
+     * @return 接口 id
+     */
+    private long createInterfaceInfo(String name, String path, String method, int status, String requestParams) {
         InterfaceInfo interfaceInfo = new InterfaceInfo();
         interfaceInfo.setName(name);
         interfaceInfo.setSdkMethodName("getLoveWords");
@@ -127,6 +141,7 @@ class InterfaceInfoControllerTest {
         interfaceInfo.setPath(path);
         interfaceInfo.setTargetHost(TEST_TARGET_HOST);
         interfaceInfo.setUrl(TEST_TARGET_HOST + path);
+        interfaceInfo.setRequestParams(requestParams);
         interfaceInfo.setRequestHeader("{\"Content-Type\":\"application/json\"}");
         interfaceInfo.setResponseHeader("{\"Content-Type\":\"application/json\"}");
         interfaceInfo.setStatus(status);
@@ -858,6 +873,86 @@ class InterfaceInfoControllerTest {
                             .session(session))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(40000));
+        }
+
+        @Test
+        @DisplayName("用户请求参数不是合法 JSON 时返回参数错误")
+        void shouldFailWhenUserRequestParamsInvalidJson() throws Exception {
+            MockHttpSession session = loginAsUser();
+            long id = createInterfaceInfo("invalidJsonInvokeApi", "/api/invalid_json_invoke", "GET",
+                    InterfaceInfoStatusEnum.ONLINE.getValue());
+
+            InterfaceInfoInvokeRequest request = new InterfaceInfoInvokeRequest();
+            request.setId(id);
+            request.setUserRequestParams("{\"name\":\"test\"");
+
+            mockMvc.perform(post("/interfaceInfo/invoke")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request))
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000))
+                    .andExpect(jsonPath("$.message").value("请求参数必须是合法 JSON"));
+        }
+
+        @Test
+        @DisplayName("用户请求参数缺少接口模板字段时返回参数错误")
+        void shouldFailWhenUserRequestParamsMissingTemplateField() throws Exception {
+            MockHttpSession session = loginAsUser();
+            long id = createInterfaceInfo("missingFieldInvokeApi", "/api/missing_field_invoke", "POST",
+                    InterfaceInfoStatusEnum.ONLINE.getValue(), "{\"username\":\"string\"}");
+
+            InterfaceInfoInvokeRequest request = new InterfaceInfoInvokeRequest();
+            request.setId(id);
+            request.setUserRequestParams("{\"ip\":\"8.8.8.8\"}");
+
+            mockMvc.perform(post("/interfaceInfo/invoke")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request))
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000))
+                    .andExpect(jsonPath("$.message").value("请求参数缺少必填字段：username"));
+        }
+
+        @Test
+        @DisplayName("用户请求参数字段类型不符合接口模板时返回参数错误")
+        void shouldFailWhenUserRequestParamsFieldTypeMismatch() throws Exception {
+            MockHttpSession session = loginAsUser();
+            long id = createInterfaceInfo("typeMismatchInvokeApi", "/api/type_mismatch_invoke", "POST",
+                    InterfaceInfoStatusEnum.ONLINE.getValue(), "{\"ip\":\"string\"}");
+
+            InterfaceInfoInvokeRequest request = new InterfaceInfoInvokeRequest();
+            request.setId(id);
+            request.setUserRequestParams("{\"ip\":123}");
+
+            mockMvc.perform(post("/interfaceInfo/invoke")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request))
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000))
+                    .andExpect(jsonPath("$.message").value("请求参数字段类型错误：ip 应为 string"));
+        }
+
+        @Test
+        @DisplayName("接口模板要求参数但用户请求参数为空时返回参数错误")
+        void shouldFailWhenUserRequestParamsEmptyButTemplateRequiresFields() throws Exception {
+            MockHttpSession session = loginAsUser();
+            long id = createInterfaceInfo("emptyParamsInvokeApi", "/api/empty_params_invoke", "POST",
+                    InterfaceInfoStatusEnum.ONLINE.getValue(), "{\"username\":\"string\"}");
+
+            InterfaceInfoInvokeRequest request = new InterfaceInfoInvokeRequest();
+            request.setId(id);
+            request.setUserRequestParams("");
+
+            mockMvc.perform(post("/interfaceInfo/invoke")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request))
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000))
+                    .andExpect(jsonPath("$.message").value("请求参数缺少必填字段：username"));
         }
     }
 }

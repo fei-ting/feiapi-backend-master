@@ -226,6 +226,37 @@ class FeiApiClientTest {
         }
     }
 
+    @Nested
+    @DisplayName("下游异常响应处理")
+    class ErrorResponseTests {
+
+        @Test
+        @DisplayName("非 2xx 响应消息包含状态码和响应内容")
+        void shouldBuildErrorMessageWithResponseBody() throws Exception {
+            FeiApiClient client = new FeiApiClient();
+            Method buildErrorMessage = FeiApiClient.class.getDeclaredMethod("buildErrorMessage", int.class, String.class);
+            buildErrorMessage.setAccessible(true);
+
+            String message = (String) buildErrorMessage.invoke(client, 400, "username 不能为空");
+
+            assertEquals("调用接口失败，响应状态码：400，响应内容：username 不能为空", message);
+        }
+
+        @Test
+        @DisplayName("过长响应内容会被截断")
+        void shouldTruncateLongResponseBody() throws Exception {
+            FeiApiClient client = new FeiApiClient();
+            Method buildErrorMessage = FeiApiClient.class.getDeclaredMethod("buildErrorMessage", int.class, String.class);
+            buildErrorMessage.setAccessible(true);
+
+            String longBody = new String(new char[250]).replace('\0', 'x');
+            String message = (String) buildErrorMessage.invoke(client, 500, longBody);
+
+            assertTrue(message.endsWith("..."));
+            assertFalse(message.contains(longBody));
+        }
+    }
+
     /**
      * 通过反射获取私有字段值
      */
