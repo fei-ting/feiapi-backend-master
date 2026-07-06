@@ -35,6 +35,7 @@ class SdkMethodRegistryTest {
 
             assertTrue(methodMap.containsKey("getLoveWords"));
             assertTrue(methodMap.containsKey("getUsernameByPost"));
+            assertTrue(methodMap.containsKey("generateQrCode"));
         }
 
         @Test
@@ -60,8 +61,8 @@ class SdkMethodRegistryTest {
         void shouldMatchAnnotationCount() {
             Map<String, Method> methodMap = registry.getMethodMap();
 
-            // FeiApiClient 中有 2 个 @SdkInvoke 方法：getLoveWords, getUsernameByPost
-            assertEquals(2, methodMap.size());
+            // FeiApiClient 中有 3 个 @SdkInvoke 方法：getLoveWords、getUsernameByPost、generateQrCode
+            assertEquals(3, methodMap.size());
         }
     }
 
@@ -209,6 +210,14 @@ class SdkMethodRegistryTest {
                     getUsernameByPost.getAnnotation(com.feiting.feiapiclientsdk.annotation.SdkInvoke.class);
             assertNotNull(ann2);
             assertTrue(ann2.needParams(), "getUsernameByPost 应标记为需要参数");
+
+            // generateQrCode: @SdkInvoke(needParams = true), 有参方法
+            Method generateQrCode = methodMap.get("generateQrCode");
+            assertNotNull(generateQrCode);
+            com.feiting.feiapiclientsdk.annotation.SdkInvoke ann3 =
+                    generateQrCode.getAnnotation(com.feiting.feiapiclientsdk.annotation.SdkInvoke.class);
+            assertNotNull(ann3);
+            assertTrue(ann3.needParams(), "generateQrCode 应标记为需要参数");
         }
     }
 }

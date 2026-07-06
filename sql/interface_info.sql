@@ -60,3 +60,22 @@ select '测试接口',
 where not exists (
     select 1 from feiapi.interface_info where `path` = '/api/name/user' and `method` = 'POST' and `is_delete` = 0
 );
+
+-- 初始化二维码生成接口
+insert into feiapi.interface_info (`name`, `sdk_method_name`, `description`, `url`, `path`, `target_host`, `request_params`, `request_header`, `response_header`, `status`, `method`, `quota_type`, `user_id`)
+select '二维码生成',
+       'generateQrCode',
+       '根据内容生成二维码图片，返回 Base64 编码和 Data URI，支持自定义尺寸',
+       'http://feiapi-interface:8123/api/qrcode/generate',
+       '/api/qrcode/generate',
+       'http://feiapi-interface:8123',
+       '{\"content\":\"string，1-1024字符且不超过1024个UTF-8字节\",\"width\":300,\"height\":300}',
+       'Content-Type: application/json',
+       '',
+       1,
+       'POST',
+       'FREE_UNLIMITED',
+       (select id from feiapi.user where user_account = 'admin' limit 1)
+where not exists (
+    select 1 from feiapi.interface_info where `path` = '/api/qrcode/generate' and `method` = 'POST' and `is_delete` = 0
+);

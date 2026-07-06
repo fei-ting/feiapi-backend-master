@@ -213,6 +213,17 @@ class FeiApiClientTest {
             assertNotNull(annotation);
             assertTrue(annotation.needParams());
         }
+
+        @Test
+        @DisplayName("generateQrCode 方法标记了 @SdkInvoke(needParams=true)")
+        void generateQrCodeShouldBeAnnotated() throws NoSuchMethodException {
+            Method method = FeiApiClient.class.getMethod("generateQrCode", String.class);
+            com.feiting.feiapiclientsdk.annotation.SdkInvoke annotation =
+                    method.getAnnotation(com.feiting.feiapiclientsdk.annotation.SdkInvoke.class);
+
+            assertNotNull(annotation);
+            assertTrue(annotation.needParams());
+        }
     }
 
     /**
