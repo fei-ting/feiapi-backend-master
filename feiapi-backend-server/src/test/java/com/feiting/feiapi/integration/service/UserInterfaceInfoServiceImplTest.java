@@ -17,6 +17,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Map;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -332,6 +336,37 @@ class UserInterfaceInfoServiceImplTest {
                     .eq(UserInterfaceInfo::getInterfaceInfoId, interfaceInfoId)
                     .count();
             assertEquals(0, count);
+        }
+    }
+
+    @Nested
+    @DisplayName("listTotalNumByInterfaceInfoIds 批量统计调用总数")
+    class ListTotalNumByInterfaceInfoIdsTests {
+
+        @Test
+        @DisplayName("按接口 ID 批量汇总所有用户调用次数")
+        void shouldReturnTotalNumMapByInterfaceInfoIds() {
+            long firstInterfaceId = insertInterfaceInfo(InterfaceQuotaTypeEnum.BASIC_QUOTA.getValue());
+            long secondInterfaceId = insertInterfaceInfo(InterfaceQuotaTypeEnum.BASIC_QUOTA.getValue());
+            insertUserInterfaceInfo(11L, firstInterfaceId, 0, 3);
+            insertUserInterfaceInfo(12L, firstInterfaceId, 0, 5);
+            insertUserInterfaceInfo(13L, secondInterfaceId, 0, 9);
+
+            Map<Long, Integer> totalNumMap = userInterfaceInfoService.listTotalNumByInterfaceInfoIds(
+                    Arrays.asList(firstInterfaceId, firstInterfaceId, secondInterfaceId, null, 0L)
+            );
+
+            assertEquals(2, totalNumMap.size());
+            assertEquals(8, totalNumMap.get(firstInterfaceId));
+            assertEquals(9, totalNumMap.get(secondInterfaceId));
+        }
+
+        @Test
+        @DisplayName("空接口 ID 列表返回空映射")
+        void shouldReturnEmptyMapWhenIdsEmpty() {
+            Map<Long, Integer> totalNumMap = userInterfaceInfoService.listTotalNumByInterfaceInfoIds(Collections.emptyList());
+
+            assertTrue(totalNumMap.isEmpty());
         }
     }
 

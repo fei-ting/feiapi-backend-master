@@ -11,9 +11,11 @@ import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoUpdateRequest;
 import com.feiting.feiapi.model.vo.InterfaceInfoVO;
 import com.feiting.feiapi.model.dto.user.UserLoginRequest;
 import com.feiting.feiapi.service.InterfaceInfoService;
+import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.entity.User;
+import com.feiting.feiapicommon.model.entity.UserInterfaceInfo;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
 import jakarta.annotation.Resource;
 import org.junit.jupiter.api.DisplayName;
@@ -30,6 +32,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -61,6 +66,9 @@ class InterfaceInfoControllerTest {
 
     @Resource
     private InterfaceInfoService interfaceInfoService;
+
+    @Resource
+    private UserInterfaceInfoService userInterfaceInfoService;
 
     @Resource
     private ObjectMapper objectMapper;
@@ -112,6 +120,20 @@ class InterfaceInfoControllerTest {
     }
 
     private long createInterfaceInfo(String name, String path, String method, int status) {
+        return createInterfaceInfo(name, path, method, status, null);
+    }
+
+    /**
+     * 创建测试接口信息。
+     *
+     * @param name          接口名称
+     * @param path          接口路径
+     * @param method        请求方法
+     * @param status        接口状态
+     * @param requestParams 请求参数模板
+     * @return 接口 id
+     */
+    private long createInterfaceInfo(String name, String path, String method, int status, String requestParams) {
         InterfaceInfo interfaceInfo = new InterfaceInfo();
         interfaceInfo.setName(name);
         interfaceInfo.setSdkMethodName("getLoveWords");
@@ -119,6 +141,7 @@ class InterfaceInfoControllerTest {
         interfaceInfo.setPath(path);
         interfaceInfo.setTargetHost(TEST_TARGET_HOST);
         interfaceInfo.setUrl(TEST_TARGET_HOST + path);
+        interfaceInfo.setRequestParams(requestParams);
         interfaceInfo.setRequestHeader("{\"Content-Type\":\"application/json\"}");
         interfaceInfo.setResponseHeader("{\"Content-Type\":\"application/json\"}");
         interfaceInfo.setStatus(status);
@@ -126,6 +149,16 @@ class InterfaceInfoControllerTest {
         interfaceInfo.setUserId(1L);
         assertTrue(interfaceInfoService.save(interfaceInfo), "测试接口数据应创建成功");
         return interfaceInfo.getId();
+    }
+
+    private void insertUserInterfaceInfo(long userId, long interfaceInfoId, int totalNum) {
+        UserInterfaceInfo userInterfaceInfo = new UserInterfaceInfo();
+        userInterfaceInfo.setUserId(userId);
+        userInterfaceInfo.setInterfaceInfoId(interfaceInfoId);
+        userInterfaceInfo.setLeftNum(0);
+        userInterfaceInfo.setTotalNum(totalNum);
+        userInterfaceInfo.setStatus(0);
+        assertTrue(userInterfaceInfoService.save(userInterfaceInfo), "测试调用关系应创建成功");
     }
 
     @Nested
@@ -468,6 +501,88 @@ class InterfaceInfoControllerTest {
         }
 
         @Test
+        @DisplayName("分页查询返回接口调用总数汇总")
+        void shouldReturnTotalNumSummary() throws Exception {
+            MockHttpSession session = loginAsAdmin();
+            long calledInterfaceId = createInterfaceInfo("totalNumApi", "/api/total_num", "GET", InterfaceInfoStatusEnum.ONLINE.getValue());
+            long notCalledInterfaceId = createInterfaceInfo("zeroTotalNumApi", "/api/zero_total_num", "GET", InterfaceInfoStatusEnum.ONLINE.getValue());
+            insertUserInterfaceInfo(10001L, calledInterfaceId, 7);
+            insertUserInterfaceInfo(10002L, calledInterfaceId, 5);
+
+            MvcResult result = mockMvc.perform(get("/interfaceInfo/list/page")
+                            .param("current", "1")
+                            .param("pageSize", "50")
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andReturn();
+
+            com.fasterxml.jackson.databind.JsonNode records = objectMapper
+                    .readTree(result.getResponse().getContentAsString())
+                    .get("data")
+                    .get("records");
+            com.fasterxml.jackson.databind.JsonNode calledInterface = StreamSupport.stream(records.spliterator(), false)
+                    .filter(record -> record.get("id").asLong() == calledInterfaceId)
+                    .findFirst()
+                    .orElse(null);
+            com.fasterxml.jackson.databind.JsonNode notCalledInterface = StreamSupport.stream(records.spliterator(), false)
+                    .filter(record -> record.get("id").asLong() == notCalledInterfaceId)
+                    .findFirst()
+                    .orElse(null);
+
+            assertNotNull(calledInterface, "应返回有调用记录的接口");
+            assertEquals(12, calledInterface.get("totalNum").asInt(), "调用总数应按接口汇总所有用户记录");
+            assertNotNull(notCalledInterface, "应返回无调用记录的接口");
+            assertEquals(0, notCalledInterface.get("totalNum").asInt(), "没有调用记录时调用总数应返回 0");
+        }
+
+        @Test
+        @DisplayName("支持按接口调用总数升序和降序排序")
+        void shouldSortByTotalNum() throws Exception {
+            MockHttpSession session = loginAsAdmin();
+            long lowInterfaceId = createInterfaceInfo("sortTotalLow", "/api/sort_total_low", "GET", InterfaceInfoStatusEnum.ONLINE.getValue());
+            long midInterfaceId = createInterfaceInfo("sortTotalMid", "/api/sort_total_mid", "GET", InterfaceInfoStatusEnum.ONLINE.getValue());
+            long highInterfaceId = createInterfaceInfo("sortTotalHigh", "/api/sort_total_high", "GET", InterfaceInfoStatusEnum.ONLINE.getValue());
+            insertUserInterfaceInfo(10003L, midInterfaceId, 5);
+            insertUserInterfaceInfo(10004L, highInterfaceId, 12);
+            insertUserInterfaceInfo(10005L, highInterfaceId, 8);
+
+            List<Long> descendIds = queryTotalNumSortedIds(session, "descend");
+            List<Long> ascendIds = queryTotalNumSortedIds(session, "ascend");
+
+            assertEquals(Arrays.asList(highInterfaceId, midInterfaceId, lowInterfaceId), descendIds, "调用总数降序排序应正确");
+            assertEquals(Arrays.asList(lowInterfaceId, midInterfaceId, highInterfaceId), ascendIds, "调用总数升序排序应正确");
+        }
+
+        /**
+         * 查询按调用总数排序后的接口 ID 列表。
+         *
+         * @param session   管理员会话
+         * @param sortOrder 排序方向
+         * @return 接口 ID 列表
+         */
+        private List<Long> queryTotalNumSortedIds(MockHttpSession session, String sortOrder) throws Exception {
+            MvcResult result = mockMvc.perform(get("/interfaceInfo/list/page")
+                            .param("current", "1")
+                            .param("pageSize", "10")
+                            .param("description", "sortTotal")
+                            .param("sortField", "totalNum")
+                            .param("sortOrder", sortOrder)
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andReturn();
+
+            com.fasterxml.jackson.databind.JsonNode records = objectMapper
+                    .readTree(result.getResponse().getContentAsString())
+                    .get("data")
+                    .get("records");
+            return StreamSupport.stream(records.spliterator(), false)
+                    .map(record -> record.get("id").asLong())
+                    .collect(Collectors.toList());
+        }
+
+        @Test
         @DisplayName("pageSize > 50 返回参数错误")
         void shouldFailWhenPageSizeTooLarge() throws Exception {
             mockMvc.perform(get("/interfaceInfo/list/page")
@@ -758,6 +873,86 @@ class InterfaceInfoControllerTest {
                             .session(session))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(40000));
+        }
+
+        @Test
+        @DisplayName("用户请求参数不是合法 JSON 时返回参数错误")
+        void shouldFailWhenUserRequestParamsInvalidJson() throws Exception {
+            MockHttpSession session = loginAsUser();
+            long id = createInterfaceInfo("invalidJsonInvokeApi", "/api/invalid_json_invoke", "GET",
+                    InterfaceInfoStatusEnum.ONLINE.getValue());
+
+            InterfaceInfoInvokeRequest request = new InterfaceInfoInvokeRequest();
+            request.setId(id);
+            request.setUserRequestParams("{\"name\":\"test\"");
+
+            mockMvc.perform(post("/interfaceInfo/invoke")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request))
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000))
+                    .andExpect(jsonPath("$.message").value("请求参数必须是合法 JSON"));
+        }
+
+        @Test
+        @DisplayName("用户请求参数缺少接口模板字段时返回参数错误")
+        void shouldFailWhenUserRequestParamsMissingTemplateField() throws Exception {
+            MockHttpSession session = loginAsUser();
+            long id = createInterfaceInfo("missingFieldInvokeApi", "/api/missing_field_invoke", "POST",
+                    InterfaceInfoStatusEnum.ONLINE.getValue(), "{\"username\":\"string\"}");
+
+            InterfaceInfoInvokeRequest request = new InterfaceInfoInvokeRequest();
+            request.setId(id);
+            request.setUserRequestParams("{\"ip\":\"8.8.8.8\"}");
+
+            mockMvc.perform(post("/interfaceInfo/invoke")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request))
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000))
+                    .andExpect(jsonPath("$.message").value("请求参数缺少必填字段：username"));
+        }
+
+        @Test
+        @DisplayName("用户请求参数字段类型不符合接口模板时返回参数错误")
+        void shouldFailWhenUserRequestParamsFieldTypeMismatch() throws Exception {
+            MockHttpSession session = loginAsUser();
+            long id = createInterfaceInfo("typeMismatchInvokeApi", "/api/type_mismatch_invoke", "POST",
+                    InterfaceInfoStatusEnum.ONLINE.getValue(), "{\"ip\":\"string\"}");
+
+            InterfaceInfoInvokeRequest request = new InterfaceInfoInvokeRequest();
+            request.setId(id);
+            request.setUserRequestParams("{\"ip\":123}");
+
+            mockMvc.perform(post("/interfaceInfo/invoke")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request))
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000))
+                    .andExpect(jsonPath("$.message").value("请求参数字段类型错误：ip 应为 string"));
+        }
+
+        @Test
+        @DisplayName("接口模板要求参数但用户请求参数为空时返回参数错误")
+        void shouldFailWhenUserRequestParamsEmptyButTemplateRequiresFields() throws Exception {
+            MockHttpSession session = loginAsUser();
+            long id = createInterfaceInfo("emptyParamsInvokeApi", "/api/empty_params_invoke", "POST",
+                    InterfaceInfoStatusEnum.ONLINE.getValue(), "{\"username\":\"string\"}");
+
+            InterfaceInfoInvokeRequest request = new InterfaceInfoInvokeRequest();
+            request.setId(id);
+            request.setUserRequestParams("");
+
+            mockMvc.perform(post("/interfaceInfo/invoke")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request))
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000))
+                    .andExpect(jsonPath("$.message").value("请求参数缺少必填字段：username"));
         }
     }
 }

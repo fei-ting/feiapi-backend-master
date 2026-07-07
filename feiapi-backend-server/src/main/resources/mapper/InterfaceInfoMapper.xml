@@ -32,4 +32,86 @@
         user_id,create_time,update_time,
         is_delete
     </sql>
+
+    <!-- 按接口调用总数分页查询接口视图 -->
+    <select id="selectPageOrderByTotalNum" resultType="com.feiting.feiapi.model.vo.InterfaceInfoVO">
+        select
+            ii.id,
+            ii.name,
+            ii.sdk_method_name,
+            ii.description,
+            ii.url,
+            ii.path,
+            ii.target_host,
+            ii.request_params,
+            ii.request_header,
+            ii.response_header,
+            ii.status,
+            ii.method,
+            ii.quota_type,
+            ii.user_id,
+            ii.create_time,
+            ii.update_time,
+            coalesce(invoke_summary.total_num, 0) as total_num
+        from interface_info ii
+        left join (
+            select interface_info_id, coalesce(sum(total_num), 0) as total_num
+            from user_interface_info
+            where is_delete = 0
+            group by interface_info_id
+        ) invoke_summary on invoke_summary.interface_info_id = ii.id
+        where ii.is_delete = 0
+        <if test="queryRequest.id != null">
+            and ii.id = #{queryRequest.id}
+        </if>
+        <if test="queryRequest.name != null and queryRequest.name != ''">
+            and ii.name = #{queryRequest.name}
+        </if>
+        <if test="queryRequest.sdkMethodName != null and queryRequest.sdkMethodName != ''">
+            and ii.sdk_method_name = #{queryRequest.sdkMethodName}
+        </if>
+        <if test="queryRequest.description != null and queryRequest.description != ''">
+            and ii.description like concat('%', #{queryRequest.description}, '%')
+        </if>
+        <if test="queryRequest.url != null and queryRequest.url != ''">
+            and ii.url = #{queryRequest.url}
+        </if>
+        <if test="queryRequest.path != null and queryRequest.path != ''">
+            and ii.path = #{queryRequest.path}
+        </if>
+        <if test="queryRequest.targetHost != null and queryRequest.targetHost != ''">
+            and ii.target_host = #{queryRequest.targetHost}
+        </if>
+        <if test="queryRequest.requestParams != null and queryRequest.requestParams != ''">
+            and ii.request_params = #{queryRequest.requestParams}
+        </if>
+        <if test="queryRequest.requestHeader != null and queryRequest.requestHeader != ''">
+            and ii.request_header = #{queryRequest.requestHeader}
+        </if>
+        <if test="queryRequest.responseHeader != null and queryRequest.responseHeader != ''">
+            and ii.response_header = #{queryRequest.responseHeader}
+        </if>
+        <if test="status != null">
+            and ii.status = #{status}
+        </if>
+        <if test="method != null and method != ''">
+            and ii.method = #{method}
+        </if>
+        <if test="queryRequest.quotaType != null and queryRequest.quotaType != ''">
+            and ii.quota_type = #{queryRequest.quotaType}
+        </if>
+        <if test="queryRequest.userId != null">
+            and ii.user_id = #{queryRequest.userId}
+        </if>
+        order by coalesce(invoke_summary.total_num, 0)
+        <choose>
+            <when test="asc">
+                asc
+            </when>
+            <otherwise>
+                desc
+            </otherwise>
+        </choose>
+        , ii.id asc
+    </select>
 </mapper>

@@ -64,4 +64,16 @@
           and is_delete = 0
           and total_num > 0
     </update>
+
+    <!-- 批量查询接口调用总数 -->
+    <select id="listTotalNumByInterfaceInfoIds" resultType="com.feiting.feiapicommon.model.entity.UserInterfaceInfo">
+        select interface_info_id, COALESCE(sum(total_num), 0) as total_num
+        from user_interface_info
+        where interface_info_id in
+        <foreach collection="interfaceInfoIds" item="interfaceInfoId" open="(" separator="," close=")">
+            #{interfaceInfoId}
+        </foreach>
+          and is_delete = 0
+        group by interface_info_id
+    </select>
 </mapper>

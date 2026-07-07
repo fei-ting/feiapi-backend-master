@@ -6,6 +6,7 @@ import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
 import com.feiting.feiapicommon.model.vo.InvokeUserVO;
 import com.feiting.feiapicommon.service.InnerInterfaceInfoService;
+import com.feiting.feiapicommon.service.InnerInterfaceInvokeLogService;
 import com.feiting.feiapicommon.service.InnerUserInterfaceInfoService;
 import com.feiting.feiapicommon.service.InnerUserService;
 import com.feiting.feiapicommon.utils.InterfaceTargetHostValidator;
@@ -118,6 +119,9 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
 
     @DubboReference
     private InnerUserService innerUserService;
+
+    @DubboReference
+    private InnerInterfaceInvokeLogService innerInterfaceInvokeLogService;
 
     public CustomGlobalFilter(ReactiveStringRedisTemplate reactiveStringRedisTemplate,
                               FeiapiGatewayProperties feiapiGatewayProperties) {
@@ -304,65 +308,98 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
      *
      * @param exchange        请求上下文
      * @param chain           过滤器链
-     * @param userId          调用用户 ID
-     * @param interfaceInfoId 接口 ID
+     * @param userId        调用用户 ID
+     * @param interfaceInfo 接口信息
      * @return 处理结果
      */
-    public Mono<Void> handleResponse(ServerWebExchange exchange, GatewayFilterChain chain, long userId, long interfaceInfoId) {
+    public Mono<Void> handleResponse(ServerWebExchange exchange, GatewayFilterChain chain, long userId, InterfaceInfo interfaceInfo) {
         try {
             ServerHttpResponse originalResponse = exchange.getResponse();
             AtomicBoolean compensated = new AtomicBoolean(false);
+            AtomicBoolean reported = new AtomicBoolean(false);
+            long startTimeMillis = System.currentTimeMillis();
             ServerHttpResponseDecorator decoratedResponse = new ServerHttpResponseDecorator(originalResponse) {
                 @Override
                 public Mono<Void> writeWith(Publisher<? extends DataBuffer> body) {
                     return super.writeWith(body)
-                            .doOnSuccess(unused -> compensateInvokeIfNecessary(compensated, getStatusCode(), userId, interfaceInfoId))
-                            .doOnError(error -> compensatePrechargedInvokeOnce(compensated, userId, interfaceInfoId));
+                            .doOnSuccess(unused -> completeInvokeResult(compensated, reported, getStatusCode(),
+                                    startTimeMillis, userId, interfaceInfo))
+                            .doOnError(error -> completeInvokeError(compensated, reported, startTimeMillis, userId, interfaceInfo));
                 }
 
                 @Override
                 public Mono<Void> writeAndFlushWith(Publisher<? extends Publisher<? extends DataBuffer>> body) {
                     return super.writeAndFlushWith(body)
-                            .doOnSuccess(unused -> compensateInvokeIfNecessary(compensated, getStatusCode(), userId, interfaceInfoId))
-                            .doOnError(error -> compensatePrechargedInvokeOnce(compensated, userId, interfaceInfoId));
+                            .doOnSuccess(unused -> completeInvokeResult(compensated, reported, getStatusCode(),
+                                    startTimeMillis, userId, interfaceInfo))
+                            .doOnError(error -> completeInvokeError(compensated, reported, startTimeMillis, userId, interfaceInfo));
                 }
 
                 @Override
                 public Mono<Void> setComplete() {
                     return super.setComplete()
-                            .doOnSuccess(unused -> compensateInvokeIfNecessary(compensated, getStatusCode(), userId, interfaceInfoId))
-                            .doOnError(error -> compensatePrechargedInvokeOnce(compensated, userId, interfaceInfoId));
+                            .doOnSuccess(unused -> completeInvokeResult(compensated, reported, getStatusCode(),
+                                    startTimeMillis, userId, interfaceInfo))
+                            .doOnError(error -> completeInvokeError(compensated, reported, startTimeMillis, userId, interfaceInfo));
                 }
             };
             return chain.filter(exchange.mutate().response(decoratedResponse).build())
-                    .doOnError(error -> compensatePrechargedInvokeOnce(compensated, userId, interfaceInfoId));
+                    .doOnError(error -> completeInvokeError(compensated, reported, startTimeMillis, userId, interfaceInfo));
         } catch (Exception e) {
             log.error("网关处理响应异常 {}", e.getMessage(), e);
-            compensatePrechargedInvokeOnce(new AtomicBoolean(false), userId, interfaceInfoId);
+            compensatePrechargedInvokeOnce(new AtomicBoolean(false), userId, interfaceInfo.getId());
+            reportInvokeLogOnce(new AtomicBoolean(false), userId, interfaceInfo, HttpStatus.INTERNAL_SERVER_ERROR,
+                    false, 0L);
             return handleInvokeError(exchange.getResponse());
         }
     }
 
     /**
-     * 根据下游响应状态决定是否补偿预扣次数。
+     * 完成一次接口调用结果处理。
      *
      * <p>HTTP 200 表示调用成功，预扣次数直接确认；其他状态码表示调用失败，需要返还预扣次数。</p>
      *
      * @param compensated     本次请求是否已经补偿
+     * @param reported        本次请求是否已经上报日志
      * @param statusCode      下游响应状态码
+     * @param startTimeMillis 请求开始时间戳
      * @param userId          调用用户 ID
-     * @param interfaceInfoId 接口 ID
+     * @param interfaceInfo   接口信息
      */
-    private void compensateInvokeIfNecessary(AtomicBoolean compensated,
-                                             HttpStatusCode statusCode,
-                                             long userId,
-                                             long interfaceInfoId) {
-        if (statusCode == null || HttpStatus.OK.equals(statusCode)) {
-            log.info("接口响应完成, status: {}, userId: {}, interfaceInfoId: {}",
-                    statusCode == null ? HttpStatus.OK.value() : statusCode.value(), userId, interfaceInfoId);
-            return;
+    private void completeInvokeResult(AtomicBoolean compensated,
+                                      AtomicBoolean reported,
+                                      HttpStatusCode statusCode,
+                                      long startTimeMillis,
+                                      long userId,
+                                      InterfaceInfo interfaceInfo) {
+        HttpStatusCode resolvedStatusCode = statusCode == null ? HttpStatus.OK : statusCode;
+        boolean success = HttpStatus.OK.equals(resolvedStatusCode);
+        if (!success) {
+            compensatePrechargedInvokeOnce(compensated, userId, interfaceInfo.getId());
         }
-        compensatePrechargedInvokeOnce(compensated, userId, interfaceInfoId);
+        log.info("接口响应完成, status: {}, userId: {}, interfaceInfoId: {}",
+                resolvedStatusCode.value(), userId, interfaceInfo.getId());
+        reportInvokeLogOnce(reported, userId, interfaceInfo, resolvedStatusCode, success,
+                System.currentTimeMillis() - startTimeMillis);
+    }
+
+    /**
+     * 完成异常调用结果处理。
+     *
+     * @param compensated     本次请求是否已经补偿
+     * @param reported        本次请求是否已经上报日志
+     * @param startTimeMillis 请求开始时间戳
+     * @param userId          调用用户 ID
+     * @param interfaceInfo   接口信息
+     */
+    private void completeInvokeError(AtomicBoolean compensated,
+                                     AtomicBoolean reported,
+                                     long startTimeMillis,
+                                     long userId,
+                                     InterfaceInfo interfaceInfo) {
+        compensatePrechargedInvokeOnce(compensated, userId, interfaceInfo.getId());
+        reportInvokeLogOnce(reported, userId, interfaceInfo, HttpStatus.INTERNAL_SERVER_ERROR, false,
+                System.currentTimeMillis() - startTimeMillis);
     }
 
     /**
@@ -383,6 +420,41 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
             }
         } catch (Exception e) {
             log.error("rollbackInvokeCount error: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 按请求维度最多上报一次接口调用日志。
+     *
+     * @param reported       本次请求是否已经上报日志
+     * @param userId         调用用户 ID
+     * @param interfaceInfo  接口信息
+     * @param statusCode     响应状态码
+     * @param success        是否调用成功
+     * @param responseTimeMs 响应耗时，单位毫秒
+     */
+    private void reportInvokeLogOnce(AtomicBoolean reported,
+                                     long userId,
+                                     InterfaceInfo interfaceInfo,
+                                     HttpStatusCode statusCode,
+                                     boolean success,
+                                     long responseTimeMs) {
+        if (!reported.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            boolean result = innerInterfaceInvokeLogService.recordInvoke(userId,
+                    interfaceInfo.getId(),
+                    interfaceInfo.getPath(),
+                    interfaceInfo.getMethod(),
+                    statusCode == null ? null : statusCode.value(),
+                    success,
+                    responseTimeMs);
+            if (!result) {
+                log.error("recordInvokeLog failed, userId: {}, interfaceInfoId: {}", userId, interfaceInfo.getId());
+            }
+        } catch (Exception e) {
+            log.error("recordInvokeLog error: {}", e.getMessage(), e);
         }
     }
 
@@ -593,7 +665,7 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
             log.error("leftNumIsEnough error: {}", e.getMessage(), e);
             return handleInvokeError(response);
         }
-        return handleResponse(exchange, chain, userId, interfaceInfoId);
+        return handleResponse(exchange, chain, userId, interfaceInfo);
     }
 
     /**

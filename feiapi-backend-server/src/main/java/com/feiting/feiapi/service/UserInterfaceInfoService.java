@@ -7,6 +7,7 @@ import com.feiting.feiapi.model.vo.UserInterfaceInfoVO;
 import com.feiting.feiapicommon.model.entity.UserInterfaceInfo;
 
 import java.util.List;
+import java.util.Map;
 
 /**
 * @author asus
@@ -70,4 +71,12 @@ public interface UserInterfaceInfoService extends IService<UserInterfaceInfo> {
      * @return
      */
     List<UserInterfaceInfo> listTopInvokeInterfaceInfo(int limit);
+
+    /**
+     * 批量查询接口调用总数。
+     *
+     * @param interfaceInfoIds 接口 ID 列表
+     * @return 接口 ID 与调用总数映射
+     */
+    Map<Long, Integer> listTotalNumByInterfaceInfoIds(List<Long> interfaceInfoIds);
 }

@@ -64,6 +64,27 @@ public interface UserService extends IService<User> {
     String encodePassword(String rawPassword);
 
     /**
+     * 更新当前登录用户个人资料
+     *
+     * @param userId   当前登录用户 id
+     * @param userName 用户昵称
+     * @param gender   性别
+     * @return 是否更新成功
+     */
+    boolean updateCurrentUserProfile(Long userId, String userName, Integer gender);
+
+    /**
+     * 更新当前登录用户密码
+     *
+     * @param userId        当前登录用户 id
+     * @param oldPassword   旧密码
+     * @param newPassword   新密码
+     * @param checkPassword 确认密码
+     * @return 是否更新成功
+     */
+    boolean updateCurrentUserPassword(Long userId, String oldPassword, String newPassword, String checkPassword);
+
+    /**
      * 更新用户角色
      *
      * @param userId     目标用户 id

@@ -21,6 +21,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.util.AopTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
@@ -28,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -110,12 +112,19 @@ class UserControllerTest {
             request.setUserPassword("password123");
             request.setCheckPassword("password123");
 
-            mockMvc.perform(post("/user/register")
+            String response = mockMvc.perform(post("/user/register")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(0))
-                    .andExpect(jsonPath("$.data").isNumber());
+                    .andExpect(jsonPath("$.data").isNumber())
+                    .andReturn().getResponse().getContentAsString();
+
+            Long userId = objectMapper.readTree(response).get("data").asLong();
+            User user = userService.getById(userId);
+            org.assertj.core.api.Assertions.assertThat(user.getUserName())
+                    .as("注册用户应自动生成默认昵称")
+                    .matches("用户\\d{6}");
         }
 
         @Test
@@ -248,6 +257,222 @@ class UserControllerTest {
             mockMvc.perform(get("/user/get/keys"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(40100));
+        }
+    }
+
+    @Nested
+    @DisplayName("POST /user/update/my/profile 更新当前用户个人资料")
+    class UpdateCurrentUserProfileTests {
+
+        @Test
+        @DisplayName("已登录用户只能更新自己的昵称和性别")
+        void shouldUpdateOnlyCurrentUserProfile() throws Exception {
+            MockHttpSession session = registerAndLogin("profile01", "password123");
+            User loginUser = (User) session.getAttribute(UserConstant.USER_LOGIN_STATE);
+            long otherUserId = userService.userRegister("profile02", "password123", "password123");
+            User otherUser = userService.getById(otherUserId);
+            otherUser.setUserName("未修改用户");
+            otherUser.setGender(0);
+            userService.updateById(otherUser);
+
+            String requestBody = "{\"userName\":\"新的昵称\",\"gender\":1}";
+
+            mockMvc.perform(post("/user/update/my/profile")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data").value(true));
+
+            User updatedLoginUser = userService.getById(loginUser.getId());
+            User updatedOtherUser = userService.getById(otherUserId);
+            org.assertj.core.api.Assertions.assertThat(updatedLoginUser.getUserName())
+                    .as("当前登录用户昵称应被更新")
+                    .isEqualTo("新的昵称");
+            org.assertj.core.api.Assertions.assertThat(updatedLoginUser.getGender())
+                    .as("当前登录用户性别应被更新")
+                    .isEqualTo(1);
+            org.assertj.core.api.Assertions.assertThat(updatedOtherUser.getUserName())
+                    .as("其他用户昵称不应被更新")
+                    .isEqualTo("未修改用户");
+            org.assertj.core.api.Assertions.assertThat(updatedOtherUser.getGender())
+                    .as("其他用户性别不应被更新")
+                    .isEqualTo(0);
+        }
+
+        @Test
+        @DisplayName("空昵称返回参数错误")
+        void shouldRejectBlankUserName() throws Exception {
+            MockHttpSession session = registerAndLogin("profile03", "password123");
+            String requestBody = "{\"userName\":\" \",\"gender\":1}";
+
+            mockMvc.perform(post("/user/update/my/profile")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000));
+        }
+
+        @Test
+        @DisplayName("昵称长度非法返回参数错误")
+        void shouldRejectInvalidUserNameLength() throws Exception {
+            MockHttpSession session = registerAndLogin("profile05", "password123");
+            String requestBody = "{\"userName\":\"短\",\"gender\":1}";
+
+            mockMvc.perform(post("/user/update/my/profile")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000));
+        }
+
+        @Test
+        @DisplayName("昵称包含非法字符返回参数错误")
+        void shouldRejectInvalidUserNameCharacters() throws Exception {
+            MockHttpSession session = registerAndLogin("profile06", "password123");
+            String requestBody = "{\"userName\":\"昵称_01\",\"gender\":1}";
+
+            mockMvc.perform(post("/user/update/my/profile")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000));
+        }
+
+        @Test
+        @DisplayName("昵称包含敏感词返回参数错误")
+        void shouldRejectSensitiveUserName() throws Exception {
+            MockHttpSession session = registerAndLogin("profile07", "password123");
+            String requestBody = "{\"userName\":\"官方用户\",\"gender\":1}";
+
+            mockMvc.perform(post("/user/update/my/profile")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000))
+                    .andExpect(jsonPath("$.message").value("昵称包含不允许使用的内容"));
+        }
+
+        @Test
+        @DisplayName("非法性别返回参数错误")
+        void shouldRejectInvalidGender() throws Exception {
+            MockHttpSession session = registerAndLogin("profile08", "password123");
+            String requestBody = "{\"userName\":\"昵称\",\"gender\":2}";
+
+            mockMvc.perform(post("/user/update/my/profile")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000));
+        }
+
+        @Test
+        @DisplayName("未登录返回未登录错误")
+        void shouldRejectProfileUpdateWhenNotLoggedIn() throws Exception {
+            String requestBody = "{\"userName\":\"昵称\",\"gender\":1}";
+
+            mockMvc.perform(post("/user/update/my/profile")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40100));
+        }
+    }
+
+    @Nested
+    @DisplayName("POST /user/update/my/password 更新当前用户密码")
+    class UpdateCurrentUserPasswordTests {
+
+        @Test
+        @DisplayName("旧密码正确且新密码合法时更新成功")
+        void shouldUpdatePasswordWhenOldPasswordMatches() throws Exception {
+            MockHttpSession session = registerAndLogin("pwdctl01", "password123");
+            String requestBody = "{\"oldPassword\":\"password123\",\"newPassword\":\"password456\",\"checkPassword\":\"password456\"}";
+
+            mockMvc.perform(post("/user/update/my/password")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data").value(true));
+
+            UserLoginRequest loginRequest = new UserLoginRequest();
+            loginRequest.setUserAccount("pwdctl01");
+            loginRequest.setUserPassword("password456");
+
+            mockMvc.perform(post("/user/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(loginRequest)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0));
+        }
+
+        @Test
+        @DisplayName("旧密码错误返回参数错误")
+        void shouldRejectWrongOldPassword() throws Exception {
+            MockHttpSession session = registerAndLogin("pwdctl02", "password123");
+            String requestBody = "{\"oldPassword\":\"password456\",\"newPassword\":\"password789\",\"checkPassword\":\"password789\"}";
+
+            mockMvc.perform(post("/user/update/my/password")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000));
+        }
+
+        @Test
+        @DisplayName("两次新密码不一致返回参数错误")
+        void shouldRejectMismatchedNewPassword() throws Exception {
+            MockHttpSession session = registerAndLogin("pwdctl03", "password123");
+            String requestBody = "{\"oldPassword\":\"password123\",\"newPassword\":\"password456\",\"checkPassword\":\"password789\"}";
+
+            mockMvc.perform(post("/user/update/my/password")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000));
+        }
+
+        @Test
+        @DisplayName("非法新密码返回参数错误")
+        void shouldRejectInvalidNewPassword() throws Exception {
+            MockHttpSession session = registerAndLogin("pwdctl04", "password123");
+            String requestBody = "{\"oldPassword\":\"password123\",\"newPassword\":\"short\",\"checkPassword\":\"short\"}";
+
+            mockMvc.perform(post("/user/update/my/password")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody)
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000));
+        }
+    }
+
+    @Nested
+    @DisplayName("POST /user/avatar/upload 上传当前用户头像")
+    class UploadCurrentUserAvatarTests {
+
+        @Test
+        @DisplayName("OSS 未接入时返回明确业务错误")
+        void shouldReturnPlaceholderErrorWhenOssNotConfigured() throws Exception {
+            MockHttpSession session = registerAndLogin("avatar01", "password123");
+            MockMultipartFile file = new MockMultipartFile("file", "avatar.png", "image/png", "avatar".getBytes());
+
+            mockMvc.perform(multipart("/user/avatar/upload")
+                            .file(file)
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(50001))
+                    .andExpect(jsonPath("$.message").value("对象存储暂未接入"));
         }
     }
 

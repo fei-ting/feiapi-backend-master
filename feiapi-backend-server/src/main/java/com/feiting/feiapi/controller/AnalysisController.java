@@ -7,8 +7,10 @@ import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.common.ResultUtils;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.model.enums.UserRoleEnum;
+import com.feiting.feiapi.model.vo.HomeStatsVO;
 import com.feiting.feiapi.model.vo.InterfaceInfoVO;
 import com.feiting.feiapi.service.InterfaceInfoService;
+import com.feiting.feiapi.service.InterfaceInvokeLogService;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.entity.UserInterfaceInfo;
@@ -39,6 +41,19 @@ public class AnalysisController {
 
     @Resource
     private InterfaceInfoService interfaceInfoService;
+
+    @Resource
+    private InterfaceInvokeLogService interfaceInvokeLogService;
+
+    /**
+     * 获取首页公开统计数据。
+     *
+     * @return 首页统计数据
+     */
+    @GetMapping("/home/stats")
+    public BaseResponse<HomeStatsVO> getHomeStats() {
+        return ResultUtils.success(interfaceInvokeLogService.getHomeStats());
+    }
 
     @GetMapping("/top/interface/invoke")
     @AuthCheck(mustRole = UserRoleEnum.ADMIN)

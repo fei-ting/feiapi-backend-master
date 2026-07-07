@@ -169,6 +169,27 @@ public class UserInterfaceInfoServiceImpl extends ServiceImpl<UserInterfaceInfoM
         return userInterfaceInfoMapper.listTopInvokeInterfaceInfo(limit);
     }
 
+    @Override
+    public Map<Long, Integer> listTotalNumByInterfaceInfoIds(List<Long> interfaceInfoIds) {
+        if (interfaceInfoIds == null || interfaceInfoIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        List<Long> validInterfaceInfoIds = interfaceInfoIds.stream()
+                .filter(Objects::nonNull)
+                .filter(interfaceInfoId -> interfaceInfoId > 0)
+                .distinct()
+                .collect(Collectors.toList());
+        if (validInterfaceInfoIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return userInterfaceInfoMapper.listTotalNumByInterfaceInfoIds(validInterfaceInfoIds).stream()
+                .collect(Collectors.toMap(
+                        UserInterfaceInfo::getInterfaceInfoId,
+                        userInterfaceInfo -> userInterfaceInfo.getTotalNum() == null ? 0 : userInterfaceInfo.getTotalNum(),
+                        Integer::sum
+                ));
+    }
+
     /**
      * 构建用户接口初始化关系。
      *

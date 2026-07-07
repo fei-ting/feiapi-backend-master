@@ -213,6 +213,48 @@ class FeiApiClientTest {
             assertNotNull(annotation);
             assertTrue(annotation.needParams());
         }
+
+        @Test
+        @DisplayName("generateQrCode 方法标记了 @SdkInvoke(needParams=true)")
+        void generateQrCodeShouldBeAnnotated() throws NoSuchMethodException {
+            Method method = FeiApiClient.class.getMethod("generateQrCode", String.class);
+            com.feiting.feiapiclientsdk.annotation.SdkInvoke annotation =
+                    method.getAnnotation(com.feiting.feiapiclientsdk.annotation.SdkInvoke.class);
+
+            assertNotNull(annotation);
+            assertTrue(annotation.needParams());
+        }
+    }
+
+    @Nested
+    @DisplayName("下游异常响应处理")
+    class ErrorResponseTests {
+
+        @Test
+        @DisplayName("非 2xx 响应消息包含状态码和响应内容")
+        void shouldBuildErrorMessageWithResponseBody() throws Exception {
+            FeiApiClient client = new FeiApiClient();
+            Method buildErrorMessage = FeiApiClient.class.getDeclaredMethod("buildErrorMessage", int.class, String.class);
+            buildErrorMessage.setAccessible(true);
+
+            String message = (String) buildErrorMessage.invoke(client, 400, "username 不能为空");
+
+            assertEquals("调用接口失败，响应状态码：400，响应内容：username 不能为空", message);
+        }
+
+        @Test
+        @DisplayName("过长响应内容会被截断")
+        void shouldTruncateLongResponseBody() throws Exception {
+            FeiApiClient client = new FeiApiClient();
+            Method buildErrorMessage = FeiApiClient.class.getDeclaredMethod("buildErrorMessage", int.class, String.class);
+            buildErrorMessage.setAccessible(true);
+
+            String longBody = new String(new char[250]).replace('\0', 'x');
+            String message = (String) buildErrorMessage.invoke(client, 500, longBody);
+
+            assertTrue(message.endsWith("..."));
+            assertFalse(message.contains(longBody));
+        }
     }
 
     /**

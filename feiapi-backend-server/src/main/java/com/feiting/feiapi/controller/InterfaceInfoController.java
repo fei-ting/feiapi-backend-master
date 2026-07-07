@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.feiting.feiapi.common.*;
+import com.feiting.feiapi.component.InterfaceRequestParamValidator;
 import com.feiting.feiapi.component.UserSessionManager;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
@@ -17,6 +18,7 @@ import com.feiting.feiapi.constant.CommonConstant;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.InterfaceQuotaConfigService;
+import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapi.component.SdkMethodRegistry;
 import com.feiting.feiapi.utils.SortFieldUtils;
 import com.feiting.feiapiclientsdk.client.FeiApiClient;
@@ -34,7 +36,11 @@ import org.springframework.web.bind.annotation.*;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.util.Collections;
 import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -46,6 +52,9 @@ import java.util.stream.Collectors;
 @RequestMapping("/interfaceInfo")
 @Slf4j
 public class InterfaceInfoController {
+
+    /** 调用总数字段名，用于触发聚合排序查询 */
+    private static final String TOTAL_NUM_SORT_FIELD = "totalNum";
 
     private static final Set<String> ALLOWED_SORT_FIELDS = SortFieldUtils.allowedFields(
             "id", "name", "sdkMethodName", "description", "url", "path", "targetHost", "requestParams", "requestHeader",
@@ -72,6 +81,12 @@ public class InterfaceInfoController {
 
     @Resource
     private SdkMethodRegistry sdkMethodRegistry;
+
+    @Resource
+    private UserInterfaceInfoService userInterfaceInfoService;
+
+    @Resource
+    private InterfaceRequestParamValidator interfaceRequestParamValidator;
 
     @Value("${feiapi.client.gateway-host}")
     private String gatewayHost;
@@ -203,6 +218,9 @@ public class InterfaceInfoController {
         if (!isCurrentUserAdmin(request)) {
             status = InterfaceInfoStatusEnum.ONLINE.getValue();
         }
+        if (isTotalNumSortField(interfaceInfoQueryRequest.getSortField())) {
+            return ResultUtils.success(listInterfaceInfoByTotalNumPage(interfaceInfoQueryRequest, status, sortOrder));
+        }
         String descriptionKeyword = interfaceInfoQueryRequest.getDescription();
         queryWrapper.eq(interfaceInfoQueryRequest.getId() != null, "id", interfaceInfoQueryRequest.getId());
         queryWrapper.eq(StringUtils.isNotBlank(interfaceInfoQueryRequest.getName()), "name", interfaceInfoQueryRequest.getName());
@@ -225,8 +243,13 @@ public class InterfaceInfoController {
                 CommonConstant.SORT_ORDER_ASC.equals(sortOrder), sortField);
         Page<InterfaceInfo> interfaceInfoPage = interfaceInfoService.page(new Page<>(current, size), queryWrapper);
         Page<InterfaceInfoVO> interfaceInfoVOPage = new Page<>(interfaceInfoPage.getCurrent(), interfaceInfoPage.getSize(), interfaceInfoPage.getTotal());
+        List<Long> interfaceInfoIds = interfaceInfoPage.getRecords().stream()
+                .map(InterfaceInfo::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        Map<Long, Integer> totalNumMap = userInterfaceInfoService.listTotalNumByInterfaceInfoIds(interfaceInfoIds);
         interfaceInfoVOPage.setRecords(interfaceInfoPage.getRecords().stream()
-                .map(this::toInterfaceInfoVO)
+                .map(interfaceInfo -> toInterfaceInfoVO(interfaceInfo, totalNumMap))
                 .collect(Collectors.toList()));
         return ResultUtils.success(interfaceInfoVOPage);
     }
@@ -356,6 +379,7 @@ public class InterfaceInfoController {
         if(oldInterfaceInfo.getStatus() != InterfaceInfoStatusEnum.ONLINE.getValue()){
             throw new BusinessException(ErrorCode.SYSTEM_ERROR,"接口未上线或正在发布验证中");
         }
+        interfaceRequestParamValidator.validate(oldInterfaceInfo.getRequestParams(), userRequestParams);
 
         User loginUser = getCurrentLoginUser(request);
         String accessKey = loginUser.getAccessKey();
@@ -382,6 +406,56 @@ public class InterfaceInfoController {
 
     private String toDatabaseSortField(String sortField) {
         return SortFieldUtils.resolveSortField(sortField, ALLOWED_SORT_FIELDS);
+    }
+
+    /**
+     * 判断是否按接口调用总数排序。
+     *
+     * @param sortField 排序字段
+     * @return 是否为调用总数字段
+     */
+    private boolean isTotalNumSortField(String sortField) {
+        return TOTAL_NUM_SORT_FIELD.equals(sortField);
+    }
+
+    /**
+     * 按接口调用总数分页查询接口视图。
+     *
+     * @param queryRequest 查询请求
+     * @param status       接口状态过滤值
+     * @param sortOrder    排序方向
+     * @return 接口视图分页结果
+     */
+    private Page<InterfaceInfoVO> listInterfaceInfoByTotalNumPage(InterfaceInfoQueryRequest queryRequest,
+                                                                  Integer status,
+                                                                  String sortOrder) {
+        boolean asc = CommonConstant.SORT_ORDER_ASC.equals(sortOrder);
+        Page<InterfaceInfoVO> interfaceInfoVOPage = interfaceInfoService.listPageOrderByTotalNum(queryRequest, status, asc);
+        interfaceInfoVOPage.setRecords(interfaceInfoVOPage.getRecords().stream()
+                .map(this::completeQuotaInfo)
+                .collect(Collectors.toList()));
+        return interfaceInfoVOPage;
+    }
+
+    /**
+     * 补齐接口视图中的配额展示信息。
+     *
+     * @param interfaceInfoVO 接口视图对象
+     * @return 补齐配额展示信息后的接口视图对象
+     */
+    private InterfaceInfoVO completeQuotaInfo(InterfaceInfoVO interfaceInfoVO) {
+        if (interfaceInfoVO == null) {
+            return null;
+        }
+        InterfaceQuotaTypeEnum quotaTypeEnum = InterfaceQuotaTypeEnum.getEnumByValue(interfaceInfoVO.getQuotaType());
+        if (quotaTypeEnum != null) {
+            interfaceInfoVO.setQuotaTypeText(quotaTypeEnum.getText());
+            interfaceInfoVO.setInitialQuota(interfaceQuotaConfigService.getInitialQuota(quotaTypeEnum));
+        }
+        if (interfaceInfoVO.getTotalNum() == null) {
+            interfaceInfoVO.setTotalNum(0);
+        }
+        return interfaceInfoVO;
     }
 
     /**
@@ -466,6 +540,23 @@ public class InterfaceInfoController {
         if (interfaceInfo == null) {
             return null;
         }
+        Map<Long, Integer> totalNumMap = userInterfaceInfoService.listTotalNumByInterfaceInfoIds(
+                Collections.singletonList(interfaceInfo.getId())
+        );
+        return toInterfaceInfoVO(interfaceInfo, totalNumMap);
+    }
+
+    /**
+     * 将接口实体转换为接口视图对象，并填充调用总数。
+     *
+     * @param interfaceInfo 接口实体
+     * @param totalNumMap   接口 ID 与调用总数映射
+     * @return 接口视图对象
+     */
+    private InterfaceInfoVO toInterfaceInfoVO(InterfaceInfo interfaceInfo, Map<Long, Integer> totalNumMap) {
+        if (interfaceInfo == null) {
+            return null;
+        }
         InterfaceInfoVO interfaceInfoVO = new InterfaceInfoVO();
         BeanUtils.copyProperties(interfaceInfo, interfaceInfoVO);
         InterfaceQuotaTypeEnum quotaTypeEnum = InterfaceQuotaTypeEnum.getEnumByValue(interfaceInfo.getQuotaType());
@@ -473,6 +564,7 @@ public class InterfaceInfoController {
             interfaceInfoVO.setQuotaTypeText(quotaTypeEnum.getText());
             interfaceInfoVO.setInitialQuota(interfaceQuotaConfigService.getInitialQuota(quotaTypeEnum));
         }
+        interfaceInfoVO.setTotalNum(totalNumMap.getOrDefault(interfaceInfo.getId(), 0));
         return interfaceInfoVO;
     }
 

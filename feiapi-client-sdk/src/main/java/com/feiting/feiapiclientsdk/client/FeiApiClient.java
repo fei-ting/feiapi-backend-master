@@ -20,6 +20,11 @@ public class FeiApiClient {
 
     private static final String DEFAULT_GATEWAY_HOST = "http://localhost:8090";
 
+    /**
+     * 异常响应体最大展示长度，避免下游返回大文本时污染平台错误信息。
+     */
+    private static final int MAX_ERROR_BODY_LENGTH = 200;
+
     private String accessKey;
     private String secretKey;
     private String gatewayHost = DEFAULT_GATEWAY_HOST;
@@ -104,6 +109,22 @@ public class FeiApiClient {
     }
 
     /**
+     * 生成二维码
+     *
+     * 根据传入的请求参数生成二维码图片，返回 Base64 编码和 Data URI。
+     * 请求参数示例：{"content": "https://example.com", "width": 300, "height": 300}
+     *
+     * @param requestParam 请求参数 JSON 字符串
+     * @return 响应结果（包含 base64 和 dataUri）
+     */
+    @SdkInvoke(needParams = true)
+    public String generateQrCode(String requestParam) {
+        return executeRequest(HttpRequest.post(gatewayHost + "/api/qrcode/generate")
+                .addHeaders(getHeaderMap("POST", "/api/qrcode/generate", requestParam))
+                .body(requestParam));
+    }
+
+    /**
      * 构造请求头
      * 
      * 整改后，这里不再把 body 放到 header 中传输。
@@ -169,9 +190,28 @@ public class FeiApiClient {
         int status = httpResponse.getStatus();
         String body = httpResponse.body();
         if (status < 200 || status >= 300) {
-            throw new RuntimeException("调用接口失败，响应状态码：" + status);
+            throw new RuntimeException(buildErrorMessage(status, body));
         }
         return body;
+    }
+
+    /**
+     * 构建下游接口失败提示。
+     *
+     * @param status 响应状态码
+     * @param body   响应体
+     * @return 失败提示
+     */
+    private String buildErrorMessage(int status, String body) {
+        StringBuilder messageBuilder = new StringBuilder("调用接口失败，响应状态码：").append(status);
+        if (body == null || body.trim().isEmpty()) {
+            return messageBuilder.toString();
+        }
+        String trimmedBody = body.trim();
+        if (trimmedBody.length() > MAX_ERROR_BODY_LENGTH) {
+            trimmedBody = trimmedBody.substring(0, MAX_ERROR_BODY_LENGTH) + "...";
+        }
+        return messageBuilder.append("，响应内容：").append(trimmedBody).toString();
     }
 
     private String normalizeGatewayHost(String gatewayHost) {
