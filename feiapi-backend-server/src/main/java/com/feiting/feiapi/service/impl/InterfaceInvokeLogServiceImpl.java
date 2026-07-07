@@ -19,8 +19,6 @@ import org.springframework.stereotype.Service;
 import jakarta.annotation.Resource;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.Date;
 
 /**
@@ -65,19 +63,19 @@ public class InterfaceInvokeLogServiceImpl extends ServiceImpl<InterfaceInvokeLo
         HomeStatsVO homeStatsVO = new HomeStatsVO();
         homeStatsVO.setPlatformInterfaceCount(countOnlineInterfaces());
 
-        HomeInvokeAggregateVO aggregate = interfaceInvokeLogMapper.getHomeInvokeAggregate(getTodayStart(), getTomorrowStart());
+        HomeInvokeAggregateVO aggregate = interfaceInvokeLogMapper.getHomeInvokeAggregate();
         long totalInvocations = aggregate == null || aggregate.getTotalInvocations() == null
                 ? 0L
                 : aggregate.getTotalInvocations();
-        homeStatsVO.setTodayInvocations(totalInvocations);
+        homeStatsVO.setTotalInvocations(totalInvocations);
         if (totalInvocations <= 0) {
-            homeStatsVO.setAvailabilityRate(null);
+            homeStatsVO.setSuccessRate(null);
             homeStatsVO.setAverageResponseTimeMs(null);
             return homeStatsVO;
         }
 
         long successInvocations = aggregate.getSuccessInvocations() == null ? 0L : aggregate.getSuccessInvocations();
-        homeStatsVO.setAvailabilityRate(calculateAvailabilityRate(successInvocations, totalInvocations));
+        homeStatsVO.setSuccessRate(calculateSuccessRate(successInvocations, totalInvocations));
         homeStatsVO.setAverageResponseTimeMs(aggregate.getAverageResponseTimeMs() == null
                 ? null
                 : aggregate.getAverageResponseTimeMs().setScale(0, RoundingMode.HALF_UP).longValue());
@@ -96,36 +94,13 @@ public class InterfaceInvokeLogServiceImpl extends ServiceImpl<InterfaceInvokeLo
     }
 
     /**
-     * 计算今日零点时间。
-     *
-     * @return 今日零点时间
-     */
-    private Date getTodayStart() {
-        return Date.from(LocalDate.now()
-                .atStartOfDay(ZoneId.systemDefault())
-                .toInstant());
-    }
-
-    /**
-     * 计算明日零点时间。
-     *
-     * @return 明日零点时间
-     */
-    private Date getTomorrowStart() {
-        return Date.from(LocalDate.now()
-                .plusDays(1)
-                .atStartOfDay(ZoneId.systemDefault())
-                .toInstant());
-    }
-
-    /**
-     * 计算服务可用性百分比。
+     * 计算成功率百分比。
      *
      * @param successInvocations 成功调用次数
      * @param totalInvocations   调用总次数
-     * @return 服务可用性百分比
+     * @return 成功率百分比
      */
-    private Double calculateAvailabilityRate(long successInvocations, long totalInvocations) {
+    private Double calculateSuccessRate(long successInvocations, long totalInvocations) {
         return BigDecimal.valueOf(successInvocations)
                 .multiply(BigDecimal.valueOf(100))
                 .divide(BigDecimal.valueOf(totalInvocations), 1, RoundingMode.HALF_UP)

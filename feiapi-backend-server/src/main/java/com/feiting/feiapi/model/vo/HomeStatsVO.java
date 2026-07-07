@@ -18,18 +18,18 @@ public class HomeStatsVO implements Serializable {
     private Long platformInterfaceCount;
 
     /**
-     * 今日接口调用次数。
+     * 全部已记录真实接口调用次数。
      */
-    @NotNull(message = "今日调用次数不能为空")
-    private Long todayInvocations;
+    @NotNull(message = "累计调用次数不能为空")
+    private Long totalInvocations;
 
     /**
-     * 今日服务可用性百分比，无调用数据时为空。
+     * 全部调用日志成功率百分比，无调用数据时为空。
      */
-    private Double availabilityRate;
+    private Double successRate;
 
     /**
-     * 今日平均响应耗时，单位毫秒，无调用数据时为空。
+     * 全部调用日志平均响应耗时，单位毫秒，无调用数据时为空。
      */
     private Long averageResponseTimeMs;
 

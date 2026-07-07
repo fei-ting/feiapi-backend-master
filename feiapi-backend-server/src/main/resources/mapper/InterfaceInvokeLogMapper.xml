@@ -16,7 +16,5 @@
                avg(response_time_ms) as average_response_time_ms
         from interface_invoke_log
         where is_delete = 0
-          and invoke_time <![CDATA[>=]]> #{startTime}
-          and invoke_time <![CDATA[<]]> #{endTime}
     </select>
 </mapper>
