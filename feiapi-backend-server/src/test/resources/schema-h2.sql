@@ -39,6 +39,54 @@ CREATE TABLE IF NOT EXISTS `interface_info` (
     UNIQUE (`path`, `method`, `is_delete`)
 );
 
+CREATE TABLE IF NOT EXISTS `interface_doc` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `interface_info_id` BIGINT NOT NULL,
+    `doc_version` VARCHAR(64) NOT NULL DEFAULT 'v1',
+    `request_content_type` VARCHAR(128) NOT NULL DEFAULT 'application/json',
+    `response_content_type` VARCHAR(128) NOT NULL DEFAULT 'application/json',
+    `auth_description` VARCHAR(512) DEFAULT NULL,
+    `success_example` TEXT DEFAULT NULL,
+    `fail_example` TEXT DEFAULT NULL,
+    `remark` VARCHAR(512) DEFAULT NULL,
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `is_delete` TINYINT NOT NULL DEFAULT 0,
+    UNIQUE (`interface_info_id`, `is_delete`)
+);
+
+CREATE TABLE IF NOT EXISTS `interface_doc_param` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `interface_info_id` BIGINT NOT NULL,
+    `param_scene` VARCHAR(32) NOT NULL,
+    `parent_id` BIGINT DEFAULT NULL,
+    `name` VARCHAR(128) NOT NULL,
+    `type` VARCHAR(64) NOT NULL,
+    `required` TINYINT NOT NULL DEFAULT 0,
+    `default_value` VARCHAR(512) DEFAULT NULL,
+    `example_value` VARCHAR(1024) DEFAULT NULL,
+    `description` VARCHAR(512) DEFAULT NULL,
+    `validation_rule` VARCHAR(512) DEFAULT NULL,
+    `sort_order` INT NOT NULL DEFAULT 0,
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `is_delete` TINYINT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS `interface_doc_error_code` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `interface_info_id` BIGINT NOT NULL,
+    `error_code` VARCHAR(64) NOT NULL,
+    `error_message` VARCHAR(256) NOT NULL,
+    `description` VARCHAR(512) DEFAULT NULL,
+    `solution` VARCHAR(512) DEFAULT NULL,
+    `sort_order` INT NOT NULL DEFAULT 0,
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `is_delete` TINYINT NOT NULL DEFAULT 0,
+    UNIQUE (`interface_info_id`, `error_code`, `is_delete`)
+);
+
 CREATE TABLE IF NOT EXISTS `interface_quota_config` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
     `quota_type` VARCHAR(32) NOT NULL,
