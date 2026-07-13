@@ -6,6 +6,7 @@ import com.feiting.feiapi.service.InterfaceDocService;
 import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
+import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -57,6 +58,10 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Boolean updateInterfaceInfoWithDoc(InterfaceInfo interfaceInfo) {
+        InterfaceInfo oldInterfaceInfo = interfaceInfoService.getById(interfaceInfo.getId());
+        if (oldInterfaceInfo == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+        }
         boolean result = interfaceInfoService.updateById(interfaceInfo);
         if (!result) {
             return false;
@@ -65,7 +70,21 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
         if (latestInterfaceInfo == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
-        interfaceDocService.syncRequestDocFromInterfaceInfo(latestInterfaceInfo);
+        if (requestDocTemplateChanged(oldInterfaceInfo, latestInterfaceInfo)) {
+            interfaceDocService.syncRequestDocFromInterfaceInfo(latestInterfaceInfo);
+        }
         return true;
+    }
+
+    /**
+     * 判断运行时请求参数模板是否变化。
+     *
+     * @param oldInterfaceInfo    更新前接口信息
+     * @param latestInterfaceInfo 更新后接口信息
+     * @return 请求文档模板是否变化
+     */
+    private boolean requestDocTemplateChanged(InterfaceInfo oldInterfaceInfo, InterfaceInfo latestInterfaceInfo) {
+        return !Objects.equals(oldInterfaceInfo.getRequestParams(), latestInterfaceInfo.getRequestParams())
+                || !Objects.equals(oldInterfaceInfo.getMethod(), latestInterfaceInfo.getMethod());
     }
 }

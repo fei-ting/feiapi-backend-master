@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS `interface_doc` (
     `remark` VARCHAR(512) DEFAULT NULL,
     `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
     `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    `is_delete` TINYINT NOT NULL DEFAULT 0,
+    `is_delete` BIGINT NOT NULL DEFAULT 0,
     UNIQUE (`interface_info_id`, `is_delete`)
 );
 
@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS `interface_doc_param` (
     `name` VARCHAR(128) NOT NULL,
     `type` VARCHAR(64) NOT NULL,
     `required` TINYINT NOT NULL DEFAULT 0,
+    `nullable` TINYINT NOT NULL DEFAULT 0,
     `default_value` VARCHAR(512) DEFAULT NULL,
     `example_value` VARCHAR(1024) DEFAULT NULL,
     `description` VARCHAR(512) DEFAULT NULL,
@@ -70,7 +71,7 @@ CREATE TABLE IF NOT EXISTS `interface_doc_param` (
     `sort_order` INT NOT NULL DEFAULT 0,
     `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
     `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    `is_delete` TINYINT NOT NULL DEFAULT 0
+    `is_delete` BIGINT NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS `interface_doc_error_code` (
@@ -83,7 +84,7 @@ CREATE TABLE IF NOT EXISTS `interface_doc_error_code` (
     `sort_order` INT NOT NULL DEFAULT 0,
     `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
     `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    `is_delete` TINYINT NOT NULL DEFAULT 0,
+    `is_delete` BIGINT NOT NULL DEFAULT 0,
     UNIQUE (`interface_info_id`, `error_code`, `is_delete`)
 );
 

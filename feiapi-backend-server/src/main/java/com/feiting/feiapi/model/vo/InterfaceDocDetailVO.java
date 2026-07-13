@@ -14,7 +14,7 @@ public class InterfaceDocDetailVO implements Serializable {
     /**
      * 接口基础信息。
      */
-    private InterfaceInfoVO interfaceInfo;
+    private InterfaceDocInterfaceInfoVO interfaceInfo;
 
     /**
      * 文档主信息。
@@ -29,7 +29,7 @@ public class InterfaceDocDetailVO implements Serializable {
     /**
      * 是否缺少结构化文档。
      */
-    private Boolean legacyFallback;
+    private Boolean structuredDocMissing;
 
     /**
      * 请求 Header 参数列表。

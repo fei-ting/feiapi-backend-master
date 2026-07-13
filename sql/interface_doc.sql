@@ -14,7 +14,7 @@ create table if not exists feiapi.`interface_doc`
     `remark` varchar(512) null comment '文档备注',
     `create_time` datetime default CURRENT_TIMESTAMP not null comment '创建时间',
     `update_time` datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
-    `is_delete` tinyint default 0 not null comment '是否删除 0-未删除 1-已删除',
+    `is_delete` bigint default 0 not null comment '逻辑删除标识 0-未删除 其他值-已删除记录 ID',
     unique key `uk_interface_doc_info_delete` (`interface_info_id`, `is_delete`)
 ) comment '接口文档主信息';
 
@@ -28,6 +28,7 @@ create table if not exists feiapi.`interface_doc_param`
     `name` varchar(128) not null comment '参数名称',
     `type` varchar(64) not null comment '参数类型',
     `required` tinyint default 0 not null comment '是否必填 0-否 1-是',
+    `nullable` tinyint default 0 not null comment '是否允许为空 0-否 1-是',
     `default_value` varchar(512) null comment '默认值',
     `example_value` varchar(1024) null comment '示例值',
     `description` varchar(512) null comment '参数说明',
@@ -35,7 +36,7 @@ create table if not exists feiapi.`interface_doc_param`
     `sort_order` int default 0 not null comment '排序值',
     `create_time` datetime default CURRENT_TIMESTAMP not null comment '创建时间',
     `update_time` datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
-    `is_delete` tinyint default 0 not null comment '是否删除 0-未删除 1-已删除',
+    `is_delete` bigint default 0 not null comment '逻辑删除标识 0-未删除 其他值-已删除记录 ID',
     key `idx_interface_doc_param_info_scene` (`interface_info_id`, `param_scene`, `is_delete`, `sort_order`)
 ) comment '接口文档参数';
 
@@ -51,7 +52,7 @@ create table if not exists feiapi.`interface_doc_error_code`
     `sort_order` int default 0 not null comment '排序值',
     `create_time` datetime default CURRENT_TIMESTAMP not null comment '创建时间',
     `update_time` datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
-    `is_delete` tinyint default 0 not null comment '是否删除 0-未删除 1-已删除',
+    `is_delete` bigint default 0 not null comment '逻辑删除标识 0-未删除 其他值-已删除记录 ID',
     unique key `uk_interface_doc_error_code` (`interface_info_id`, `error_code`, `is_delete`),
     key `idx_interface_doc_error_info` (`interface_info_id`, `is_delete`, `sort_order`)
 ) comment '接口文档错误码';

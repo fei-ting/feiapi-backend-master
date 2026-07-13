@@ -55,6 +55,11 @@ public class InterfaceDocParam implements Serializable {
     private Integer required;
 
     /**
+     * 是否允许为空，0 表示否，1 表示是。
+     */
+    private Integer nullable;
+
+    /**
      * 默认值。
      */
     private String defaultValue;
@@ -90,10 +95,10 @@ public class InterfaceDocParam implements Serializable {
     private Date updateTime;
 
     /**
-     * 是否删除，0 表示未删除，1 表示已删除。
+     * 逻辑删除标识，0 表示未删除，其他值表示已删除记录 ID。
      */
-    @TableLogic
-    private Integer isDelete;
+    @TableLogic(value = "0", delval = "id")
+    private Long isDelete;
 
     /**
      * 序列化版本号。

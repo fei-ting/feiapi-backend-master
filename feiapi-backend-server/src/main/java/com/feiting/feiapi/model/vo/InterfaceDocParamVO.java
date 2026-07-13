@@ -46,6 +46,11 @@ public class InterfaceDocParamVO implements Serializable {
     private Boolean required;
 
     /**
+     * 是否允许为空。
+     */
+    private Boolean nullable;
+
+    /**
      * 默认值。
      */
     private String defaultValue;

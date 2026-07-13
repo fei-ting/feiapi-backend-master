@@ -2,6 +2,7 @@ package com.feiting.feiapi.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.feiting.feiapi.model.entity.InterfaceDoc;
+import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocSaveRequest;
 import com.feiting.feiapi.model.vo.InterfaceDocDetailVO;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 
@@ -25,4 +26,12 @@ public interface InterfaceDocService extends IService<InterfaceDoc> {
      * @param interfaceInfo 接口信息
      */
     void syncRequestDocFromInterfaceInfo(InterfaceInfo interfaceInfo);
+
+    /**
+     * 聚合保存接口文档。
+     *
+     * @param saveRequest 保存请求
+     * @return 是否保存成功
+     */
+    boolean saveDoc(InterfaceDocSaveRequest saveRequest);
 }
