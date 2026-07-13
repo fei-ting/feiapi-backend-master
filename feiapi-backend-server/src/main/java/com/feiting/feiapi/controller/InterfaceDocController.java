@@ -1,11 +1,14 @@
 package com.feiting.feiapi.controller;
 
 import com.feiting.feiapi.common.BaseResponse;
+import com.feiting.feiapi.annotation.AuthCheck;
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.common.ResultUtils;
 import com.feiting.feiapi.component.UserSessionManager;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.model.vo.InterfaceDocDetailVO;
+import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocSaveRequest;
+import com.feiting.feiapi.model.enums.UserRoleEnum;
 import com.feiting.feiapi.service.InterfaceDocService;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapicommon.model.entity.User;
@@ -16,7 +19,10 @@ import jakarta.validation.constraints.Positive;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+import jakarta.validation.Valid;
 
 /**
  * 接口文档查询控制器。
@@ -58,6 +64,18 @@ public class InterfaceDocController {
                                                               HttpServletRequest request) {
         InterfaceDocDetailVO detailVO = interfaceDocService.getDocDetail(interfaceInfoId, isCurrentUserAdmin(request));
         return ResultUtils.success(detailVO);
+    }
+
+    /**
+     * 聚合保存接口文档。
+     *
+     * @param saveRequest 保存请求
+     * @return 是否保存成功
+     */
+    @PostMapping("/save")
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
+    public BaseResponse<Boolean> saveInterfaceDoc(@Valid @RequestBody InterfaceDocSaveRequest saveRequest) {
+        return ResultUtils.success(interfaceDocService.saveDoc(saveRequest));
     }
 
     /**

@@ -17,6 +17,7 @@ import com.feiting.feiapi.annotation.AuthCheck;
 import com.feiting.feiapi.constant.CommonConstant;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.service.InterfaceInfoService;
+import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
 import com.feiting.feiapi.service.InterfaceQuotaConfigService;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapi.component.SdkMethodRegistry;
@@ -68,6 +69,9 @@ public class InterfaceInfoController {
     private InterfaceInfoService interfaceInfoService;
 
     @Resource
+    private InterfaceInfoLifecycleService interfaceInfoLifecycleService;
+
+    @Resource
     private InterfaceQuotaConfigService interfaceQuotaConfigService;
 
     @Resource
@@ -113,11 +117,7 @@ public class InterfaceInfoController {
         interfaceInfoService.validInterfaceInfo(interfaceInfo, true);
         User loginUser = getCurrentLoginUser(request);
         interfaceInfo.setUserId(loginUser.getId());
-        boolean result = interfaceInfoService.save(interfaceInfo);
-        if (!result) {
-            throw new BusinessException(ErrorCode.OPERATION_ERROR);
-        }
-        long newInterfaceInfoId = interfaceInfo.getId();
+        long newInterfaceInfoId = interfaceInfoLifecycleService.addInterfaceInfoWithDoc(interfaceInfo);
         return ResultUtils.success(newInterfaceInfoId);
     }
 
@@ -171,7 +171,7 @@ public class InterfaceInfoController {
         }
         completeUpdateDisplayUrl(interfaceInfo, oldInterfaceInfo);
         normalizeInterfaceInfo(interfaceInfo);
-        boolean result = interfaceInfoService.updateById(interfaceInfo);
+        boolean result = interfaceInfoLifecycleService.updateInterfaceInfoWithDoc(interfaceInfo);
         return ResultUtils.success(result);
     }
 
