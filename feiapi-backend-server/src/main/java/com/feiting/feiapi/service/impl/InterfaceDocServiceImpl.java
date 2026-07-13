@@ -25,19 +25,26 @@ import com.feiting.feiapicommon.model.enums.InterfaceQuotaTypeEnum;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
+import com.google.gson.JsonSyntaxException;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -57,6 +64,12 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * 默认响应内容类型。
      */
     private static final String DEFAULT_RESPONSE_CONTENT_TYPE = "application/json";
+
+    /**
+     * 支持的参数类型标记。
+     */
+    private static final Set<String> SUPPORTED_TYPE_MARKERS = new HashSet<>(
+            Arrays.asList("string", "number", "boolean", "object", "array"));
 
     /**
      * 当前网关调用地址前缀。
@@ -130,14 +143,208 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         detailVO.setDoc(toInterfaceDocVO(doc, interfaceInfo));
         detailVO.setGatewayUrl(buildGatewayUrl(interfaceInfo));
         detailVO.setLegacyFallback(!hasStructuredDoc);
-        detailVO.setRequestHeaders(resolveParams(interfaceInfo, docParams, InterfaceDocParamSceneEnum.HEADER, hasStructuredDoc));
-        detailVO.setRequestParams(resolveRequestParams(interfaceInfo, docParams, hasStructuredDoc));
-        detailVO.setResponseParams(resolveParams(interfaceInfo, docParams, InterfaceDocParamSceneEnum.RESPONSE, hasStructuredDoc));
+        detailVO.setRequestHeaders(resolveParams(docParams, InterfaceDocParamSceneEnum.HEADER));
+        detailVO.setRequestParams(resolveRequestParams(docParams));
+        detailVO.setResponseParams(resolveParams(docParams, InterfaceDocParamSceneEnum.RESPONSE));
         detailVO.setErrorCodes(errorCodes.stream()
                 .map(this::toErrorCodeVO)
                 .collect(Collectors.toList()));
         detailVO.setCurlExample(buildCurlExample(interfaceInfo, detailVO));
         return detailVO;
+    }
+
+    /**
+     * 根据接口运行时参数模板同步结构化请求参数文档。
+     *
+     * @param interfaceInfo 接口信息
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void syncRequestDocFromInterfaceInfo(InterfaceInfo interfaceInfo) {
+        if (interfaceInfo == null || interfaceInfo.getId() == null || interfaceInfo.getId() <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        ensureInterfaceDoc(interfaceInfo);
+        removeRequestDocParams(interfaceInfo.getId());
+        List<InterfaceDocParam> requestParams = buildRequestDocParams(interfaceInfo);
+        if (!requestParams.isEmpty()) {
+            boolean result = interfaceDocParamService.saveBatch(requestParams);
+            if (!result) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "结构化请求参数保存失败");
+            }
+        }
+    }
+
+    /**
+     * 确保接口文档主信息存在。
+     *
+     * @param interfaceInfo 接口信息
+     */
+    private void ensureInterfaceDoc(InterfaceInfo interfaceInfo) {
+        InterfaceDoc doc = lambdaQuery()
+                .eq(InterfaceDoc::getInterfaceInfoId, interfaceInfo.getId())
+                .one();
+        if (doc != null) {
+            return;
+        }
+        InterfaceDoc newDoc = new InterfaceDoc();
+        newDoc.setInterfaceInfoId(interfaceInfo.getId());
+        newDoc.setDocVersion("v1");
+        newDoc.setRequestContentType(DEFAULT_REQUEST_CONTENT_TYPE);
+        newDoc.setResponseContentType(DEFAULT_RESPONSE_CONTENT_TYPE);
+        newDoc.setAuthDescription("通过平台 AccessKey/SecretKey 签名鉴权，由网关统一校验。");
+        boolean result = save(newDoc);
+        if (!result) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口文档主信息保存失败");
+        }
+    }
+
+    /**
+     * 删除已有结构化请求参数。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     */
+    private void removeRequestDocParams(Long interfaceInfoId) {
+        interfaceDocParamService.lambdaUpdate()
+                .eq(InterfaceDocParam::getInterfaceInfoId, interfaceInfoId)
+                .in(InterfaceDocParam::getParamScene,
+                        InterfaceDocParamSceneEnum.QUERY.getValue(),
+                        InterfaceDocParamSceneEnum.BODY.getValue())
+                .remove();
+    }
+
+    /**
+     * 根据接口运行时参数模板构建结构化请求参数。
+     *
+     * @param interfaceInfo 接口信息
+     * @return 结构化请求参数列表
+     */
+    private List<InterfaceDocParam> buildRequestDocParams(InterfaceInfo interfaceInfo) {
+        String requestParams = interfaceInfo.getRequestParams();
+        if (StringUtils.isBlank(requestParams)) {
+            return Collections.emptyList();
+        }
+        JsonObject requestParamObject = parseRequestParamObject(requestParams);
+        InterfaceDocParamSceneEnum sceneEnum = resolveRequestParamScene(interfaceInfo.getMethod());
+        int[] sortOrder = {1};
+        return requestParamObject.entrySet().stream()
+                .map(entry -> buildRequestDocParam(interfaceInfo.getId(), sceneEnum, entry.getKey(), entry.getValue(), sortOrder[0]++))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 解析接口运行时参数模板。
+     *
+     * @param requestParams 请求参数模板
+     * @return JSON 对象
+     */
+    private JsonObject parseRequestParamObject(String requestParams) {
+        try {
+            JsonElement jsonElement = JsonParser.parseString(requestParams);
+            if (!jsonElement.isJsonObject()) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数模板必须是 JSON 对象");
+            }
+            return jsonElement.getAsJsonObject();
+        } catch (JsonSyntaxException e) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数模板必须是合法 JSON");
+        }
+    }
+
+    /**
+     * 解析请求参数场景。
+     *
+     * @param method 请求方法
+     * @return 请求参数场景
+     */
+    private InterfaceDocParamSceneEnum resolveRequestParamScene(String method) {
+        if ("GET".equalsIgnoreCase(method)) {
+            return InterfaceDocParamSceneEnum.QUERY;
+        }
+        return InterfaceDocParamSceneEnum.BODY;
+    }
+
+    /**
+     * 构建单个结构化请求参数。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     * @param sceneEnum       参数场景
+     * @param name            参数名称
+     * @param templateValue   参数模板值
+     * @param sortOrder       排序值
+     * @return 结构化请求参数
+     */
+    private InterfaceDocParam buildRequestDocParam(Long interfaceInfoId,
+                                                   InterfaceDocParamSceneEnum sceneEnum,
+                                                   String name,
+                                                   JsonElement templateValue,
+                                                   Integer sortOrder) {
+        InterfaceDocParam param = new InterfaceDocParam();
+        param.setInterfaceInfoId(interfaceInfoId);
+        param.setParamScene(sceneEnum.getValue());
+        param.setName(name);
+        param.setType(resolveTemplateType(templateValue));
+        param.setRequired(1);
+        param.setDefaultValue("");
+        param.setExampleValue(resolveTemplateExampleValue(templateValue));
+        param.setDescription("由接口运行时参数模板自动生成");
+        param.setValidationRule("");
+        param.setSortOrder(sortOrder);
+        return param;
+    }
+
+    /**
+     * 解析参数类型。
+     *
+     * @param templateValue 参数模板值
+     * @return 参数类型
+     */
+    private String resolveTemplateType(JsonElement templateValue) {
+        if (templateValue == null || templateValue.isJsonNull()) {
+            return "string";
+        }
+        if (templateValue.isJsonObject()) {
+            return "object";
+        }
+        if (templateValue.isJsonArray()) {
+            return "array";
+        }
+        if (!templateValue.isJsonPrimitive()) {
+            return "string";
+        }
+        JsonPrimitive primitive = templateValue.getAsJsonPrimitive();
+        if (primitive.isString()) {
+            String marker = primitive.getAsString().trim().toLowerCase(Locale.ROOT);
+            return SUPPORTED_TYPE_MARKERS.contains(marker) ? marker : "string";
+        }
+        if (primitive.isNumber()) {
+            return "number";
+        }
+        if (primitive.isBoolean()) {
+            return "boolean";
+        }
+        return "string";
+    }
+
+    /**
+     * 解析参数示例值。
+     *
+     * @param templateValue 参数模板值
+     * @return 示例值
+     */
+    private String resolveTemplateExampleValue(JsonElement templateValue) {
+        if (templateValue == null || templateValue.isJsonNull()) {
+            return "";
+        }
+        if (templateValue.isJsonPrimitive()) {
+            JsonPrimitive primitive = templateValue.getAsJsonPrimitive();
+            if (primitive.isString()) {
+                String value = primitive.getAsString();
+                String marker = value.trim().toLowerCase(Locale.ROOT);
+                return SUPPORTED_TYPE_MARKERS.contains(marker) ? "" : value;
+            }
+            return primitive.toString();
+        }
+        return templateValue.toString();
     }
 
     /**
@@ -190,6 +397,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         InterfaceInfoVO interfaceInfoVO = new InterfaceInfoVO();
         BeanUtils.copyProperties(interfaceInfo, interfaceInfoVO);
         if (!admin) {
+            interfaceInfoVO.setUrl(null);
             interfaceInfoVO.setTargetHost(null);
         }
         InterfaceQuotaTypeEnum quotaTypeEnum = InterfaceQuotaTypeEnum.getEnumByValue(interfaceInfo.getQuotaType());
@@ -215,13 +423,13 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         InterfaceDocVO docVO = new InterfaceDocVO();
         if (doc != null) {
             BeanUtils.copyProperties(doc, docVO);
-            docVO.setRequestContentType(firstText(docVO.getRequestContentType(), inferRequestContentType(interfaceInfo)));
+            docVO.setRequestContentType(firstText(docVO.getRequestContentType(), DEFAULT_REQUEST_CONTENT_TYPE));
             docVO.setResponseContentType(firstText(docVO.getResponseContentType(), DEFAULT_RESPONSE_CONTENT_TYPE));
             return docVO;
         }
         docVO.setInterfaceInfoId(interfaceInfo.getId());
         docVO.setDocVersion("v1");
-        docVO.setRequestContentType(inferRequestContentType(interfaceInfo));
+        docVO.setRequestContentType(DEFAULT_REQUEST_CONTENT_TYPE);
         docVO.setResponseContentType(DEFAULT_RESPONSE_CONTENT_TYPE);
         docVO.setAuthDescription("通过平台 AccessKey/SecretKey 签名鉴权，由网关统一校验。");
         return docVO;
@@ -230,52 +438,30 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
     /**
      * 根据场景解析参数列表。
      *
-     * @param interfaceInfo    接口信息
-     * @param docParams        结构化参数列表
-     * @param sceneEnum        参数场景
-     * @param hasStructuredDoc 是否存在结构化文档
+     * @param docParams 结构化参数列表
+     * @param sceneEnum 参数场景
      * @return 参数视图列表
      */
-    private List<InterfaceDocParamVO> resolveParams(InterfaceInfo interfaceInfo,
-                                                    List<InterfaceDocParam> docParams,
-                                                    InterfaceDocParamSceneEnum sceneEnum,
-                                                    boolean hasStructuredDoc) {
-        List<InterfaceDocParamVO> structuredParams = docParams.stream()
+    private List<InterfaceDocParamVO> resolveParams(List<InterfaceDocParam> docParams,
+                                                    InterfaceDocParamSceneEnum sceneEnum) {
+        return docParams.stream()
                 .filter(param -> sceneEnum.getValue().equals(param.getParamScene()))
                 .map(this::toParamVO)
                 .collect(Collectors.toList());
-        if (hasStructuredDoc || !structuredParams.isEmpty()) {
-            return structuredParams;
-        }
-        if (InterfaceDocParamSceneEnum.HEADER.equals(sceneEnum)) {
-            return parseHeaderText(interfaceInfo.getRequestHeader(), interfaceInfo.getId());
-        }
-        if (InterfaceDocParamSceneEnum.RESPONSE.equals(sceneEnum)) {
-            return parseRawText(interfaceInfo.getResponseHeader(), interfaceInfo.getId(), sceneEnum, "响应说明");
-        }
-        return Collections.emptyList();
     }
 
     /**
      * 解析请求参数列表。
      *
-     * @param interfaceInfo    接口信息
-     * @param docParams        结构化参数列表
-     * @param hasStructuredDoc 是否存在结构化文档
+     * @param docParams 结构化参数列表
      * @return 请求参数视图列表
      */
-    private List<InterfaceDocParamVO> resolveRequestParams(InterfaceInfo interfaceInfo,
-                                                           List<InterfaceDocParam> docParams,
-                                                           boolean hasStructuredDoc) {
-        List<InterfaceDocParamVO> structuredParams = docParams.stream()
+    private List<InterfaceDocParamVO> resolveRequestParams(List<InterfaceDocParam> docParams) {
+        return docParams.stream()
                 .filter(param -> InterfaceDocParamSceneEnum.QUERY.getValue().equals(param.getParamScene())
                         || InterfaceDocParamSceneEnum.BODY.getValue().equals(param.getParamScene()))
                 .map(this::toParamVO)
                 .collect(Collectors.toList());
-        if (hasStructuredDoc || !structuredParams.isEmpty()) {
-            return structuredParams;
-        }
-        return parseRequestParamText(interfaceInfo.getRequestParams(), interfaceInfo.getId(), interfaceInfo.getMethod());
     }
 
     /**
@@ -301,196 +487,6 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         InterfaceDocErrorCodeVO errorCodeVO = new InterfaceDocErrorCodeVO();
         BeanUtils.copyProperties(errorCode, errorCodeVO);
         return errorCodeVO;
-    }
-
-    /**
-     * 解析旧请求 Header 文本。
-     *
-     * @param headerText      旧请求 Header 文本
-     * @param interfaceInfoId 接口信息 ID
-     * @return Header 参数视图列表
-     */
-    private List<InterfaceDocParamVO> parseHeaderText(String headerText, Long interfaceInfoId) {
-        if (StringUtils.isBlank(headerText)) {
-            return Collections.emptyList();
-        }
-        String content = headerText.trim();
-        Optional<List<InterfaceDocParamVO>> jsonParams = parseJsonObjectText(content, interfaceInfoId,
-                InterfaceDocParamSceneEnum.HEADER, false);
-        if (jsonParams.isPresent()) {
-            return jsonParams.get();
-        }
-        return Stream.of(content.split("\\r?\\n"))
-                .map(String::trim)
-                .filter(StringUtils::isNotBlank)
-                .map(line -> toHeaderParam(line, interfaceInfoId))
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * 将单行 Header 文本转换为参数视图。
-     *
-     * @param line            Header 文本行
-     * @param interfaceInfoId 接口信息 ID
-     * @return 参数视图
-     */
-    private InterfaceDocParamVO toHeaderParam(String line, Long interfaceInfoId) {
-        String[] pieces = line.split(":", 2);
-        String name = pieces[0].trim();
-        String exampleValue = pieces.length > 1 ? pieces[1].trim() : "";
-        return buildParamVO(interfaceInfoId, InterfaceDocParamSceneEnum.HEADER, name, "string", false,
-                "", exampleValue, "旧请求头字段自动转换", "", 0);
-    }
-
-    /**
-     * 解析旧请求参数文本。
-     *
-     * @param requestParamText 旧请求参数文本
-     * @param interfaceInfoId  接口信息 ID
-     * @param method           请求方法
-     * @return 请求参数视图列表
-     */
-    private List<InterfaceDocParamVO> parseRequestParamText(String requestParamText, Long interfaceInfoId, String method) {
-        if (StringUtils.isBlank(requestParamText)) {
-            return Collections.emptyList();
-        }
-        InterfaceDocParamSceneEnum sceneEnum = "GET".equalsIgnoreCase(method)
-                ? InterfaceDocParamSceneEnum.QUERY
-                : InterfaceDocParamSceneEnum.BODY;
-        String content = requestParamText.trim();
-        Optional<List<InterfaceDocParamVO>> jsonParams = parseJsonObjectText(content, interfaceInfoId, sceneEnum, true);
-        if (jsonParams.isPresent()) {
-            return jsonParams.get();
-        }
-        return parseRawText(content, interfaceInfoId, sceneEnum, "请求参数");
-    }
-
-    /**
-     * 解析 JSON 对象文本。
-     *
-     * @param content         JSON 文本
-     * @param interfaceInfoId 接口信息 ID
-     * @param sceneEnum       参数场景
-     * @param required        是否必填
-     * @return 参数视图列表
-     */
-    private Optional<List<InterfaceDocParamVO>> parseJsonObjectText(String content,
-                                                                    Long interfaceInfoId,
-                                                                    InterfaceDocParamSceneEnum sceneEnum,
-                                                                    boolean required) {
-        try {
-            JsonElement jsonElement = JsonParser.parseString(content);
-            if (!jsonElement.isJsonObject()) {
-                return Optional.empty();
-            }
-            List<InterfaceDocParamVO> params = jsonElement.getAsJsonObject().entrySet().stream()
-                    .map(entry -> buildParamVO(interfaceInfoId, sceneEnum, entry.getKey(), inferJsonType(entry.getValue()),
-                            required, "", toJsonExampleValue(entry.getValue()), "旧字段自动转换", "", 0))
-                    .collect(Collectors.toList());
-            return Optional.of(params);
-        } catch (Exception e) {
-            return Optional.empty();
-        }
-    }
-
-    /**
-     * 解析原始文本为单个参数行。
-     *
-     * @param text            原始文本
-     * @param interfaceInfoId 接口信息 ID
-     * @param sceneEnum       参数场景
-     * @param name            参数名称
-     * @return 参数视图列表
-     */
-    private List<InterfaceDocParamVO> parseRawText(String text,
-                                                   Long interfaceInfoId,
-                                                   InterfaceDocParamSceneEnum sceneEnum,
-                                                   String name) {
-        if (StringUtils.isBlank(text)) {
-            return Collections.emptyList();
-        }
-        return Collections.singletonList(buildParamVO(interfaceInfoId, sceneEnum, name, "text", false,
-                "", text.trim(), "旧字段原文展示", "", 0));
-    }
-
-    /**
-     * 构造参数视图。
-     *
-     * @param interfaceInfoId 接口信息 ID
-     * @param sceneEnum       参数场景
-     * @param name            参数名称
-     * @param type            参数类型
-     * @param required        是否必填
-     * @param defaultValue    默认值
-     * @param exampleValue    示例值
-     * @param description     参数说明
-     * @param validationRule  校验规则
-     * @param sortOrder       排序值
-     * @return 参数视图
-     */
-    private InterfaceDocParamVO buildParamVO(Long interfaceInfoId,
-                                             InterfaceDocParamSceneEnum sceneEnum,
-                                             String name,
-                                             String type,
-                                             boolean required,
-                                             String defaultValue,
-                                             String exampleValue,
-                                             String description,
-                                             String validationRule,
-                                             Integer sortOrder) {
-        InterfaceDocParamVO paramVO = new InterfaceDocParamVO();
-        paramVO.setInterfaceInfoId(interfaceInfoId);
-        paramVO.setParamScene(sceneEnum.getValue());
-        paramVO.setName(name);
-        paramVO.setType(type);
-        paramVO.setRequired(required);
-        paramVO.setDefaultValue(defaultValue);
-        paramVO.setExampleValue(exampleValue);
-        paramVO.setDescription(description);
-        paramVO.setValidationRule(validationRule);
-        paramVO.setSortOrder(sortOrder);
-        return paramVO;
-    }
-
-    /**
-     * 推断 JSON 元素类型。
-     *
-     * @param jsonElement JSON 元素
-     * @return 类型名称
-     */
-    private String inferJsonType(JsonElement jsonElement) {
-        if (jsonElement == null || jsonElement.isJsonNull()) {
-            return "null";
-        }
-        if (jsonElement.isJsonObject()) {
-            return "object";
-        }
-        if (jsonElement.isJsonArray()) {
-            return "array";
-        }
-        if (jsonElement.getAsJsonPrimitive().isBoolean()) {
-            return "boolean";
-        }
-        if (jsonElement.getAsJsonPrimitive().isNumber()) {
-            return "number";
-        }
-        return "string";
-    }
-
-    /**
-     * 将 JSON 元素转换为示例值。
-     *
-     * @param jsonElement JSON 元素
-     * @return 示例值
-     */
-    private String toJsonExampleValue(JsonElement jsonElement) {
-        if (jsonElement == null || jsonElement.isJsonNull()) {
-            return "";
-        }
-        if (jsonElement.isJsonPrimitive() && jsonElement.getAsJsonPrimitive().isString()) {
-            return jsonElement.getAsString();
-        }
-        return jsonElement.toString();
     }
 
     /**
@@ -581,22 +577,6 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
             path = "/" + path;
         }
         return normalizedGatewayHost + path;
-    }
-
-    /**
-     * 推断请求内容类型。
-     *
-     * @param interfaceInfo 接口信息
-     * @return 请求内容类型
-     */
-    private String inferRequestContentType(InterfaceInfo interfaceInfo) {
-        List<InterfaceDocParamVO> headers = parseHeaderText(interfaceInfo.getRequestHeader(), interfaceInfo.getId());
-        return headers.stream()
-                .filter(param -> "content-type".equalsIgnoreCase(param.getName()))
-                .map(InterfaceDocParamVO::getExampleValue)
-                .filter(StringUtils::isNotBlank)
-                .findFirst()
-                .orElse(DEFAULT_REQUEST_CONTENT_TYPE);
     }
 
     /**
