@@ -2,6 +2,8 @@ package com.feiting.feiapi.integration.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
+import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoUpdateRequest;
 import com.feiting.feiapi.model.dto.user.UserLoginRequest;
 import com.feiting.feiapi.model.entity.InterfaceDoc;
 import com.feiting.feiapi.model.entity.InterfaceDocErrorCode;
@@ -90,8 +92,8 @@ class InterfaceDocControllerTest {
     private InterfaceDocErrorCodeService interfaceDocErrorCodeService;
 
     @Test
-    @DisplayName("上线接口没有结构化文档时使用旧字段兜底，普通用户不返回 targetHost")
-    void shouldFallbackToLegacyFieldsWhenStructuredDocMissing() throws Exception {
+    @DisplayName("上线接口没有结构化文档时返回空状态，普通用户不返回真实后端地址")
+    void shouldReturnEmptyDocStateWhenStructuredDocMissing() throws Exception {
         long id = createInterfaceInfo("legacyDocApi", "/api/legacy_doc", InterfaceInfoStatusEnum.ONLINE.getValue());
 
         JsonNode data = requestDoc(id, null)
@@ -99,9 +101,11 @@ class InterfaceDocControllerTest {
 
         assertThat(data.get("legacyFallback").asBoolean()).isTrue();
         assertThat(data.get("gatewayUrl").asText()).isEqualTo("http://localhost:8090/api/legacy_doc");
+        assertThat(data.get("interfaceInfo").get("url").isNull()).isTrue();
         assertThat(data.get("interfaceInfo").get("targetHost").isNull()).isTrue();
-        assertThat(data.get("requestHeaders").get(0).get("name").asText()).isEqualTo("Content-Type");
-        assertThat(data.get("requestParams").get(0).get("name").asText()).isEqualTo("username");
+        assertThat(data.get("requestHeaders")).isEmpty();
+        assertThat(data.get("requestParams")).isEmpty();
+        assertThat(data.get("responseParams")).isEmpty();
     }
 
     @Test
@@ -141,6 +145,69 @@ class InterfaceDocControllerTest {
         assertThat(data.get("requestParams").get(0).get("name").asText()).isEqualTo("first");
         assertThat(data.get("errorCodes").get(0).get("errorCode").asText()).isEqualTo("A001");
         assertThat(data.get("curlExample").asText()).contains("-d");
+    }
+
+    @Test
+    @DisplayName("管理员新增接口时根据运行时参数模板生成结构化请求参数")
+    void shouldCreateStructuredRequestParamsWhenAdminAddsInterface() throws Exception {
+        MockHttpSession adminSession = loginWithRole("adddoc" + suffix(), "admin");
+        InterfaceInfoAddRequest addRequest = new InterfaceInfoAddRequest();
+        addRequest.setName("autoDocApi");
+        addRequest.setSdkMethodName("getUsernameByPost");
+        addRequest.setDescription("自动生成结构化文档");
+        addRequest.setPath("/api/auto_doc_" + suffix());
+        addRequest.setTargetHost(TEST_TARGET_HOST);
+        addRequest.setRequestParams("{\"username\":\"string\"}");
+        addRequest.setMethod("POST");
+
+        String response = mockMvc.perform(post("/interfaceInfo/add")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest))
+                        .session(adminSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        long id = objectMapper.readTree(response).get("data").asLong();
+
+        JsonNode data = requestDoc(id, adminSession)
+                .get("data");
+
+        assertThat(data.get("legacyFallback").asBoolean()).isFalse();
+        assertThat(data.get("requestParams")).hasSize(1);
+        assertThat(data.get("requestParams").get(0).get("name").asText()).isEqualTo("username");
+        assertThat(data.get("requestParams").get(0).get("paramScene").asText()).isEqualTo("BODY");
+        assertThat(data.get("requestParams").get(0).get("type").asText()).isEqualTo("string");
+        assertThat(data.get("requestParams").get(0).get("required").asBoolean()).isTrue();
+    }
+
+    @Test
+    @DisplayName("管理员更新接口参数模板时同步重建结构化请求参数")
+    void shouldRebuildStructuredRequestParamsWhenAdminUpdatesInterface() throws Exception {
+        MockHttpSession adminSession = loginWithRole("updoc" + suffix(), "admin");
+        long id = createInterfaceInfo("updateDocApi", "/api/update_doc_" + suffix(), InterfaceInfoStatusEnum.ONLINE.getValue());
+        InterfaceInfoUpdateRequest updateRequest = new InterfaceInfoUpdateRequest();
+        updateRequest.setId(id);
+        updateRequest.setRequestParams("{\"content\":\"string\",\"width\":300}");
+
+        mockMvc.perform(post("/interfaceInfo/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateRequest))
+                        .session(adminSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data").value(true));
+
+        JsonNode data = requestDoc(id, adminSession)
+                .get("data");
+
+        assertThat(data.get("legacyFallback").asBoolean()).isFalse();
+        assertThat(data.get("requestParams")).hasSize(2);
+        assertThat(data.get("requestParams").get(0).get("name").asText()).isEqualTo("content");
+        assertThat(data.get("requestParams").get(0).get("type").asText()).isEqualTo("string");
+        assertThat(data.get("requestParams").get(1).get("name").asText()).isEqualTo("width");
+        assertThat(data.get("requestParams").get(1).get("type").asText()).isEqualTo("number");
     }
 
     /**

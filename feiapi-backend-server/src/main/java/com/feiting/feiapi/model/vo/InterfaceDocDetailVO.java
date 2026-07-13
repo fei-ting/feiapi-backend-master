@@ -27,7 +27,7 @@ public class InterfaceDocDetailVO implements Serializable {
     private String gatewayUrl;
 
     /**
-     * 是否来源于旧字段兜底。
+     * 是否缺少结构化文档。
      */
     private Boolean legacyFallback;
 
