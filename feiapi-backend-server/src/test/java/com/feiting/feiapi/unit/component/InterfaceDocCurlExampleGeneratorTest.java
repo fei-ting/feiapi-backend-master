@@ -230,20 +230,24 @@ class InterfaceDocCurlExampleGeneratorTest {
     void shouldRejectShellControlCharacters() {
         assertThatThrownBy(() -> generator.generate(
                 interfaceInfo("GET", "/api/users\nmalicious"), detail("http://localhost/api/users")))
-                .isInstanceOf(BusinessException.class);
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("控制字符");
         assertThatThrownBy(() -> generator.generate(
                 interfaceInfo("GET", "/api/users"), detail("http://localhost/api/users\rmalicious")))
-                .isInstanceOf(BusinessException.class);
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("控制字符");
 
         InterfaceDocDetailVO detailWithHeader = detail("http://localhost/api/users");
         detailWithHeader.setRequestHeaders(Collections.singletonList(header("X-Test", "value\nInjected: true")));
         assertThatThrownBy(() -> generator.generate(interfaceInfo("GET", "/api/users"), detailWithHeader))
-                .isInstanceOf(BusinessException.class);
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("控制字符");
 
         InterfaceDocDetailVO detailWithInvalidHeaderName = detail("http://localhost/api/users");
         detailWithInvalidHeaderName.setRequestHeaders(Collections.singletonList(header("X\0Test", "value")));
         assertThatThrownBy(() -> generator.generate(interfaceInfo("GET", "/api/users"), detailWithInvalidHeaderName))
-                .isInstanceOf(BusinessException.class);
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("控制字符");
     }
 
     /**
