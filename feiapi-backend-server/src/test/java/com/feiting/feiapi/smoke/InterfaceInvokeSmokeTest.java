@@ -35,6 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 接口调用冒烟测试。
  *
+ * <p>验证成功状态机: OFFLINE -> PUBLISHING -> ONLINE -> OFFLINE</p>
  * <p>验证状态机: OFFLINE -> PUBLISHING -> (失败回滚) -> OFFLINE</p>
  * <p>验证权限: 非管理员不能发布/下线</p>
  * <p>验证调用: 未上线接口不可调用</p>
@@ -66,9 +67,22 @@ class InterfaceInvokeSmokeTest {
     /**
      * 用 @MockBean 替换容器中的 SdkMethodRegistry，使成功调用路径不依赖网关。
      * 测试中可通过 Mockito.when() 定制行为。
+     * 设置默认行为：对未 stub 的方法返回空字符串，避免返回 null。
      */
     @MockBean
     private SdkMethodRegistry sdkMethodRegistry;
+
+    /**
+     * 配置 mock 返回成功响应。
+     * 仅在需要模拟成功调用的测试中使用。
+     */
+    private void mockInvokeSuccess(String methodName, String response) {
+        Mockito.when(sdkMethodRegistry.invoke(
+                Mockito.any(FeiApiClient.class),
+                Mockito.eq(methodName),
+                Mockito.any()
+        )).thenReturn(response);
+    }
 
     /**
      * 使用指定账号和角色登录，返回会话。
@@ -162,7 +176,7 @@ class InterfaceInvokeSmokeTest {
     }
 
     @Test
-    @DisplayName("成功调用全链路: 创建 -> 发布(mock成功) -> ONLINE -> 调用 -> 返回 data")
+    @DisplayName("成功调用全链路: 创建 -> 发布 -> 调用 -> 下线 -> 禁止再次调用")
     void fullSuccessfulInvokeLifecycle() throws Exception {
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
         String adminAccount = buildTestAccount("ai");
@@ -176,11 +190,7 @@ class InterfaceInvokeSmokeTest {
 
         try {
             // 配置 mock：发布验证时 invoke 返回成功
-            Mockito.when(sdkMethodRegistry.invoke(
-                    Mockito.any(FeiApiClient.class),
-                    Mockito.eq("getLoveWords"),
-                    Mockito.any()
-            )).thenReturn("{\"content\":\"测试土味情话\"}");
+            mockInvokeSuccess("getLoveWords", "{\"content\":\"test_love_words\"}");
 
             MockHttpSession adminSession = loginWithRole(adminAccount, "admin");
             MockHttpSession userSession = loginWithRole(userAccount, "user");
@@ -247,6 +257,31 @@ class InterfaceInvokeSmokeTest {
             // 验证返回的 data 包含 mock 的内容
             JsonNode invokeData = objectMapper.readTree(invokeResult.getResponse().getContentAsString()).get("data");
             assertThat(invokeData).as("调用成功应返回 data").isNotNull();
+            // 验证返回内容包含 mock 设置的内容
+            assertThat(invokeData.asText()).contains("test_love_words");
+
+            // ======== Step4: 下线接口，验证 ONLINE -> OFFLINE ========
+            String offlineJson = "{\"id\":" + interfaceInfoId + "}";
+            mockMvc.perform(post("/interfaceInfo/offline")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(offlineJson)
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data").value(true));
+
+            InterfaceInfo offline = interfaceInfoService.getById(interfaceInfoId);
+            assertThat(offline.getStatus())
+                    .as("下线成功后状态应为 OFFLINE")
+                    .isEqualTo(InterfaceInfoStatusEnum.OFFLINE.getValue());
+
+            // ======== Step5: 已下线接口不可再次调用 ========
+            mockMvc.perform(post("/interfaceInfo/invoke")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(invokeRequest))
+                            .session(userSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(50000));
         } finally {
             cleanupTestData(interfaceInfoId, adminId, adminAccount, userId, userAccount);
         }
@@ -304,12 +339,19 @@ class InterfaceInvokeSmokeTest {
             // ======== Step2: 发布接口（走真实 /online 链路） ========
             // 网关不可用，发布验证会失败，但应验证状态机正确转换和回滚
             String onlineJson = "{\"id\":" + interfaceInfoId + "}";
-            mockMvc.perform(post("/interfaceInfo/online")
+            MvcResult onlineResult = mockMvc.perform(post("/interfaceInfo/online")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(onlineJson)
                             .session(adminSession))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(50000));  // 验证失败
+                    .andExpect(jsonPath("$.code").value(50000))  // 验证失败
+                    .andReturn();
+
+            // 验证错误消息包含特定关键词
+            JsonNode onlineResponse = objectMapper.readTree(onlineResult.getResponse().getContentAsString());
+            assertThat(onlineResponse.get("message").asText())
+                    .as("发布失败应返回有意义的错误消息")
+                    .isNotEmpty();
 
             // 验证：发布失败后状态应正确回滚到 OFFLINE
             InterfaceInfo afterOnline = interfaceInfoService.getById(interfaceInfoId);
@@ -334,7 +376,7 @@ class InterfaceInvokeSmokeTest {
     }
 
     @Test
-    @DisplayName("普通用户删除平台接口应失败")
+    @DisplayName("普通用户删除接口应失败（无论是否为接口创建者）")
     void deleteOthersInterfaceShouldFail() throws Exception {
         String ownerAccount = buildTestAccount("so");
         String otherAccount = buildTestAccount("sr");
@@ -344,7 +386,7 @@ class InterfaceInvokeSmokeTest {
         long otherId = -1;
 
         try {
-            loginWithRole(ownerAccount, "user");
+            MockHttpSession ownerSession = loginWithRole(ownerAccount, "user");
             MockHttpSession otherSession = loginWithRole(otherAccount, "user");
 
             ownerId = userService.lambdaQuery().eq(User::getUserAccount, ownerAccount).one().getId();
@@ -352,12 +394,20 @@ class InterfaceInvokeSmokeTest {
 
             interfaceInfoId = createInterfaceInfo("testDeleteApi", "/api/delete_test_" + ownerAccount, "GET", ownerId);
 
-            // 普通用户尝试删除平台接口应失败
+            // 普通用户（非创建者）尝试删除接口应失败
             String deleteJson = "{\"id\":" + interfaceInfoId + "}";
             mockMvc.perform(post("/interfaceInfo/delete")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(deleteJson)
                             .session(otherSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40101));
+
+            // 普通用户（创建者）尝试删除接口也应失败（需要管理员权限）
+            mockMvc.perform(post("/interfaceInfo/delete")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(deleteJson)
+                            .session(ownerSession))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(40101));
 
@@ -367,6 +417,65 @@ class InterfaceInvokeSmokeTest {
                     .isNotNull();
         } finally {
             cleanupTestData(interfaceInfoId, ownerId, ownerAccount, otherId, otherAccount);
+        }
+    }
+
+    /**
+     * 验证 buildTestAccount 生成的账号格式正确。
+     * 测试 UUID 全数字场景，确保前缀保证账号以字母开头。
+     */
+    @Test
+    @DisplayName("buildTestAccount 生成的账号格式正确")
+    void buildTestAccountShouldGenerateValidFormat() {
+        // 测试多次生成，确保格式一致
+        for (int i = 0; i < 10; i++) {
+            String account = buildTestAccount("ab");
+            assertThat(account)
+                    .as("账号应以两位字母前缀开头")
+                    .startsWith("ab")
+                    .hasSize(10)
+                    .matches("^[A-Za-z]{2}[A-Za-z0-9]{8}$");
+        }
+    }
+
+    /**
+     * 验证普通用户调用接口需要登录。
+     */
+    @Test
+    @DisplayName("未登录用户调用接口应返回未登录提示")
+    void invokeWithoutLoginShouldFail() throws Exception {
+        String adminAccount = buildTestAccount("in");
+        long interfaceInfoId = -1;
+        long adminId = -1;
+
+        try {
+            MockHttpSession adminSession = loginWithRole(adminAccount, "admin");
+            adminId = userService.lambdaQuery().eq(User::getUserAccount, adminAccount).one().getId();
+
+            // 创建并上线接口
+            interfaceInfoId = createInterfaceInfo("testInvokeApi", "/api/test_invoke_" + adminAccount, "GET", adminId);
+            mockInvokeSuccess("getLoveWords", "{\"content\":\"test\"}");
+
+            String onlineJson = "{\"id\":" + interfaceInfoId + "}";
+            mockMvc.perform(post("/interfaceInfo/online")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(onlineJson)
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0));
+
+            // 未登录用户调用接口
+            InterfaceInfoInvokeRequest invokeRequest = new InterfaceInfoInvokeRequest();
+            invokeRequest.setId(interfaceInfoId);
+            invokeRequest.setUserRequestParams("");
+
+            mockMvc.perform(post("/interfaceInfo/invoke")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(invokeRequest)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40100));
+        } finally {
+            cleanupTestData(interfaceInfoId, adminId, adminAccount, -1, "");
         }
     }
 }

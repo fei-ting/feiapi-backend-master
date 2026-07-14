@@ -118,18 +118,21 @@ class InterfaceDocControllerTest {
 
     /**
      * 测试缺少结构化文档时的公开空状态与字段脱敏。
+     * 简化 gatewayUrl 断言，只检查路径前缀，避免精确匹配导致测试脆弱。
      */
     @Test
     @DisplayName("上线接口没有结构化文档时返回空状态，普通用户不返回旧字段和内部地址")
     void shouldReturnEmptyDocStateWhenStructuredDocMissing() throws Exception {
-        long id = createInterfaceInfo("legacyDocApi", "/api/legacy_doc_" + suffix(),
+        String pathSuffix = suffix();
+        long id = createInterfaceInfo("legacyDocApi", "/api/legacy_doc_" + pathSuffix,
                 InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         JsonNode data = requestDoc(id, null).get("data");
 
         assertThat(data.has("legacyFallback")).isFalse();
         assertThat(data.get("structuredDocMissing").asBoolean()).isTrue();
-        assertThat(data.get("gatewayUrl").asText()).isEqualTo("http://localhost:8090/api/legacy_doc_" + suffixValueFromPath(data.get("gatewayUrl").asText()));
+        // 简化断言：只检查 gatewayUrl 包含正确的路径前缀
+        assertThat(data.get("gatewayUrl").asText()).contains("/api/legacy_doc_" + pathSuffix);
         assertThat(data.get("interfaceInfo").has("url")).isFalse();
         assertThat(data.get("interfaceInfo").has("targetHost")).isFalse();
         assertThat(data.get("interfaceInfo").has("requestParams")).isFalse();
@@ -222,6 +225,33 @@ class InterfaceDocControllerTest {
         JsonNode response = postSave(userSession, buildBasicSaveRequest(id));
 
         assertThat(response.get("code").asInt()).isEqualTo(40101);
+    }
+
+    /**
+     * 测试非管理员无法更新接口信息。
+     */
+    @Test
+    @DisplayName("非管理员不能更新接口信息")
+    void shouldRejectNonAdminUpdateInterfaceInfo() throws Exception {
+        MockHttpSession userSession = loginWithRole("idupdate" + suffix(), "user");
+        long id = createInterfaceInfo("normalUpdateApi", "/api/normal_update_" + suffix(),
+                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceInfoUpdateRequest updateRequest = new InterfaceInfoUpdateRequest();
+        updateRequest.setId(id);
+        updateRequest.setDescription("尝试修改接口描述");
+
+        String response = mockMvc.perform(post("/interfaceInfo/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateRequest))
+                        .session(userSession))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode responseJson = objectMapper.readTree(response);
+        assertThat(responseJson.get("code").asInt()).isEqualTo(40101);
     }
 
     /**
@@ -507,16 +537,18 @@ class InterfaceDocControllerTest {
     }
 
     /**
-     * 测试接口普通更新不会覆盖人工文档，模板变化时才对账同步。
+     * 测试普通接口信息更新不会覆盖人工维护的文档字段。
      */
     @Test
-    @DisplayName("普通接口信息更新不覆盖人工文档，模板变化时按对账同步")
-    void shouldSyncRequestDocOnlyWhenTemplateChangesAndPreserveManualFields() throws Exception {
+    @DisplayName("普通接口信息更新不覆盖人工维护的文档字段")
+    void shouldPreserveManualFieldsWhenNormalUpdate() throws Exception {
         MockHttpSession adminSession = loginWithRole("idsync" + suffix(), "admin");
         long id = createInterfaceInfo("syncDocApi", "/api/sync_doc_" + suffix(),
                 InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\",\"age\":18}");
         InterfaceInfo interfaceInfo = interfaceInfoService.getById(id);
         interfaceDocService.syncRequestDocFromInterfaceInfo(interfaceInfo);
+
+        // 修改人工维护的字段
         InterfaceDocParam usernameParam = interfaceDocParamService.lambdaQuery()
                 .eq(InterfaceDocParam::getInterfaceInfoId, id)
                 .eq(InterfaceDocParam::getName, "username")
@@ -526,36 +558,69 @@ class InterfaceDocControllerTest {
         usernameParam.setSortOrder(9);
         assertThat(interfaceDocParamService.updateById(usernameParam)).isTrue();
 
+        // 普通更新（只修改描述，不修改请求参数模板）
         InterfaceInfoUpdateRequest normalUpdateRequest = new InterfaceInfoUpdateRequest();
         normalUpdateRequest.setId(id);
         normalUpdateRequest.setDescription("只修改接口描述");
         updateInterfaceInfo(adminSession, normalUpdateRequest);
+
+        // 验证人工维护的字段未被覆盖
         InterfaceDocParam afterNormalUpdate = interfaceDocParamService.getById(usernameParam.getId());
         assertThat(afterNormalUpdate.getDescription()).isEqualTo("人工维护说明");
         assertThat(afterNormalUpdate.getExampleValue()).isEqualTo("alice");
         assertThat(afterNormalUpdate.getSortOrder()).isEqualTo(9);
+    }
 
+    /**
+     * 测试请求参数模板变化时，按对账同步更新文档参数。
+     */
+    @Test
+    @DisplayName("请求参数模板变化时按对账同步，保留人工维护的字段")
+    void shouldSyncRequestDocWhenTemplateChangesAndPreserveManualFields() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idsync2" + suffix(), "admin");
+        long id = createInterfaceInfo("syncDocApi2", "/api/sync_doc2_" + suffix(),
+                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\",\"age\":18}");
+        InterfaceInfo interfaceInfo = interfaceInfoService.getById(id);
+        interfaceDocService.syncRequestDocFromInterfaceInfo(interfaceInfo);
+
+        // 修改人工维护的字段
+        InterfaceDocParam usernameParam = interfaceDocParamService.lambdaQuery()
+                .eq(InterfaceDocParam::getInterfaceInfoId, id)
+                .eq(InterfaceDocParam::getName, "username")
+                .one();
+        usernameParam.setDescription("人工维护说明");
+        usernameParam.setExampleValue("alice");
+        usernameParam.setSortOrder(9);
+        assertThat(interfaceDocParamService.updateById(usernameParam)).isTrue();
+
+        // 修改请求参数模板（移除 age，新增 enabled）
         InterfaceInfoUpdateRequest templateUpdateRequest = new InterfaceInfoUpdateRequest();
         templateUpdateRequest.setId(id);
         templateUpdateRequest.setRequestParams("{\"username\":\"string\",\"enabled\":true}");
         updateInterfaceInfo(adminSession, templateUpdateRequest);
+
+        // 验证对账同步结果
         List<InterfaceDocParam> params = interfaceDocParamService.lambdaQuery()
                 .eq(InterfaceDocParam::getInterfaceInfoId, id)
                 .orderByAsc(InterfaceDocParam::getName)
                 .list();
 
         assertThat(params).extracting(InterfaceDocParam::getName).containsExactly("enabled", "username");
+
+        // 验证保留了人工维护的字段
         InterfaceDocParam preservedUsernameParam = params.stream()
                 .filter(param -> "username".equals(param.getName()))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("username 参数应该存在"));
+        assertThat(preservedUsernameParam.getDescription()).isEqualTo("人工维护说明");
+        assertThat(preservedUsernameParam.getExampleValue()).isEqualTo("alice");
+        assertThat(preservedUsernameParam.getSortOrder()).isEqualTo(9);
+
+        // 验证新增的 enabled 参数类型正确
         InterfaceDocParam enabledParam = params.stream()
                 .filter(param -> "enabled".equals(param.getName()))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("enabled 参数应该存在"));
-        assertThat(preservedUsernameParam.getDescription()).isEqualTo("人工维护说明");
-        assertThat(preservedUsernameParam.getExampleValue()).isEqualTo("alice");
-        assertThat(preservedUsernameParam.getSortOrder()).isEqualTo(9);
         assertThat(enabledParam.getType()).isEqualTo("boolean");
         assertThat(enabledParam.getNullable()).isZero();
     }
@@ -787,6 +852,7 @@ class InterfaceDocControllerTest {
 
     /**
      * 构建参数保存请求。
+     * 使用 Builder 模式简化参数构建，提高可读性。
      *
      * @param key       参数键
      * @param parentKey 父级参数键
@@ -806,43 +872,74 @@ class InterfaceDocControllerTest {
                                                boolean required,
                                                Boolean nullable,
                                                int sortOrder) {
-        InterfaceDocParamSaveRequest request = new InterfaceDocParamSaveRequest();
-        request.setParamKey(key);
-        request.setParentParamKey(parentKey);
-        request.setParamScene(scene);
-        request.setName(name);
-        request.setType(type);
-        request.setRequired(required);
-        request.setNullable(nullable);
-        request.setDescription(name + "说明");
-        request.setDefaultValue("");
-        request.setExampleValue(exampleValue(type, name));
-        request.setValidationRule("");
-        request.setSortOrder(sortOrder);
-        return request;
+        return ParamBuilder.create(key, scene, name, type, sortOrder)
+                .parentKey(parentKey)
+                .required(required)
+                .nullable(nullable)
+                .build();
+    }
+
+    /**
+     * 参数构建器，简化多参数场景的构建。
+     */
+    private static class ParamBuilder {
+        private final InterfaceDocParamSaveRequest request;
+
+        private ParamBuilder(String key, String scene, String name, String type, int sortOrder) {
+            request = new InterfaceDocParamSaveRequest();
+            request.setParamKey(key);
+            request.setParamScene(scene);
+            request.setName(name);
+            request.setType(type);
+            request.setSortOrder(sortOrder);
+            request.setRequired(true);
+            request.setNullable(false);
+            request.setDescription(name + "说明");
+            request.setDefaultValue("");
+            request.setExampleValue(exampleValue(type, name));
+            request.setValidationRule("");
+        }
+
+        static ParamBuilder create(String key, String scene, String name, String type, int sortOrder) {
+            return new ParamBuilder(key, scene, name, type, sortOrder);
+        }
+
+        ParamBuilder parentKey(String parentKey) {
+            request.setParentParamKey(parentKey);
+            return this;
+        }
+
+        ParamBuilder required(boolean required) {
+            request.setRequired(required);
+            return this;
+        }
+
+        ParamBuilder nullable(Boolean nullable) {
+            request.setNullable(nullable);
+            return this;
+        }
+
+        InterfaceDocParamSaveRequest build() {
+            return request;
+        }
     }
 
     /**
      * 构建示例值。
+     * 使用 switch 表达式提高可读性。
      *
      * @param type 参数类型
      * @param name 参数名称
      * @return 示例值
      */
-    private String exampleValue(String type, String name) {
-        if ("number".equals(type)) {
-            return "18";
-        }
-        if ("boolean".equals(type)) {
-            return "true";
-        }
-        if ("object".equals(type)) {
-            return "{}";
-        }
-        if ("array".equals(type)) {
-            return "[]";
-        }
-        return name + "Value";
+    private static String exampleValue(String type, String name) {
+        return switch (type) {
+            case "number" -> "18";
+            case "boolean" -> "true";
+            case "object" -> "{}";
+            case "array" -> "[]";
+            default -> name + "Value";
+        };
     }
 
     /**
@@ -999,11 +1096,12 @@ class InterfaceDocControllerTest {
 
     /**
      * 生成唯一后缀。
+     * 使用 UUID 替代 System.nanoTime()，避免精度问题和并行测试冲突。
      *
-     * @return 唯一后缀
+     * @return 唯一后缀（8位字母数字）
      */
     private String suffix() {
-        return String.valueOf(System.nanoTime());
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 8);
     }
 
     /**

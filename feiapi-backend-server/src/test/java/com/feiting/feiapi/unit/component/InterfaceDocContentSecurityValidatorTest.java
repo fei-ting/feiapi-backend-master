@@ -26,8 +26,8 @@ class InterfaceDocContentSecurityValidatorTest {
     /** 被测内容安全校验器。 */
     private final InterfaceDocContentSecurityValidator validator = new InterfaceDocContentSecurityValidator();
 
-    /** DTO 参数校验器。 */
-    private final Validator beanValidator = Validation.buildDefaultValidatorFactory().getValidator();
+    /** DTO 参数校验器，使用 static final 避免重复创建。 */
+    private static final Validator BEAN_VALIDATOR = Validation.buildDefaultValidatorFactory().getValidator();
 
     /**
      * 验证常见未脱敏凭据会被拒绝。
@@ -88,15 +88,19 @@ class InterfaceDocContentSecurityValidatorTest {
      *
      * @param json JSON 示例
      */
+    /**
+     * 验证 JSON 敏感字段会按标准化字段名递归识别。
+     * 注意：true、{}、[] 等非字符串值也会被拒绝，因为敏感字段只允许 null、空字符串或明确的脱敏占位符。
+     */
     @ParameterizedTest
     @ValueSource(strings = {
-            "{\"access_key\":\"real-key\"}",
-            "{\"ｔｏｋｅｎ\":\"real-token\"}",
-            "{\"data\":{\"refresh-token\":\"real-token\"}}",
-            "{\"items\":[{\"密码\":123}]}",
-            "{\"secretKey\":true}",
-            "{\"token\":{}}",
-            "{\"password\":[]}"
+            "{\"access_key\":\"real-key\"}",           // 明文密钥
+            "{\"ｔｏｋｅｎ\":\"real-token\"}",              // 全角字符标准化后匹配 token
+            "{\"data\":{\"refresh-token\":\"real-token\"}}", // 嵌套对象中的敏感字段
+            "{\"items\":[{\"密码\":123}]}",             // 数组中的中文敏感字段
+            "{\"secretKey\":true}",                    // 布尔值不是合法的脱敏占位符
+            "{\"token\":{}}",                          // 空对象不是合法的脱敏占位符
+            "{\"password\":[]}"                        // 空数组不是合法的脱敏占位符
     })
     @DisplayName("拒绝 JSON 中各类未脱敏敏感字段值")
     void shouldRejectSensitiveJsonFieldValues(String json) {
@@ -164,6 +168,7 @@ class InterfaceDocContentSecurityValidatorTest {
 
     /**
      * 验证超过 DTO 长度上限的 JSON 示例会在请求参数校验阶段被拒绝。
+     * 使用精确断言：验证恰好有 1 个违规，且违规消息正确。
      */
     @Test
     @DisplayName("六万五千五百三十六字符示例由 DTO 长度校验拒绝")
@@ -171,9 +176,10 @@ class InterfaceDocContentSecurityValidatorTest {
         InterfaceDocSaveRequest request = new InterfaceDocSaveRequest();
         request.setSuccessExample("a".repeat(65536));
 
-        assertThat(beanValidator.validate(request))
-                .extracting(violation -> violation.getMessage())
-                .contains("成功响应示例长度不能超过 65535");
+        assertThat(BEAN_VALIDATOR.validate(request))
+                .hasSize(1)
+                .first()
+                .satisfies(violation -> assertThat(violation.getMessage()).isEqualTo("成功响应示例长度不能超过 65535"));
     }
 
     /**

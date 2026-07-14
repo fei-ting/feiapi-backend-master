@@ -98,6 +98,9 @@ public class InterfaceDocCurlExampleGenerator {
     /**
      * 构建固定向量调试使用的规范签名原文。
      *
+     * <p>注意：此方法为 public 是为了单元测试验证签名一致性，
+     * 生产代码中不应直接调用，应通过 {@link #generate} 获取完整 curl 脚本。</p>
+     *
      * @param method    请求方法
      * @param path      签名路径
      * @param nonce     随机数
@@ -206,7 +209,10 @@ public class InterfaceDocCurlExampleGenerator {
             return "";
         }
         JsonObject bodyJson = new JsonObject();
-        bodyParams.stream().forEach(param -> bodyJson.add(param.getName(), toTypedJsonElement(param)));
+        // 使用普通 for 循环替代 forEach，避免在 lambda 中修改外部对象
+        for (InterfaceDocParamVO param : bodyParams) {
+            bodyJson.add(param.getName(), toTypedJsonElement(param));
+        }
         return bodyJson.toString();
     }
 
