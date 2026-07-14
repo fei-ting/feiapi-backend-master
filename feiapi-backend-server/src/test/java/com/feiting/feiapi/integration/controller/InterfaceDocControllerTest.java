@@ -37,7 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -64,9 +64,9 @@ class InterfaceDocControllerTest {
     private static final String TEST_TARGET_HOST = "http://feiapi-interface:8123";
 
     /**
-     * 测试账号序列，确保账号符合 4-10 位规则且不重复。
+     * 测试密码。
      */
-    private static final AtomicInteger ACCOUNT_SEQUENCE = new AtomicInteger(1000);
+    private static final String TEST_PASSWORD = "password123";
 
     /**
      * MockMvc 测试客户端。
@@ -130,8 +130,8 @@ class InterfaceDocControllerTest {
         assertThat(data.has("legacyFallback")).isFalse();
         assertThat(data.get("structuredDocMissing").asBoolean()).isTrue();
         assertThat(data.get("gatewayUrl").asText()).isEqualTo("http://localhost:8090/api/legacy_doc_" + suffixValueFromPath(data.get("gatewayUrl").asText()));
-        assertThat(data.get("interfaceInfo").get("url").isNull()).isTrue();
-        assertThat(data.get("interfaceInfo").get("targetHost").isNull()).isTrue();
+        assertThat(data.get("interfaceInfo").has("url")).isFalse();
+        assertThat(data.get("interfaceInfo").has("targetHost")).isFalse();
         assertThat(data.get("interfaceInfo").has("requestParams")).isFalse();
         assertThat(data.get("interfaceInfo").has("requestHeader")).isFalse();
         assertThat(data.get("interfaceInfo").has("responseHeader")).isFalse();
@@ -202,7 +202,8 @@ class InterfaceDocControllerTest {
         assertThat(responseParams.get(1).get("nullable").asBoolean()).isTrue();
         assertThat(curlExample)
                 .contains("ACCESS_KEY", "SECRET_KEY", "openssl dgst -sha256 -hmac",
-                        "accessKey", "nonce", "timestamp", "sign", "CANONICAL_STRING");
+                        "accessKey", "nonce", "timestamp", "sign", "printf 'feiting\\n%s\\n%s\\n%s\\n%s\\n%s'")
+                .doesNotContain("CANONICAL_STRING");
         assertThat(curlExample)
                 .contains("\"age\":18", "\"enabled\":true", "\"meta\":{}", "\"tags\":[]")
                 .doesNotContain("\"age\":\"18\"", "\"enabled\":\"true\"");
@@ -224,48 +225,213 @@ class InterfaceDocControllerTest {
     }
 
     /**
-     * 测试聚合保存接口拒绝非法内容。
+     * 测试聚合保存接口拒绝非法 JSON。
      */
     @Test
-    @DisplayName("聚合保存接口拒绝非法 JSON、敏感信息、脚本、重复错误码和数量超限")
-    void shouldRejectInvalidSaveDocRequests() throws Exception {
-        MockHttpSession adminSession = loginWithRole("idinvalid" + suffix(), "admin");
-        long id = createInterfaceInfo("invalidSaveApi", "/api/invalid_save_" + suffix(),
+    @DisplayName("聚合保存接口拒绝非法 JSON 示例")
+    void shouldRejectIllegalJsonExample() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idjson" + suffix(), "admin");
+        long id = createInterfaceInfo("illegalJsonApi", "/api/illegal_json_" + suffix(),
                 InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
-        InterfaceDocSaveRequest illegalJsonRequest = buildBasicSaveRequest(id);
-        illegalJsonRequest.setSuccessExample("{bad json");
-        assertSaveFailed(adminSession, illegalJsonRequest, 40000);
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.setSuccessExample("{bad json");
+        assertSaveFailed(adminSession, request, 40000);
+    }
 
-        InterfaceDocSaveRequest sensitiveRequest = buildBasicSaveRequest(id);
-        sensitiveRequest.setSuccessExample("{\"phone\":\"13800138000\"}");
-        assertSaveFailed(adminSession, sensitiveRequest, 40000);
+    /**
+     * 测试聚合保存接口拒绝包含手机号的敏感信息。
+     */
+    @Test
+    @DisplayName("聚合保存接口拒绝包含手机号的敏感信息")
+    void shouldRejectPhoneSensitiveInfo() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idphone" + suffix(), "admin");
+        long id = createInterfaceInfo("phoneApi", "/api/phone_" + suffix(),
+                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
-        InterfaceDocSaveRequest accessKeyRequest = buildBasicSaveRequest(id);
-        accessKeyRequest.setSuccessExample("{\"accessKey\":\"abcd1234\"}");
-        assertSaveFailed(adminSession, accessKeyRequest, 40000);
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.setSuccessExample("{\"phone\":\"13800138000\"}");
+        assertSaveFailed(adminSession, request, 40000);
+    }
 
-        InterfaceDocSaveRequest scriptRequest = buildBasicSaveRequest(id);
-        scriptRequest.getParams().add(param("resp", null, "RESPONSE", "data", "string", true, false, 2));
-        scriptRequest.getParams().get(1).setValidationRule("<script>alert(1)</script>");
-        assertSaveFailed(adminSession, scriptRequest, 40000);
+    /**
+     * 测试聚合保存接口拒绝包含 AccessKey 的敏感信息。
+     */
+    @Test
+    @DisplayName("聚合保存接口拒绝包含 AccessKey 的敏感信息")
+    void shouldRejectAccessKeySensitiveInfo() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idakey" + suffix(), "admin");
+        long id = createInterfaceInfo("akeyApi", "/api/akey_" + suffix(),
+                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
-        InterfaceDocSaveRequest duplicateErrorRequest = buildBasicSaveRequest(id);
-        duplicateErrorRequest.getErrorCodes().add(errorCode("A001", "错误 A", 1));
-        duplicateErrorRequest.getErrorCodes().add(errorCode("A001", "错误 A2", 2));
-        assertSaveFailed(adminSession, duplicateErrorRequest, 40000);
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.setSuccessExample("{\"accessKey\":\"abcd1234\"}");
+        assertSaveFailed(adminSession, request, 40000);
+    }
 
-        InterfaceDocSaveRequest paramLimitRequest = buildBasicSaveRequest(id);
-        paramLimitRequest.setParams(IntStream.rangeClosed(1, 201)
+    /**
+     * 测试聚合保存接口拒绝包含 Bearer Token 的敏感信息。
+     */
+    @Test
+    @DisplayName("聚合保存接口拒绝包含 Bearer Token 的敏感信息")
+    void shouldRejectBearerToken() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idtoken" + suffix(), "admin");
+        long id = createInterfaceInfo("tokenApi", "/api/token_" + suffix(),
+                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.setAuthDescription("token: Bearer eyJhbGciOiJIUzI1NiJ9");
+        assertSaveFailed(adminSession, request, 40000);
+    }
+
+    /**
+     * 测试聚合保存接口拒绝包含复杂密码的敏感信息。
+     */
+    @Test
+    @DisplayName("聚合保存接口拒绝包含复杂密码的敏感信息")
+    void shouldRejectComplexPassword() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idpwd" + suffix(), "admin");
+        long id = createInterfaceInfo("pwdApi", "/api/pwd_" + suffix(),
+                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.setRemark("password: P@ssw0rd!");
+        assertSaveFailed(adminSession, request, 40000);
+    }
+
+    /**
+     * 测试聚合保存接口拒绝包含脚本内容的校验规则。
+     */
+    @Test
+    @DisplayName("聚合保存接口拒绝包含脚本内容的校验规则")
+    void shouldRejectScriptInValidationRule() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idscript" + suffix(), "admin");
+        long id = createInterfaceInfo("scriptApi", "/api/script_" + suffix(),
+                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.getParams().add(param("resp", null, "RESPONSE", "data", "string", true, false, 2));
+        request.getParams().get(1).setValidationRule("<img/onerror=alert(1)>");
+        assertSaveFailed(adminSession, request, 40000);
+    }
+
+    /**
+     * 测试聚合保存接口拒绝包含内部实现信息的错误解决建议。
+     */
+    @Test
+    @DisplayName("聚合保存接口拒绝包含内部实现信息的错误解决建议")
+    void shouldRejectInternalInfoInSolution() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idinternal" + suffix(), "admin");
+        long id = createInterfaceInfo("internalApi", "/api/internal_" + suffix(),
+                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        InterfaceDocErrorCodeSaveRequest errorCode = errorCode("I001", "内部错误", 1);
+        errorCode.setSolution("检查Redis连接");
+        request.getErrorCodes().add(errorCode);
+        assertSaveFailed(adminSession, request, 40000);
+    }
+
+    /**
+     * 测试聚合保存接口拒绝重复错误码。
+     */
+    @Test
+    @DisplayName("聚合保存接口拒绝重复错误码")
+    void shouldRejectDuplicateErrorCodes() throws Exception {
+        MockHttpSession adminSession = loginWithRole("iddup" + suffix(), "admin");
+        long id = createInterfaceInfo("dupApi", "/api/dup_" + suffix(),
+                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.getErrorCodes().add(errorCode("A001", "错误 A", 1));
+        request.getErrorCodes().add(errorCode("A001", "错误 A2", 2));
+        assertSaveFailed(adminSession, request, 40000);
+    }
+
+    /**
+     * 测试聚合保存接口拒绝参数数量超限。
+     */
+    @Test
+    @DisplayName("聚合保存接口拒绝参数数量超过 200")
+    void shouldRejectParamCountExceedsLimit() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idparam" + suffix(), "admin");
+        long id = createInterfaceInfo("paramApi", "/api/param_" + suffix(),
+                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.setParams(IntStream.rangeClosed(1, 201)
                 .mapToObj(index -> param("p" + index, null, "RESPONSE", "field" + index, "string", false, true, index))
-                .collect(java.util.stream.Collectors.toList()));
-        assertSaveFailed(adminSession, paramLimitRequest, 40000);
+                .collect(Collectors.toList()));
+        assertSaveFailed(adminSession, request, 40000);
+    }
 
-        InterfaceDocSaveRequest errorLimitRequest = buildBasicSaveRequest(id);
-        errorLimitRequest.setErrorCodes(IntStream.rangeClosed(1, 101)
+    /**
+     * 测试聚合保存接口拒绝错误码数量超限。
+     */
+    @Test
+    @DisplayName("聚合保存接口拒绝错误码数量超过 100")
+    void shouldRejectErrorCodeCountExceedsLimit() throws Exception {
+        MockHttpSession adminSession = loginWithRole("iderr" + suffix(), "admin");
+        long id = createInterfaceInfo("errApi", "/api/err_" + suffix(),
+                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.setErrorCodes(IntStream.rangeClosed(1, 101)
                 .mapToObj(index -> errorCode("E" + index, "错误" + index, index))
-                .collect(java.util.stream.Collectors.toList()));
-        assertSaveFailed(adminSession, errorLimitRequest, 40000);
+                .collect(Collectors.toList()));
+        assertSaveFailed(adminSession, request, 40000);
+    }
+
+    /**
+     * 测试所有明确脱敏占位符均允许保存。
+     */
+    @Test
+    @DisplayName("聚合保存允许安全策略白名单中的脱敏占位符")
+    void shouldAllowAllSupportedMaskPlaceholders() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idmask" + suffix(), "admin");
+        long id = createInterfaceInfo("maskDocApi", "/api/mask_doc_" + suffix(),
+                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.setAuthDescription("Authorization: Bearer <TOKEN>");
+        request.setRemark("password: <PASSWORD>");
+        request.setSuccessExample("{\"token\":\"${TOKEN}\",\"access_key\":\"<ACCESS_KEY>\",\"password\":\"***\"}");
+        request.setFailExample("{\"secret-key\":\"${SECRET_KEY}\",\"authorization\":\"Basic <MASKED>\"}");
+
+        saveDocByAdmin(adminSession, request);
+    }
+
+    /**
+     * 测试 GET curl 的 Query、签名管道、Shell 转义和 Header 去重。
+     */
+    @Test
+    @DisplayName("GET curl 正确生成 Query 并安全处理特殊字符与 Content-Type 冲突")
+    void shouldGenerateSafeGetCurlWithAuthoritativeContentType() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idgetcurl" + suffix(), "admin");
+        String path = "/api/get_curl_" + suffix();
+        long id = createInterfaceInfo("getCurlApi", path,
+                InterfaceInfoStatusEnum.ONLINE.getValue(), "GET", "{\"keyword\":\"string\"}");
+        InterfaceDocSaveRequest request = baseSaveRequest(id);
+        InterfaceDocParamSaveRequest queryParam = param(
+                "queryKeyword", null, "QUERY", "keyword", "string", true, false, 1);
+        queryParam.setExampleValue("中文 空格");
+        InterfaceDocParamSaveRequest contentTypeHeader = param(
+                "headerContentType", null, "HEADER", "content-type", "string", true, false, 2);
+        contentTypeHeader.setExampleValue("text/plain");
+        InterfaceDocParamSaveRequest specialHeader = param(
+                "headerSpecial", null, "HEADER", "X-Test", "string", false, false, 3);
+        specialHeader.setExampleValue("a'b\"$`!\\ value");
+        request.setParams(List.of(queryParam, contentTypeHeader, specialHeader));
+
+        saveDocByAdmin(adminSession, request);
+        String curlExample = requestDoc(id, adminSession).get("data").get("curlExample").asText();
+
+        assertThat(curlExample)
+                .contains("URL='http://localhost:8090" + path
+                        + "?keyword=%E4%B8%AD%E6%96%87%20%E7%A9%BA%E6%A0%BC'")
+                .contains("BODY=''", "printf 'feiting\\n%s\\n%s\\n%s\\n%s\\n%s'")
+                .contains("a'\"'\"'b\"$`!\\ value")
+                .containsOnlyOnce("Content-Type: application/json")
+                .doesNotContain("CANONICAL_STRING", "--data", "Content-Type: text/plain");
     }
 
     /**
@@ -735,32 +901,41 @@ class InterfaceDocControllerTest {
 
     /**
      * 清理非事务回滚用例真实提交的测试数据。
+     * 每个清理步骤独立 try-catch，避免单步失败导致后续清理中断。
      *
      * @param interfaceInfoId 接口信息 ID
      * @param adminSession    管理员登录会话
      */
     private void cleanupCommittedRollbackTestData(Long interfaceInfoId, MockHttpSession adminSession) {
         if (interfaceInfoId != null && interfaceInfoId > 0) {
-            interfaceDocErrorCodeService.lambdaUpdate()
-                    .eq(InterfaceDocErrorCode::getInterfaceInfoId, interfaceInfoId)
-                    .remove();
-            interfaceDocParamService.lambdaUpdate()
-                    .eq(InterfaceDocParam::getInterfaceInfoId, interfaceInfoId)
-                    .remove();
-            interfaceDocService.lambdaUpdate()
-                    .eq(InterfaceDoc::getInterfaceInfoId, interfaceInfoId)
-                    .remove();
-            userInterfaceInfoService.lambdaUpdate()
-                    .eq(UserInterfaceInfo::getInterfaceInfoId, interfaceInfoId)
-                    .remove();
-            interfaceInfoService.removeById(interfaceInfoId);
+            safeRemove(() -> interfaceDocErrorCodeService.lambdaUpdate()
+                    .eq(InterfaceDocErrorCode::getInterfaceInfoId, interfaceInfoId).remove());
+            safeRemove(() -> interfaceDocParamService.lambdaUpdate()
+                    .eq(InterfaceDocParam::getInterfaceInfoId, interfaceInfoId).remove());
+            safeRemove(() -> interfaceDocService.lambdaUpdate()
+                    .eq(InterfaceDoc::getInterfaceInfoId, interfaceInfoId).remove());
+            safeRemove(() -> userInterfaceInfoService.lambdaUpdate()
+                    .eq(UserInterfaceInfo::getInterfaceInfoId, interfaceInfoId).remove());
+            safeRemove(() -> interfaceInfoService.removeById(interfaceInfoId));
         }
         User adminUser = adminSession == null ? null : (User) adminSession.getAttribute(UserConstant.USER_LOGIN_STATE);
         if (adminUser != null && adminUser.getId() != null) {
-            userInterfaceInfoService.lambdaUpdate()
-                    .eq(UserInterfaceInfo::getUserId, adminUser.getId())
-                    .remove();
-            userService.removeById(adminUser.getId());
+            safeRemove(() -> userInterfaceInfoService.lambdaUpdate()
+                    .eq(UserInterfaceInfo::getUserId, adminUser.getId()).remove());
+            safeRemove(() -> userService.removeById(adminUser.getId()));
+        }
+    }
+
+    /**
+     * 安全执行清理操作，捕获异常避免中断后续清理。
+     *
+     * @param action 清理操作
+     */
+    private void safeRemove(Runnable action) {
+        try {
+            action.run();
+        } catch (Exception e) {
+            System.err.println("[测试清理] 清理操作失败，忽略异常: " + e.getMessage());
         }
     }
 
@@ -773,14 +948,14 @@ class InterfaceDocControllerTest {
      */
     private MockHttpSession loginWithRole(String account, String role) throws Exception {
         String userAccount = buildValidAccount(account);
-        userService.userRegister(userAccount, "password123", "password123");
+        userService.userRegister(userAccount, TEST_PASSWORD, TEST_PASSWORD);
         User user = userService.lambdaQuery().eq(User::getUserAccount, userAccount).one();
         user.setUserRole(role);
         userService.updateById(user);
 
         UserLoginRequest loginRequest = new UserLoginRequest();
         loginRequest.setUserAccount(userAccount);
-        loginRequest.setUserPassword("password123");
+        loginRequest.setUserPassword(TEST_PASSWORD);
         MockHttpSession session = new MockHttpSession();
         mockMvc.perform(post("/user/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -792,17 +967,21 @@ class InterfaceDocControllerTest {
 
     /**
      * 构建符合项目规则的测试账号。
+     * 使用 UUID 确保并行测试时不重复，账号格式为 2 位字母前缀 + 6 位字母数字后缀 = 8 位。
      *
      * @param seed 原始账号种子
-     * @return 合法测试账号
+     * @return 合法测试账号（8 位，以字母开头，只包含字母和数字）
      */
     private String buildValidAccount(String seed) {
-        String normalizedSeed = seed == null ? "user" : seed.replaceAll("[^A-Za-z0-9]", "");
-        if (normalizedSeed.isEmpty() || !Character.isLetter(normalizedSeed.charAt(0))) {
-            normalizedSeed = "u" + normalizedSeed;
+        String normalizedSeed = seed == null ? "user" : seed.replaceAll("[^A-Za-z]", "");
+        if (normalizedSeed.isEmpty()) {
+            normalizedSeed = "usr";
         }
-        String prefix = normalizedSeed.substring(0, Math.min(5, normalizedSeed.length()));
-        return prefix + ACCOUNT_SEQUENCE.getAndIncrement();
+        // 取前 2 位字母作为前缀
+        String prefix = normalizedSeed.substring(0, Math.min(2, normalizedSeed.length())).toLowerCase();
+        // 取 UUID 前 6 位字母数字作为后缀
+        String uuidSuffix = UUID.randomUUID().toString().replace("-", "").substring(0, 6);
+        return prefix + uuidSuffix;
     }
 
     /**

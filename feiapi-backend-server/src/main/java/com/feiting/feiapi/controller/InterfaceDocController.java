@@ -2,10 +2,8 @@ package com.feiting.feiapi.controller;
 
 import com.feiting.feiapi.common.BaseResponse;
 import com.feiting.feiapi.annotation.AuthCheck;
-import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.common.ResultUtils;
 import com.feiting.feiapi.component.UserSessionManager;
-import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.model.vo.InterfaceDocDetailVO;
 import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocSaveRequest;
 import com.feiting.feiapi.model.enums.UserRoleEnum;
@@ -80,6 +78,7 @@ public class InterfaceDocController {
 
     /**
      * 判断当前会话用户是否为管理员。
+     * 直接使用会话中的用户角色判断，避免重复查询数据库。
      *
      * @param request HTTP 请求
      * @return 是否为管理员
@@ -89,13 +88,6 @@ public class InterfaceDocController {
         if (sessionUser == null || sessionUser.getId() == null) {
             return false;
         }
-        try {
-            return userService.isAdmin(userService.getLoginUser(sessionUser));
-        } catch (BusinessException e) {
-            if (ErrorCode.NOT_LOGIN_ERROR.getCode() == e.getCode()) {
-                return false;
-            }
-            throw e;
-        }
+        return userService.isAdmin(sessionUser);
     }
 }

@@ -25,16 +25,19 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 接口调用冒烟测试
- * 验证状态机: OFFLINE -> PUBLISHING -> (失败回滚) -> OFFLINE
- * 验证权限: 非管理员不能发布/下线
- * 验证调用: 未上线接口不可调用
+ * 接口调用冒烟测试。
+ *
+ * <p>验证状态机: OFFLINE -> PUBLISHING -> (失败回滚) -> OFFLINE</p>
+ * <p>验证权限: 非管理员不能发布/下线</p>
+ * <p>验证调用: 未上线接口不可调用</p>
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -42,10 +45,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DisplayName("接口调用冒烟测试")
 class InterfaceInvokeSmokeTest {
 
-    /**
-     * 测试接口真实后端服务地址
-     */
+    /** 测试接口真实后端服务地址。 */
     private static final String TEST_TARGET_HOST = "http://feiapi-interface:8123";
+
+    /** 测试密码。 */
+    private static final String TEST_PASSWORD = "password123";
 
     @Resource
     private MockMvc mockMvc;
@@ -66,15 +70,22 @@ class InterfaceInvokeSmokeTest {
     @MockBean
     private SdkMethodRegistry sdkMethodRegistry;
 
+    /**
+     * 使用指定账号和角色登录，返回会话。
+     *
+     * @param account 账号
+     * @param role    角色
+     * @return 登录会话
+     */
     private MockHttpSession loginWithRole(String account, String role) throws Exception {
-        userService.userRegister(account, "password123", "password123");
+        userService.userRegister(account, TEST_PASSWORD, TEST_PASSWORD);
         User user = userService.lambdaQuery().eq(User::getUserAccount, account).one();
         user.setUserRole(role);
         userService.updateById(user);
 
         UserLoginRequest loginRequest = new UserLoginRequest();
         loginRequest.setUserAccount(account);
-        loginRequest.setUserPassword("password123");
+        loginRequest.setUserPassword(TEST_PASSWORD);
         MockHttpSession session = new MockHttpSession();
         mockMvc.perform(post("/user/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -84,6 +95,27 @@ class InterfaceInvokeSmokeTest {
         return session;
     }
 
+    /**
+     * 构建固定十位且低碰撞概率的测试账号。
+     *
+     * @param prefix 两位字母账号前缀
+     * @return 十位字母数字测试账号
+     */
+    private String buildTestAccount(String prefix) {
+        // UUID 前八位提供 32 位随机空间，并确保最终账号不会因数字位数变化而越界。
+        String uuidSuffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        return prefix + uuidSuffix;
+    }
+
+    /**
+     * 创建测试接口信息。
+     *
+     * @param name   接口名称
+     * @param path   接口路径
+     * @param method 请求方法
+     * @param userId 创建人 ID
+     * @return 接口 ID
+     */
     private long createInterfaceInfo(String name, String path, String method, long userId) {
         InterfaceInfo interfaceInfo = new InterfaceInfo();
         interfaceInfo.setName(name);
@@ -97,17 +129,46 @@ class InterfaceInvokeSmokeTest {
         interfaceInfo.setStatus(InterfaceInfoStatusEnum.OFFLINE.getValue());
         interfaceInfo.setMethod(method);
         interfaceInfo.setUserId(userId);
-        assertTrue(interfaceInfoService.save(interfaceInfo), "测试接口数据应创建成功");
+        assertThat(interfaceInfoService.save(interfaceInfo)).isTrue();
         return interfaceInfo.getId();
+    }
+
+    /**
+     * 清理测试数据。
+     *
+     * @param interfaceInfoId 接口 ID
+     * @param adminId         管理员 ID
+     * @param adminAccount    管理员账号
+     * @param userId          用户 ID
+     * @param userAccount     用户账号
+     */
+    private void cleanupTestData(long interfaceInfoId, long adminId, String adminAccount,
+                                 long userId, String userAccount) {
+        if (interfaceInfoId > 0) {
+            interfaceInfoService.removeById(interfaceInfoId);
+        }
+        if (adminId > 0) {
+            userService.removeById(adminId);
+        } else {
+            User admin = userService.lambdaQuery().eq(User::getUserAccount, adminAccount).one();
+            if (admin != null) userService.removeById(admin.getId());
+        }
+        if (userId > 0) {
+            userService.removeById(userId);
+        } else {
+            User user = userService.lambdaQuery().eq(User::getUserAccount, userAccount).one();
+            if (user != null) userService.removeById(user.getId());
+        }
     }
 
     @Test
     @DisplayName("成功调用全链路: 创建 -> 发布(mock成功) -> ONLINE -> 调用 -> 返回 data")
     void fullSuccessfulInvokeLifecycle() throws Exception {
-        // 使用短前缀 + 3位随机数，确保账号长度符合 4-10 位规则
-        String suffix = String.valueOf(Math.abs(System.nanoTime() % 1000));
-        String adminAccount = "ai" + suffix;
-        String userAccount = "us" + suffix;
+        String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        String adminAccount = buildTestAccount("ai");
+        String userAccount = buildTestAccount("us");
+        assertThat(adminAccount).matches("^[A-Za-z]{2}[A-Za-z0-9]{8}$");
+        assertThat(userAccount).matches("^[A-Za-z]{2}[A-Za-z0-9]{8}$");
 
         long interfaceInfoId = -1;
         long adminId = -1;
@@ -152,7 +213,7 @@ class InterfaceInvokeSmokeTest {
 
             // 验证初始状态为 OFFLINE
             InterfaceInfo created = interfaceInfoService.getById(interfaceInfoId);
-            assertEquals(InterfaceInfoStatusEnum.OFFLINE.getValue(), created.getStatus());
+            assertThat(created.getStatus()).isEqualTo(InterfaceInfoStatusEnum.OFFLINE.getValue());
 
             // ======== Step2: 发布接口（mock 成功，状态变为 ONLINE） ========
             String onlineJson = "{\"id\":" + interfaceInfoId + "}";
@@ -166,8 +227,9 @@ class InterfaceInvokeSmokeTest {
 
             // 验证状态已变为 ONLINE
             InterfaceInfo published = interfaceInfoService.getById(interfaceInfoId);
-            assertEquals(InterfaceInfoStatusEnum.ONLINE.getValue(), published.getStatus(),
-                    "发布成功后状态应为 ONLINE");
+            assertThat(published.getStatus())
+                    .as("发布成功后状态应为 ONLINE")
+                    .isEqualTo(InterfaceInfoStatusEnum.ONLINE.getValue());
 
             // ======== Step3: 调用接口，验证返回 data ========
             InterfaceInfoInvokeRequest invokeRequest = new InterfaceInfoInvokeRequest();
@@ -184,30 +246,20 @@ class InterfaceInvokeSmokeTest {
 
             // 验证返回的 data 包含 mock 的内容
             JsonNode invokeData = objectMapper.readTree(invokeResult.getResponse().getContentAsString()).get("data");
-            assertNotNull(invokeData, "调用成功应返回 data");
+            assertThat(invokeData).as("调用成功应返回 data").isNotNull();
         } finally {
-            if (interfaceInfoId > 0) interfaceInfoService.removeById(interfaceInfoId);
-            if (adminId > 0) {
-                userService.removeById(adminId);
-            } else {
-                User admin = userService.lambdaQuery().eq(User::getUserAccount, adminAccount).one();
-                if (admin != null) userService.removeById(admin.getId());
-            }
-            if (userId > 0) {
-                userService.removeById(userId);
-            } else {
-                User user = userService.lambdaQuery().eq(User::getUserAccount, userAccount).one();
-                if (user != null) userService.removeById(user.getId());
-            }
+            cleanupTestData(interfaceInfoId, adminId, adminAccount, userId, userAccount);
         }
     }
 
     @Test
     @DisplayName("完整状态机: 创建(OFFLINE) -> 发布(失败回滚OFFLINE) -> 未上线不可调用")
     void fullStateMachineLifecycle() throws Exception {
-        String suffix = String.valueOf(Math.abs(System.nanoTime() % 1000));
-        String adminAccount = "as" + suffix;
-        String userAccount = "us" + suffix;
+        String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        String adminAccount = buildTestAccount("as");
+        String userAccount = buildTestAccount("us");
+        assertThat(adminAccount).matches("^[A-Za-z]{2}[A-Za-z0-9]{8}$");
+        assertThat(userAccount).matches("^[A-Za-z]{2}[A-Za-z0-9]{8}$");
 
         long interfaceInfoId = -1;
         long adminId = -1;
@@ -245,8 +297,9 @@ class InterfaceInvokeSmokeTest {
                     .get("data").asLong();
 
             InterfaceInfo created = interfaceInfoService.getById(interfaceInfoId);
-            assertEquals(InterfaceInfoStatusEnum.OFFLINE.getValue(), created.getStatus(),
-                    "新创建的接口状态应为 OFFLINE");
+            assertThat(created.getStatus())
+                    .as("新创建的接口状态应为 OFFLINE")
+                    .isEqualTo(InterfaceInfoStatusEnum.OFFLINE.getValue());
 
             // ======== Step2: 发布接口（走真实 /online 链路） ========
             // 网关不可用，发布验证会失败，但应验证状态机正确转换和回滚
@@ -260,8 +313,9 @@ class InterfaceInvokeSmokeTest {
 
             // 验证：发布失败后状态应正确回滚到 OFFLINE
             InterfaceInfo afterOnline = interfaceInfoService.getById(interfaceInfoId);
-            assertEquals(InterfaceInfoStatusEnum.OFFLINE.getValue(), afterOnline.getStatus(),
-                    "发布验证失败后应回滚到 OFFLINE");
+            assertThat(afterOnline.getStatus())
+                    .as("发布验证失败后应回滚到 OFFLINE")
+                    .isEqualTo(InterfaceInfoStatusEnum.OFFLINE.getValue());
 
             // ======== Step3: 未上线接口不可调用 ========
             InterfaceInfoInvokeRequest invokeRequest = new InterfaceInfoInvokeRequest();
@@ -275,32 +329,15 @@ class InterfaceInvokeSmokeTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(50000));
         } finally {
-            // 无论断言是否失败，都清理数据（按 id 清理，id 不存在则按账号兜底）
-            if (interfaceInfoId > 0) {
-                interfaceInfoService.removeById(interfaceInfoId);
-            }
-            if (adminId > 0) {
-                userService.removeById(adminId);
-            } else {
-                User admin = userService.lambdaQuery().eq(User::getUserAccount, adminAccount).one();
-                if (admin != null) userService.removeById(admin.getId());
-            }
-            if (userId > 0) {
-                userService.removeById(userId);
-            } else {
-                User user = userService.lambdaQuery().eq(User::getUserAccount, userAccount).one();
-                if (user != null) userService.removeById(user.getId());
-            }
+            cleanupTestData(interfaceInfoId, adminId, adminAccount, userId, userAccount);
         }
     }
 
     @Test
     @DisplayName("普通用户删除平台接口应失败")
     void deleteOthersInterfaceShouldFail() throws Exception {
-        // 使用短后缀，确保账号长度符合 4-10 位规则
-        String suffix = String.valueOf(System.currentTimeMillis() % 1000);
-        String ownerAccount = "so" + suffix;
-        String otherAccount = "sr" + suffix;
+        String ownerAccount = buildTestAccount("so");
+        String otherAccount = buildTestAccount("sr");
 
         long interfaceInfoId = -1;
         long ownerId = -1;
@@ -313,9 +350,9 @@ class InterfaceInvokeSmokeTest {
             ownerId = userService.lambdaQuery().eq(User::getUserAccount, ownerAccount).one().getId();
             otherId = userService.lambdaQuery().eq(User::getUserAccount, otherAccount).one().getId();
 
-            interfaceInfoId = createInterfaceInfo("testDeleteApi", "/api/delete_test_" + suffix, "GET", ownerId);
+            interfaceInfoId = createInterfaceInfo("testDeleteApi", "/api/delete_test_" + ownerAccount, "GET", ownerId);
 
-            // 普通用户尝试删除平台接口应失败。
+            // 普通用户尝试删除平台接口应失败
             String deleteJson = "{\"id\":" + interfaceInfoId + "}";
             mockMvc.perform(post("/interfaceInfo/delete")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -325,23 +362,11 @@ class InterfaceInvokeSmokeTest {
                     .andExpect(jsonPath("$.code").value(40101));
 
             // 验证接口仍然存在
-            assertNotNull(interfaceInfoService.getById(interfaceInfoId), "接口不应被删除");
+            assertThat(interfaceInfoService.getById(interfaceInfoId))
+                    .as("接口不应被删除")
+                    .isNotNull();
         } finally {
-            if (interfaceInfoId > 0) {
-                interfaceInfoService.removeById(interfaceInfoId);
-            }
-            if (ownerId > 0) {
-                userService.removeById(ownerId);
-            } else {
-                User owner = userService.lambdaQuery().eq(User::getUserAccount, ownerAccount).one();
-                if (owner != null) userService.removeById(owner.getId());
-            }
-            if (otherId > 0) {
-                userService.removeById(otherId);
-            } else {
-                User other = userService.lambdaQuery().eq(User::getUserAccount, otherAccount).one();
-                if (other != null) userService.removeById(other.getId());
-            }
+            cleanupTestData(interfaceInfoId, ownerId, ownerAccount, otherId, otherAccount);
         }
     }
 }
