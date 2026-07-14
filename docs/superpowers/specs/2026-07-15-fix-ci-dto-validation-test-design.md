@@ -20,7 +20,7 @@
 
 ## 改动范围
 
-只修改
+实现代码只修改
 `feiapi-backend-server/src/test/java/com/feiting/feiapi/unit/component/InterfaceDocContentSecurityValidatorTest.java`。
 不修改 DTO 校验规则、业务代码、数据库结构或 CI 工作流。
 

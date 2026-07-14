@@ -174,6 +174,10 @@ class InterfaceDocContentSecurityValidatorTest {
     @DisplayName("六万五千五百三十六字符示例由 DTO 长度校验拒绝")
     void shouldRejectExampleLongerThanDtoLimit() {
         InterfaceDocSaveRequest request = new InterfaceDocSaveRequest();
+        request.setInterfaceInfoId(1L);
+        request.setDocVersion("v1.0");
+        request.setRequestContentType("application/json");
+        request.setResponseContentType("application/json");
         request.setSuccessExample("a".repeat(65536));
 
         assertThat(BEAN_VALIDATOR.validate(request))
