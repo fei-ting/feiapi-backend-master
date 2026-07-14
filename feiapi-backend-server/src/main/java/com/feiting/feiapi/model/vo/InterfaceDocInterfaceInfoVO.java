@@ -1,5 +1,6 @@
 package com.feiting.feiapi.model.vo;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -21,12 +22,14 @@ public class InterfaceDocInterfaceInfoVO implements Serializable {
     private String description;
 
     /** 接口展示地址，仅管理员可见。 */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private String url;
 
     /** 网关匹配路径。 */
     private String path;
 
     /** 真实后端服务地址，仅管理员可见。 */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private String targetHost;
 
     /** 接口状态。 */

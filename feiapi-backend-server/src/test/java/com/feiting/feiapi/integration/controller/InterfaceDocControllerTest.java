@@ -130,8 +130,8 @@ class InterfaceDocControllerTest {
         assertThat(data.has("legacyFallback")).isFalse();
         assertThat(data.get("structuredDocMissing").asBoolean()).isTrue();
         assertThat(data.get("gatewayUrl").asText()).isEqualTo("http://localhost:8090/api/legacy_doc_" + suffixValueFromPath(data.get("gatewayUrl").asText()));
-        assertThat(data.get("interfaceInfo").get("url").isNull()).isTrue();
-        assertThat(data.get("interfaceInfo").get("targetHost").isNull()).isTrue();
+        assertThat(data.get("interfaceInfo").has("url")).isFalse();
+        assertThat(data.get("interfaceInfo").has("targetHost")).isFalse();
         assertThat(data.get("interfaceInfo").has("requestParams")).isFalse();
         assertThat(data.get("interfaceInfo").has("requestHeader")).isFalse();
         assertThat(data.get("interfaceInfo").has("responseHeader")).isFalse();
@@ -202,7 +202,8 @@ class InterfaceDocControllerTest {
         assertThat(responseParams.get(1).get("nullable").asBoolean()).isTrue();
         assertThat(curlExample)
                 .contains("ACCESS_KEY", "SECRET_KEY", "openssl dgst -sha256 -hmac",
-                        "accessKey", "nonce", "timestamp", "sign", "CANONICAL_STRING");
+                        "accessKey", "nonce", "timestamp", "sign", "printf 'feiting\\n%s\\n%s\\n%s\\n%s\\n%s'")
+                .doesNotContain("CANONICAL_STRING");
         assertThat(curlExample)
                 .contains("\"age\":18", "\"enabled\":true", "\"meta\":{}", "\"tags\":[]")
                 .doesNotContain("\"age\":\"18\"", "\"enabled\":\"true\"");
@@ -245,10 +246,24 @@ class InterfaceDocControllerTest {
         accessKeyRequest.setSuccessExample("{\"accessKey\":\"abcd1234\"}");
         assertSaveFailed(adminSession, accessKeyRequest, 40000);
 
+        InterfaceDocSaveRequest bearerTokenRequest = buildBasicSaveRequest(id);
+        bearerTokenRequest.setAuthDescription("token: Bearer eyJhbGciOiJIUzI1NiJ9");
+        assertSaveFailed(adminSession, bearerTokenRequest, 40000);
+
+        InterfaceDocSaveRequest complexPasswordRequest = buildBasicSaveRequest(id);
+        complexPasswordRequest.setRemark("password: P@ssw0rd!");
+        assertSaveFailed(adminSession, complexPasswordRequest, 40000);
+
         InterfaceDocSaveRequest scriptRequest = buildBasicSaveRequest(id);
         scriptRequest.getParams().add(param("resp", null, "RESPONSE", "data", "string", true, false, 2));
-        scriptRequest.getParams().get(1).setValidationRule("<script>alert(1)</script>");
+        scriptRequest.getParams().get(1).setValidationRule("<img/onerror=alert(1)>");
         assertSaveFailed(adminSession, scriptRequest, 40000);
+
+        InterfaceDocSaveRequest internalInfoRequest = buildBasicSaveRequest(id);
+        InterfaceDocErrorCodeSaveRequest internalErrorCode = errorCode("I001", "内部错误", 1);
+        internalErrorCode.setSolution("检查Redis连接");
+        internalInfoRequest.getErrorCodes().add(internalErrorCode);
+        assertSaveFailed(adminSession, internalInfoRequest, 40000);
 
         InterfaceDocSaveRequest duplicateErrorRequest = buildBasicSaveRequest(id);
         duplicateErrorRequest.getErrorCodes().add(errorCode("A001", "错误 A", 1));
@@ -266,6 +281,58 @@ class InterfaceDocControllerTest {
                 .mapToObj(index -> errorCode("E" + index, "错误" + index, index))
                 .collect(java.util.stream.Collectors.toList()));
         assertSaveFailed(adminSession, errorLimitRequest, 40000);
+    }
+
+    /**
+     * 测试所有明确脱敏占位符均允许保存。
+     */
+    @Test
+    @DisplayName("聚合保存允许安全策略白名单中的脱敏占位符")
+    void shouldAllowAllSupportedMaskPlaceholders() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idmask" + suffix(), "admin");
+        long id = createInterfaceInfo("maskDocApi", "/api/mask_doc_" + suffix(),
+                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.setAuthDescription("Authorization: Bearer <TOKEN>");
+        request.setRemark("password: <PASSWORD>");
+        request.setSuccessExample("{\"token\":\"${TOKEN}\",\"access_key\":\"<ACCESS_KEY>\",\"password\":\"***\"}");
+        request.setFailExample("{\"secret-key\":\"${SECRET_KEY}\",\"authorization\":\"Basic <MASKED>\"}");
+
+        saveDocByAdmin(adminSession, request);
+    }
+
+    /**
+     * 测试 GET curl 的 Query、签名管道、Shell 转义和 Header 去重。
+     */
+    @Test
+    @DisplayName("GET curl 正确生成 Query 并安全处理特殊字符与 Content-Type 冲突")
+    void shouldGenerateSafeGetCurlWithAuthoritativeContentType() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idgetcurl" + suffix(), "admin");
+        String path = "/api/get_curl_" + suffix();
+        long id = createInterfaceInfo("getCurlApi", path,
+                InterfaceInfoStatusEnum.ONLINE.getValue(), "GET", "{\"keyword\":\"string\"}");
+        InterfaceDocSaveRequest request = baseSaveRequest(id);
+        InterfaceDocParamSaveRequest queryParam = param(
+                "queryKeyword", null, "QUERY", "keyword", "string", true, false, 1);
+        queryParam.setExampleValue("中文 空格");
+        InterfaceDocParamSaveRequest contentTypeHeader = param(
+                "headerContentType", null, "HEADER", "content-type", "string", true, false, 2);
+        contentTypeHeader.setExampleValue("text/plain");
+        InterfaceDocParamSaveRequest specialHeader = param(
+                "headerSpecial", null, "HEADER", "X-Test", "string", false, false, 3);
+        specialHeader.setExampleValue("a'b\"$`!\\ value");
+        request.setParams(List.of(queryParam, contentTypeHeader, specialHeader));
+
+        saveDocByAdmin(adminSession, request);
+        String curlExample = requestDoc(id, adminSession).get("data").get("curlExample").asText();
+
+        assertThat(curlExample)
+                .contains("URL='http://localhost:8090" + path
+                        + "?keyword=%E4%B8%AD%E6%96%87%20%E7%A9%BA%E6%A0%BC'")
+                .contains("BODY=''", "printf 'feiting\\n%s\\n%s\\n%s\\n%s\\n%s'")
+                .contains("a'\"'\"'b\"$`!\\ value")
+                .containsOnlyOnce("Content-Type: application/json")
+                .doesNotContain("CANONICAL_STRING", "--data", "Content-Type: text/plain");
     }
 
     /**

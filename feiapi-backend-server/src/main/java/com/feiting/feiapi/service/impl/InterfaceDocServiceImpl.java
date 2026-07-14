@@ -2,6 +2,8 @@ package com.feiting.feiapi.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.feiting.feiapi.common.ErrorCode;
+import com.feiting.feiapi.component.InterfaceDocContentSecurityValidator;
+import com.feiting.feiapi.component.InterfaceDocCurlExampleGenerator;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.mapper.InterfaceDocMapper;
 import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocErrorCodeSaveRequest;
@@ -25,9 +27,7 @@ import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
 import com.feiting.feiapicommon.model.enums.InterfaceQuotaTypeEnum;
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
-import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
@@ -38,9 +38,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -109,38 +106,6 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
     private static final Pattern DOC_VERSION_PATTERN = Pattern.compile("^[A-Za-z0-9._-]{1,64}$");
 
     /**
-     * 手机号高置信度匹配规则。
-     */
-    private static final Pattern PHONE_PATTERN = Pattern.compile("(?<!\\d)1[3-9]\\d{9}(?!\\d)");
-
-    /**
-     * 邮箱高置信度匹配规则。
-     */
-    private static final Pattern EMAIL_PATTERN = Pattern.compile("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}");
-
-    /**
-     * 身份证号高置信度匹配规则。
-     */
-    private static final Pattern ID_CARD_PATTERN = Pattern.compile("(?<!\\d)\\d{17}[0-9Xx](?!\\d)");
-
-    /**
-     * 未脱敏密钥字段匹配规则。
-     */
-    private static final Pattern SECRET_PATTERN = Pattern.compile(
-            "(?i)(accessKey|secretKey|token|password|密码|密钥)\\s*['\"]?\\s*[:=]\\s*['\"]?(?!\\*{3,}|<[^>]+>|\\$\\{[^}]+\\})[A-Za-z0-9._\\-+/=]{8,}");
-
-    /**
-     * 脚本内容匹配规则。
-     */
-    private static final Pattern SCRIPT_PATTERN = Pattern.compile("(?i)<\\s*script|javascript\\s*:|\\son[a-z]+\\s*=");
-
-    /**
-     * 内部实现信息匹配规则。
-     */
-    private static final Pattern INTERNAL_INFO_PATTERN = Pattern.compile(
-            "(?i)\\b(db|database|mysql|postgresql|oracle|mongodb|redis|dubbo|nacos|jdbc)\\b|数据库|数据表|服务器绝对路径|[A-Za-z]:\\\\|/(var|etc|usr|opt|home|root|data)/");
-
-    /**
      * 当前网关调用地址前缀。
      */
     @Value("${feiapi.client.gateway-host}")
@@ -171,16 +136,41 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      */
     private final UserInterfaceInfoService userInterfaceInfoService;
 
+    /**
+     * 接口文档内容安全校验器。
+     */
+    private final InterfaceDocContentSecurityValidator contentSecurityValidator;
+
+    /**
+     * 接口文档 curl 示例生成器。
+     */
+    private final InterfaceDocCurlExampleGenerator curlExampleGenerator;
+
+    /**
+     * 创建接口文档主信息服务。
+     *
+     * @param interfaceInfoService          接口信息服务
+     * @param interfaceDocParamService      文档参数服务
+     * @param interfaceDocErrorCodeService  文档错误码服务
+     * @param interfaceQuotaConfigService   接口配额配置服务
+     * @param userInterfaceInfoService      用户接口调用关系服务
+     * @param contentSecurityValidator      内容安全校验器
+     * @param curlExampleGenerator          curl 示例生成器
+     */
     public InterfaceDocServiceImpl(InterfaceInfoService interfaceInfoService,
                                    InterfaceDocParamService interfaceDocParamService,
                                    InterfaceDocErrorCodeService interfaceDocErrorCodeService,
                                    InterfaceQuotaConfigService interfaceQuotaConfigService,
-                                   UserInterfaceInfoService userInterfaceInfoService) {
+                                   UserInterfaceInfoService userInterfaceInfoService,
+                                   InterfaceDocContentSecurityValidator contentSecurityValidator,
+                                   InterfaceDocCurlExampleGenerator curlExampleGenerator) {
         this.interfaceInfoService = interfaceInfoService;
         this.interfaceDocParamService = interfaceDocParamService;
         this.interfaceDocErrorCodeService = interfaceDocErrorCodeService;
         this.interfaceQuotaConfigService = interfaceQuotaConfigService;
         this.userInterfaceInfoService = userInterfaceInfoService;
+        this.contentSecurityValidator = contentSecurityValidator;
+        this.curlExampleGenerator = curlExampleGenerator;
     }
 
     /**
@@ -218,7 +208,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         detailVO.setErrorCodes(errorCodes.stream()
                 .map(this::toErrorCodeVO)
                 .collect(Collectors.toList()));
-        detailVO.setCurlExample(buildCurlExample(interfaceInfo, detailVO));
+        detailVO.setCurlExample(curlExampleGenerator.generate(interfaceInfo, detailVO));
         return detailVO;
     }
 
@@ -516,11 +506,12 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         }
         assertSupportedContentType(saveRequest.getRequestContentType(), "请求内容类型不支持");
         assertSupportedContentType(saveRequest.getResponseContentType(), "响应内容类型不支持");
-        assertJsonExample(saveRequest.getSuccessExample(), "成功响应示例必须是合法 JSON");
-        assertJsonExample(saveRequest.getFailExample(), "失败响应示例必须是合法 JSON");
-        Stream.of(saveRequest.getAuthDescription(), saveRequest.getSuccessExample(),
-                        saveRequest.getFailExample(), saveRequest.getRemark())
-                .forEach(this::assertNoSensitiveText);
+        contentSecurityValidator.validateJsonExample(
+                saveRequest.getSuccessExample(), "成功响应示例必须是合法 JSON");
+        contentSecurityValidator.validateJsonExample(
+                saveRequest.getFailExample(), "失败响应示例必须是合法 JSON");
+        Stream.of(saveRequest.getAuthDescription(), saveRequest.getRemark())
+                .forEach(contentSecurityValidator::validateText);
     }
 
     /**
@@ -532,23 +523,6 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
     private void assertSupportedContentType(String contentType, String errorMessage) {
         String normalizedContentType = trimToEmpty(contentType).toLowerCase(Locale.ROOT);
         if (!SUPPORTED_CONTENT_TYPES.contains(normalizedContentType)) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, errorMessage);
-        }
-    }
-
-    /**
-     * 校验 JSON 示例。
-     *
-     * @param example      JSON 示例
-     * @param errorMessage 错误提示
-     */
-    private void assertJsonExample(String example, String errorMessage) {
-        if (StringUtils.isBlank(example)) {
-            return;
-        }
-        try {
-            JsonParser.parseString(example);
-        } catch (JsonSyntaxException e) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, errorMessage);
         }
     }
@@ -616,11 +590,9 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         } else if (Boolean.TRUE.equals(request.getNullable())) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数 nullable 固定为否");
         }
-        if (SCRIPT_PATTERN.matcher(trimToEmpty(request.getValidationRule())).find()) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "校验规则不能包含脚本内容");
-        }
-        Stream.of(request.getDefaultValue(), request.getExampleValue(), request.getDescription(), request.getValidationRule())
-                .forEach(this::assertNoSensitiveText);
+        Stream.of(request.getDefaultValue(), request.getExampleValue(), request.getDescription())
+                .forEach(contentSecurityValidator::validateText);
+        contentSecurityValidator.validateValidationRule(request.getValidationRule());
     }
 
     /**
@@ -784,11 +756,9 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         if (request == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "错误码不能为空");
         }
-        Stream.of(request.getErrorCode(), request.getErrorMessage(), request.getDescription(), request.getSolution())
-                .forEach(this::assertNoSensitiveText);
-        if (INTERNAL_INFO_PATTERN.matcher(trimToEmpty(request.getSolution())).find()) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "错误解决建议不能包含内部实现信息");
-        }
+        Stream.of(request.getErrorCode(), request.getErrorMessage(), request.getDescription())
+                .forEach(contentSecurityValidator::validateText);
+        contentSecurityValidator.validateSolution(request.getSolution());
     }
 
     /**
@@ -860,24 +830,6 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         boolean saveResult = interfaceDocErrorCodeService.saveBatch(errorCodes);
         if (!saveResult) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "错误码保存失败");
-        }
-    }
-
-    /**
-     * 检查文本是否包含敏感信息。
-     *
-     * @param value 待检查文本
-     */
-    private void assertNoSensitiveText(String value) {
-        if (StringUtils.isBlank(value)) {
-            return;
-        }
-        String text = value.trim();
-        if (PHONE_PATTERN.matcher(text).find()
-                || EMAIL_PATTERN.matcher(text).find()
-                || ID_CARD_PATTERN.matcher(text).find()
-                || SECRET_PATTERN.matcher(text).find()) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "文档内容不能包含未脱敏敏感信息");
         }
     }
 
@@ -1033,214 +985,6 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
     }
 
     /**
-     * 构建 curl 调用示例。
-     *
-     * @param interfaceInfo 接口信息
-     * @param detailVO      文档聚合视图
-     * @return curl 示例
-     */
-    private String buildCurlExample(InterfaceInfo interfaceInfo, InterfaceDocDetailVO detailVO) {
-        String method = firstText(interfaceInfo.getMethod(), "GET").toUpperCase(Locale.ROOT);
-        String gatewayUrl = appendQueryParamsIfNecessary(detailVO.getGatewayUrl(), method, detailVO.getRequestParams());
-        String path = buildSignPath(interfaceInfo);
-        String body = "GET".equalsIgnoreCase(method) ? "" : buildBodyJson(detailVO.getRequestParams());
-        List<String> curlOptions = buildCurlOptions(detailVO, body);
-        String curlCommand = Stream.concat(Stream.of("curl -X \"$METHOD\" \"$URL\""), curlOptions.stream())
-                .collect(Collectors.joining(" \\\n"));
-        return Stream.of(
-                        "#!/usr/bin/env bash",
-                        "set -euo pipefail",
-                        "",
-                        ": \"${ACCESS_KEY:?请先 export ACCESS_KEY='你的 AccessKey'}\"",
-                        ": \"${SECRET_KEY:?请先 export SECRET_KEY='你的 SecretKey'}\"",
-                        "",
-                        "METHOD=" + shellSingleQuote(method),
-                        "PATH_VALUE=" + shellSingleQuote(path),
-                        "URL=" + shellSingleQuote(gatewayUrl),
-                        "BODY=" + shellSingleQuote(body),
-                        "NONCE=\"$(openssl rand -hex 16)\"",
-                        "TIMESTAMP=\"$(date +%s)\"",
-                        "CANONICAL_STRING=\"$(printf 'feiting\\n%s\\n%s\\n%s\\n%s\\n%s' \"$METHOD\" \"$PATH_VALUE\" \"$NONCE\" \"$TIMESTAMP\" \"$BODY\")\"",
-                        "SIGN=\"$(printf '%s' \"$CANONICAL_STRING\" | openssl dgst -sha256 -hmac \"$SECRET_KEY\" | awk '{print $2}')\"",
-                        "",
-                        curlCommand)
-                .collect(Collectors.joining("\n"));
-    }
-
-    /**
-     * 构建 curl 参数列表。
-     *
-     * @param detailVO 文档聚合视图
-     * @param body     请求体
-     * @return curl 参数列表
-     */
-    private List<String> buildCurlOptions(InterfaceDocDetailVO detailVO, String body) {
-        Set<String> headerNames = new HashSet<>(Arrays.asList("accesskey", "nonce", "timestamp", "sign"));
-        String contentType = firstText(detailVO.getDoc().getRequestContentType(), DEFAULT_REQUEST_CONTENT_TYPE);
-        List<String> authHeaders = Stream.of(
-                        "  -H \"accessKey: ${ACCESS_KEY}\"",
-                        "  -H \"nonce: ${NONCE}\"",
-                        "  -H \"timestamp: ${TIMESTAMP}\"",
-                        "  -H \"sign: ${SIGN}\"")
-                .collect(Collectors.toCollection(ArrayList::new));
-        if (StringUtils.isNotBlank(contentType)) {
-            authHeaders.add("  -H " + shellSingleQuote("Content-Type: " + contentType));
-            headerNames.add("content-type");
-        }
-        List<String> customHeaders = detailVO.getRequestHeaders().stream()
-                .filter(param -> StringUtils.isNotBlank(param.getName()))
-                .filter(param -> headerNames.add(param.getName().trim().toLowerCase(Locale.ROOT)))
-                .map(param -> "  -H " + shellSingleQuote(param.getName().trim() + ": " + firstText(param.getExampleValue(), param.getDefaultValue())))
-                .collect(Collectors.toList());
-        List<String> bodyOption = StringUtils.isBlank(body)
-                ? Collections.emptyList()
-                : Collections.singletonList("  --data \"$BODY\"");
-        return Stream.of(authHeaders, customHeaders, bodyOption)
-                .flatMap(List::stream)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * 在 GET 请求地址后追加 Query 示例参数。
-     *
-     * @param url           网关调用地址
-     * @param method        请求方法
-     * @param requestParams 请求参数列表
-     * @return 处理后的地址
-     */
-    private String appendQueryParamsIfNecessary(String url, String method, List<InterfaceDocParamVO> requestParams) {
-        if (!"GET".equalsIgnoreCase(method)) {
-            return url;
-        }
-        String query = requestParams.stream()
-                .filter(param -> InterfaceDocParamSceneEnum.QUERY.getValue().equals(param.getParamScene()))
-                .filter(param -> StringUtils.isNotBlank(param.getName()))
-                .map(param -> encode(param.getName()) + "=" + encode(resolveSampleValue(param)))
-                .collect(Collectors.joining("&"));
-        if (StringUtils.isBlank(query)) {
-            return url;
-        }
-        return url + (url.contains("?") ? "&" : "?") + query;
-    }
-
-    /**
-     * 构建请求体 JSON。
-     *
-     * @param requestParams 请求参数列表
-     * @return 请求体 JSON
-     */
-    private String buildBodyJson(List<InterfaceDocParamVO> requestParams) {
-        List<InterfaceDocParamVO> bodyParams = requestParams.stream()
-                .filter(param -> InterfaceDocParamSceneEnum.BODY.getValue().equals(param.getParamScene()))
-                .filter(param -> StringUtils.isNotBlank(param.getName()))
-                .sorted(Comparator.comparing(param -> Optional.ofNullable(param.getSortOrder()).orElse(0)))
-                .collect(Collectors.toList());
-        if (bodyParams.isEmpty()) {
-            return "";
-        }
-        JsonObject bodyJson = new JsonObject();
-        bodyParams.forEach(param -> bodyJson.add(param.getName(), toTypedJsonElement(param)));
-        return bodyJson.toString();
-    }
-
-    /**
-     * 转换参数示例为指定 JSON 类型。
-     *
-     * @param param 参数视图
-     * @return JSON 元素
-     */
-    private JsonElement toTypedJsonElement(InterfaceDocParamVO param) {
-        String type = firstText(param.getType(), "string").toLowerCase(Locale.ROOT);
-        String rawValue = firstText(param.getExampleValue(), param.getDefaultValue());
-        if ("number".equals(type)) {
-            return toNumberElement(rawValue);
-        }
-        if ("boolean".equals(type)) {
-            return new JsonPrimitive("true".equalsIgnoreCase(rawValue) || "1".equals(rawValue));
-        }
-        if ("object".equals(type)) {
-            return toContainerElement(rawValue, true);
-        }
-        if ("array".equals(type)) {
-            return toContainerElement(rawValue, false);
-        }
-        return new JsonPrimitive(rawValue);
-    }
-
-    /**
-     * 转换数字示例。
-     *
-     * @param rawValue 原始值
-     * @return 数字 JSON 元素
-     */
-    private JsonElement toNumberElement(String rawValue) {
-        if (StringUtils.isBlank(rawValue)) {
-            return new JsonPrimitive(0);
-        }
-        try {
-            return new JsonPrimitive(new BigDecimal(rawValue.trim()));
-        } catch (NumberFormatException e) {
-            return new JsonPrimitive(0);
-        }
-    }
-
-    /**
-     * 转换对象或数组示例。
-     *
-     * @param rawValue 原始值
-     * @param object   是否期望对象
-     * @return 容器 JSON 元素
-     */
-    private JsonElement toContainerElement(String rawValue, boolean object) {
-        if (StringUtils.isBlank(rawValue)) {
-            return object ? new JsonObject() : new JsonArray();
-        }
-        try {
-            JsonElement element = JsonParser.parseString(rawValue);
-            if (object && element.isJsonObject()) {
-                return element;
-            }
-            if (!object && element.isJsonArray()) {
-                return element;
-            }
-            return object ? new JsonObject() : new JsonArray();
-        } catch (JsonSyntaxException e) {
-            return object ? new JsonObject() : new JsonArray();
-        }
-    }
-
-    /**
-     * 解析参数示例值。
-     *
-     * @param param 参数视图
-     * @return 示例值
-     */
-    private String resolveSampleValue(InterfaceDocParamVO param) {
-        JsonElement jsonElement = toTypedJsonElement(param);
-        if (jsonElement == null || jsonElement instanceof JsonNull) {
-            return "";
-        }
-        if (jsonElement.isJsonPrimitive()) {
-            return jsonElement.getAsJsonPrimitive().getAsString();
-        }
-        return jsonElement.toString();
-    }
-
-    /**
-     * 构建签名路径。
-     *
-     * @param interfaceInfo 接口信息
-     * @return 签名路径
-     */
-    private String buildSignPath(InterfaceInfo interfaceInfo) {
-        String path = firstText(interfaceInfo.getPath(), "");
-        if (StringUtils.isBlank(path)) {
-            return "";
-        }
-        return path.startsWith("/") ? path : "/" + path;
-    }
-
-    /**
      * 构建网关调用地址。
      *
      * @param interfaceInfo 接口信息
@@ -1259,26 +1003,6 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
             path = "/" + path;
         }
         return normalizedGatewayHost + path;
-    }
-
-    /**
-     * URL 编码。
-     *
-     * @param value 原始文本
-     * @return 编码后的文本
-     */
-    private String encode(String value) {
-        return URLEncoder.encode(firstText(value, ""), StandardCharsets.UTF_8);
-    }
-
-    /**
-     * Shell 单引号转义。
-     *
-     * @param value 原始文本
-     * @return 可安全放入 Bash 的单引号文本
-     */
-    private String shellSingleQuote(String value) {
-        return "'" + firstText(value, "").replace("'", "'\"'\"'") + "'";
     }
 
     /**
