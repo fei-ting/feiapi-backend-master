@@ -59,7 +59,8 @@ class InterfaceDocContentSecurityValidatorTest {
     @DisplayName("拒绝高置信度个人敏感信息")
     void shouldRejectPersonalSensitiveInformation(String text) {
         assertThatThrownBy(() -> validator.validateText(text))
-                .isInstanceOf(BusinessException.class);
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("文档内容不能包含未脱敏敏感信息");
     }
 
     /**
@@ -230,5 +231,17 @@ class InterfaceDocContentSecurityValidatorTest {
     @DisplayName("允许空文本和普通业务说明")
     void shouldAllowNormalText(String text) {
         assertThatCode(() -> validator.validateSolution(text)).doesNotThrowAnyException();
+    }
+
+    /**
+     * 验证 null 输入不会抛出异常。
+     */
+    @Test
+    @DisplayName("null 输入安全处理")
+    void shouldHandleNullInput() {
+        assertThatCode(() -> validator.validateText(null)).doesNotThrowAnyException();
+        assertThatCode(() -> validator.validateJsonExample(null, "JSON 非法")).doesNotThrowAnyException();
+        assertThatCode(() -> validator.validateValidationRule(null)).doesNotThrowAnyException();
+        assertThatCode(() -> validator.validateSolution(null)).doesNotThrowAnyException();
     }
 }

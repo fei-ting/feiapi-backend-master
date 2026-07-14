@@ -64,6 +64,11 @@ class InterfaceDocControllerTest {
     private static final String TEST_TARGET_HOST = "http://feiapi-interface:8123";
 
     /**
+     * 测试密码。
+     */
+    private static final String TEST_PASSWORD = "password123";
+
+    /**
      * MockMvc 测试客户端。
      */
     @Resource
@@ -943,14 +948,14 @@ class InterfaceDocControllerTest {
      */
     private MockHttpSession loginWithRole(String account, String role) throws Exception {
         String userAccount = buildValidAccount(account);
-        userService.userRegister(userAccount, "password123", "password123");
+        userService.userRegister(userAccount, TEST_PASSWORD, TEST_PASSWORD);
         User user = userService.lambdaQuery().eq(User::getUserAccount, userAccount).one();
         user.setUserRole(role);
         userService.updateById(user);
 
         UserLoginRequest loginRequest = new UserLoginRequest();
         loginRequest.setUserAccount(userAccount);
-        loginRequest.setUserPassword("password123");
+        loginRequest.setUserPassword(TEST_PASSWORD);
         MockHttpSession session = new MockHttpSession();
         mockMvc.perform(post("/user/login")
                         .contentType(MediaType.APPLICATION_JSON)
