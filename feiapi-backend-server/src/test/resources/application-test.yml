@@ -45,6 +45,7 @@ feiapi:
     access-key: test-access-key
     secret-key: test-secret-key
     gateway-host: http://localhost:8090
+    sign-salt: feiting
     probe-secret: test-probe-secret
   interface-target:
     allowed-hostnames: feiapi-interface

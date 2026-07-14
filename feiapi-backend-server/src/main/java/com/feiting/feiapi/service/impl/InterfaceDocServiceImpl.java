@@ -790,8 +790,11 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
     /**
      * 全量替换文档参数。
      *
+     * <p>paramNodes 已按深度排序（父参数在前），确保父参数先于子参数插入，
+     * 以便 MyBatis-Plus 回填的自增 ID 可被子参数引用为 parentId。</p>
+     *
      * @param interfaceInfoId 接口信息 ID
-     * @param paramNodes      参数保存节点列表
+     * @param paramNodes      参数保存节点列表（已按深度排序）
      */
     private void replaceAllParams(Long interfaceInfoId, List<ParamSaveNode> paramNodes) {
         boolean removeResult = interfaceDocParamService.lambdaUpdate()
@@ -802,7 +805,11 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         }
         paramNodes.forEach(node -> {
             if (node.getParent() != null) {
-                node.getEntity().setParentId(node.getParent().getEntity().getId());
+                Long parentId = node.getParent().getEntity().getId();
+                if (parentId == null) {
+                    throw new BusinessException(ErrorCode.OPERATION_ERROR, "父参数 ID 回填失败，请检查 MyBatis-Plus useGeneratedKeys 配置");
+                }
+                node.getEntity().setParentId(parentId);
             }
             boolean saveResult = interfaceDocParamService.save(node.getEntity());
             if (!saveResult) {
