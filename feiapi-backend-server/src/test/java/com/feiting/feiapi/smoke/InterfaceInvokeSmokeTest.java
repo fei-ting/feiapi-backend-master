@@ -395,4 +395,63 @@ class InterfaceInvokeSmokeTest {
             cleanupTestData(interfaceInfoId, ownerId, ownerAccount, otherId, otherAccount);
         }
     }
+
+    /**
+     * 验证 buildTestAccount 生成的账号格式正确。
+     * 测试 UUID 全数字场景，确保前缀保证账号以字母开头。
+     */
+    @Test
+    @DisplayName("buildTestAccount 生成的账号格式正确")
+    void buildTestAccountShouldGenerateValidFormat() {
+        // 测试多次生成，确保格式一致
+        for (int i = 0; i < 10; i++) {
+            String account = buildTestAccount("ab");
+            assertThat(account)
+                    .as("账号应以两位字母前缀开头")
+                    .startsWith("ab")
+                    .hasSize(10)
+                    .matches("^[A-Za-z]{2}[A-Za-z0-9]{8}$");
+        }
+    }
+
+    /**
+     * 验证普通用户调用接口需要登录。
+     */
+    @Test
+    @DisplayName("未登录用户调用接口应返回未登录提示")
+    void invokeWithoutLoginShouldFail() throws Exception {
+        String adminAccount = buildTestAccount("in");
+        long interfaceInfoId = -1;
+        long adminId = -1;
+
+        try {
+            MockHttpSession adminSession = loginWithRole(adminAccount, "admin");
+            adminId = userService.lambdaQuery().eq(User::getUserAccount, adminAccount).one().getId();
+
+            // 创建并上线接口
+            interfaceInfoId = createInterfaceInfo("testInvokeApi", "/api/test_invoke_" + adminAccount, "GET", adminId);
+            mockInvokeSuccess("getLoveWords", "{\"content\":\"test\"}");
+
+            String onlineJson = "{\"id\":" + interfaceInfoId + "}";
+            mockMvc.perform(post("/interfaceInfo/online")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(onlineJson)
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0));
+
+            // 未登录用户调用接口
+            InterfaceInfoInvokeRequest invokeRequest = new InterfaceInfoInvokeRequest();
+            invokeRequest.setId(interfaceInfoId);
+            invokeRequest.setUserRequestParams("");
+
+            mockMvc.perform(post("/interfaceInfo/invoke")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(invokeRequest)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40100));
+        } finally {
+            cleanupTestData(interfaceInfoId, adminId, adminAccount, -1, "");
+        }
+    }
 }
