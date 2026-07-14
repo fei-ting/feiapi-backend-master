@@ -926,25 +926,20 @@ class InterfaceDocControllerTest {
 
     /**
      * 构建示例值。
+     * 使用 switch 表达式提高可读性。
      *
      * @param type 参数类型
      * @param name 参数名称
      * @return 示例值
      */
     private static String exampleValue(String type, String name) {
-        if ("number".equals(type)) {
-            return "18";
-        }
-        if ("boolean".equals(type)) {
-            return "true";
-        }
-        if ("object".equals(type)) {
-            return "{}";
-        }
-        if ("array".equals(type)) {
-            return "[]";
-        }
-        return name + "Value";
+        return switch (type) {
+            case "number" -> "18";
+            case "boolean" -> "true";
+            case "object" -> "{}";
+            case "array" -> "[]";
+            default -> name + "Value";
+        };
     }
 
     /**

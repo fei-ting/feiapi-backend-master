@@ -19,7 +19,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 
 /**
  * 接口文档内容安全校验器。
@@ -52,7 +51,18 @@ public class InterfaceDocContentSecurityValidator {
     /** 身份证号高置信度匹配规则。 */
     private static final Pattern ID_CARD_PATTERN = Pattern.compile("(?<!\\d)\\d{17}[0-9Xx](?!\\d)");
 
-    /** 自由文本中的敏感标签和值匹配规则。 */
+    /**
+     * 自由文本中的敏感标签和值匹配规则。
+     *
+     * <p>正则结构说明：</p>
+     * <ul>
+     *   <li>(?im) - 不区分大小写，多行模式</li>
+     *   <li>(?<![A-Za-z0-9_]) - 负向后行断言，确保不在标识符中间</li>
+     *   <li>(?:access[\\s_.-]*key|...) - 匹配各种敏感字段名称，允许中间有分隔符</li>
+     *   <li>\\s*['\"]?\\s*[:=]\\s* - 匹配分隔符（冒号或等号），允许引号和空格</li>
+     *   <li>(.+)$ - 捕获值部分到行尾</li>
+     * </ul>
+     */
     private static final Pattern SENSITIVE_LABEL_PATTERN = Pattern.compile(
             "(?im)(?<![A-Za-z0-9_])(?:access[\\s_.-]*key|secret[\\s_.-]*key|api[\\s_.-]*key|"
                     + "client[\\s_.-]*secret|access[\\s_.-]*token|refresh[\\s_.-]*token|id[\\s_.-]*token|"
@@ -166,8 +176,10 @@ public class InterfaceDocContentSecurityValidator {
             return;
         }
         if (element.isJsonArray()) {
-            StreamSupport.stream(element.getAsJsonArray().spliterator(), false)
-                    .forEach(child -> scanJsonElement(child, depth + 1));
+            // 使用传统 for-each 循环替代 Stream，避免为副作用使用 Stream
+            for (JsonElement child : element.getAsJsonArray()) {
+                scanJsonElement(child, depth + 1);
+            }
             return;
         }
         if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
@@ -182,7 +194,8 @@ public class InterfaceDocContentSecurityValidator {
      * @param depth  当前嵌套深度
      */
     private void scanJsonObject(JsonObject object, int depth) {
-        object.entrySet().stream().forEach(entry -> {
+        // 直接使用 forEach，无需先转为 stream
+        object.entrySet().forEach(entry -> {
             JsonElement fieldValue = entry.getValue();
             if (SENSITIVE_FIELD_ALIASES.contains(normalizeFieldName(entry.getKey()))) {
                 validateSensitiveJsonFieldValue(fieldValue);
