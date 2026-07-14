@@ -1031,10 +1031,8 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         if (StringUtils.isBlank(interfaceInfo.getPath())) {
             return firstText(interfaceInfo.getUrl(), "");
         }
-        String normalizedGatewayHost = firstText(gatewayHost, "").trim();
-        while (normalizedGatewayHost.endsWith("/")) {
-            normalizedGatewayHost = normalizedGatewayHost.substring(0, normalizedGatewayHost.length() - 1);
-        }
+        // 使用正则一行去除尾部斜杠，替代 while 循环
+        String normalizedGatewayHost = firstText(gatewayHost, "").trim().replaceAll("/+$", "");
         String path = interfaceInfo.getPath().trim();
         if (!path.startsWith("/")) {
             path = "/" + path;
