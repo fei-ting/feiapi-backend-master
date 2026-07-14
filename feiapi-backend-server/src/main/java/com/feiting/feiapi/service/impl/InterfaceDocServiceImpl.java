@@ -38,10 +38,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -321,14 +323,14 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
             }
         }
 
+        // 分离新增和更新的参数，使用批量操作减少数据库往返
+        List<InterfaceDocParam> paramsToSave = new ArrayList<>();
+        List<InterfaceDocParam> paramsToUpdate = new ArrayList<>();
+
         runtimeParams.forEach(runtimeParam -> {
             InterfaceDocParam existingParam = existingParamMap.get(runtimeParam.getName());
             if (existingParam == null) {
-                InterfaceDocParam newParam = buildRequestDocParam(interfaceInfoId, runtimeParam);
-                boolean saveResult = interfaceDocParamService.save(newParam);
-                if (!saveResult) {
-                    throw new BusinessException(ErrorCode.OPERATION_ERROR, "新增请求参数文档失败");
-                }
+                paramsToSave.add(buildRequestDocParam(interfaceInfoId, runtimeParam));
                 return;
             }
             existingParam.setParamScene(runtimeParam.getParamScene());
@@ -336,11 +338,24 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
             existingParam.setType(runtimeParam.getType());
             existingParam.setRequired(runtimeParam.getRequired());
             existingParam.setNullable(0);
-            boolean updateResult = interfaceDocParamService.updateById(existingParam);
+            paramsToUpdate.add(existingParam);
+        });
+
+        // 批量新增
+        if (!paramsToSave.isEmpty()) {
+            boolean saveResult = interfaceDocParamService.saveBatch(paramsToSave);
+            if (!saveResult) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "新增请求参数文档失败");
+            }
+        }
+
+        // 批量更新
+        if (!paramsToUpdate.isEmpty()) {
+            boolean updateResult = interfaceDocParamService.updateBatchById(paramsToUpdate);
             if (!updateResult) {
                 throw new BusinessException(ErrorCode.OPERATION_ERROR, "更新请求参数文档失败");
             }
-        });
+        }
     }
 
     /**
@@ -797,12 +812,9 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * @param paramNodes      参数保存节点列表（已按深度排序）
      */
     private void replaceAllParams(Long interfaceInfoId, List<ParamSaveNode> paramNodes) {
-        boolean removeResult = interfaceDocParamService.lambdaUpdate()
+        interfaceDocParamService.lambdaUpdate()
                 .eq(InterfaceDocParam::getInterfaceInfoId, interfaceInfoId)
                 .remove();
-        if (!removeResult && !listDocParams(interfaceInfoId).isEmpty()) {
-            throw new BusinessException(ErrorCode.OPERATION_ERROR, "旧文档参数删除失败");
-        }
         paramNodes.forEach(node -> {
             if (node.getParent() != null) {
                 Long parentId = node.getParent().getEntity().getId();
@@ -825,12 +837,9 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * @param errorCodes      错误码列表
      */
     private void replaceAllErrorCodes(Long interfaceInfoId, List<InterfaceDocErrorCode> errorCodes) {
-        boolean removeResult = interfaceDocErrorCodeService.lambdaUpdate()
+        interfaceDocErrorCodeService.lambdaUpdate()
                 .eq(InterfaceDocErrorCode::getInterfaceInfoId, interfaceInfoId)
                 .remove();
-        if (!removeResult && !listErrorCodes(interfaceInfoId).isEmpty()) {
-            throw new BusinessException(ErrorCode.OPERATION_ERROR, "旧错误码删除失败");
-        }
         if (errorCodes.isEmpty()) {
             return;
         }
@@ -923,9 +932,17 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
     private InterfaceDocVO toInterfaceDocVO(InterfaceDoc doc, InterfaceInfo interfaceInfo) {
         InterfaceDocVO docVO = new InterfaceDocVO();
         if (doc != null) {
-            BeanUtils.copyProperties(doc, docVO);
-            docVO.setRequestContentType(firstText(docVO.getRequestContentType(), DEFAULT_REQUEST_CONTENT_TYPE));
-            docVO.setResponseContentType(firstText(docVO.getResponseContentType(), DEFAULT_RESPONSE_CONTENT_TYPE));
+            docVO.setId(doc.getId());
+            docVO.setInterfaceInfoId(doc.getInterfaceInfoId());
+            docVO.setDocVersion(doc.getDocVersion());
+            docVO.setRequestContentType(firstText(doc.getRequestContentType(), DEFAULT_REQUEST_CONTENT_TYPE));
+            docVO.setResponseContentType(firstText(doc.getResponseContentType(), DEFAULT_RESPONSE_CONTENT_TYPE));
+            docVO.setAuthDescription(doc.getAuthDescription());
+            docVO.setSuccessExample(doc.getSuccessExample());
+            docVO.setFailExample(doc.getFailExample());
+            docVO.setRemark(doc.getRemark());
+            docVO.setCreateTime(toLocalDateTime(doc.getCreateTime()));
+            docVO.setUpdateTime(toLocalDateTime(doc.getUpdateTime()));
             return docVO;
         }
         docVO.setInterfaceInfoId(interfaceInfo.getId());
@@ -934,6 +951,19 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         docVO.setResponseContentType(DEFAULT_RESPONSE_CONTENT_TYPE);
         docVO.setAuthDescription("通过平台 AccessKey/SecretKey 签名鉴权，由网关统一校验。");
         return docVO;
+    }
+
+    /**
+     * 将 Date 转换为 LocalDateTime。
+     *
+     * @param date 日期
+     * @return 本地日期时间
+     */
+    private LocalDateTime toLocalDateTime(Date date) {
+        if (date == null) {
+            return null;
+        }
+        return date.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime();
     }
 
     /**

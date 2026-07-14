@@ -135,8 +135,10 @@ public class InterfaceDocCurlExampleGenerator {
                         "  -H \"sign: ${SIGN}\"",
                         "  -H " + shellSingleQuote("Content-Type: " + contentType))
                 .collect(Collectors.toCollection(ArrayList::new));
-        List<String> customHeaders = safeList(detailVO.getRequestHeaders()).stream()
-                .peek(this::validateHeaderParam)
+        // 先校验 Header 参数，再进行过滤和映射
+        List<InterfaceDocParamVO> requestHeaders = safeList(detailVO.getRequestHeaders());
+        requestHeaders.forEach(this::validateHeaderParam);
+        List<String> customHeaders = requestHeaders.stream()
                 .filter(param -> StringUtils.isNotBlank(param.getName()))
                 .filter(param -> headerNames.add(param.getName().trim().toLowerCase(Locale.ROOT)))
                 .map(param -> "  -H " + shellSingleQuote(
