@@ -25,6 +25,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.util.UUID;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -84,6 +86,18 @@ class InterfaceInvokeSmokeTest {
         return session;
     }
 
+    /**
+     * 构建固定十位且低碰撞概率的测试账号。
+     *
+     * @param prefix 两位字母账号前缀
+     * @return 十位字母数字测试账号
+     */
+    private String buildTestAccount(String prefix) {
+        // UUID 前八位提供 32 位随机空间，并确保最终账号不会因数字位数变化而越界。
+        String uuidSuffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        return prefix + uuidSuffix;
+    }
+
     private long createInterfaceInfo(String name, String path, String method, long userId) {
         InterfaceInfo interfaceInfo = new InterfaceInfo();
         interfaceInfo.setName(name);
@@ -104,10 +118,11 @@ class InterfaceInvokeSmokeTest {
     @Test
     @DisplayName("成功调用全链路: 创建 -> 发布(mock成功) -> ONLINE -> 调用 -> 返回 data")
     void fullSuccessfulInvokeLifecycle() throws Exception {
-        // 使用短前缀 + 3位随机数，确保账号长度符合 4-10 位规则
-        String suffix = String.valueOf(Math.abs(System.nanoTime() % 1000));
-        String adminAccount = "ai" + suffix;
-        String userAccount = "us" + suffix;
+        String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        String adminAccount = buildTestAccount("ai");
+        String userAccount = buildTestAccount("us");
+        assertTrue(adminAccount.matches("^[A-Za-z]{2}[A-Za-z0-9]{8}$"), "管理员测试账号应为十位字母数字");
+        assertTrue(userAccount.matches("^[A-Za-z]{2}[A-Za-z0-9]{8}$"), "普通用户测试账号应为十位字母数字");
 
         long interfaceInfoId = -1;
         long adminId = -1;
@@ -205,9 +220,11 @@ class InterfaceInvokeSmokeTest {
     @Test
     @DisplayName("完整状态机: 创建(OFFLINE) -> 发布(失败回滚OFFLINE) -> 未上线不可调用")
     void fullStateMachineLifecycle() throws Exception {
-        String suffix = String.valueOf(Math.abs(System.nanoTime() % 1000));
-        String adminAccount = "as" + suffix;
-        String userAccount = "us" + suffix;
+        String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        String adminAccount = buildTestAccount("as");
+        String userAccount = buildTestAccount("us");
+        assertTrue(adminAccount.matches("^[A-Za-z]{2}[A-Za-z0-9]{8}$"), "管理员测试账号应为十位字母数字");
+        assertTrue(userAccount.matches("^[A-Za-z]{2}[A-Za-z0-9]{8}$"), "普通用户测试账号应为十位字母数字");
 
         long interfaceInfoId = -1;
         long adminId = -1;
