@@ -1,5 +1,6 @@
 package com.feiting.feiapi.model.vo;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -9,6 +10,7 @@ import java.util.List;
  * 接口文档聚合详情视图。
  */
 @Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class InterfaceDocDetailVO implements Serializable {
 
     /**

@@ -1,5 +1,6 @@
 package com.feiting.feiapi.model.vo;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -8,6 +9,7 @@ import java.io.Serializable;
  * 接口文档错误码视图。
  */
 @Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class InterfaceDocErrorCodeVO implements Serializable {
 
     /**
