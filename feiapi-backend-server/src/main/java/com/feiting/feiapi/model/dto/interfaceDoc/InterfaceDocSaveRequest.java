@@ -53,12 +53,20 @@ public class InterfaceDocSaveRequest implements Serializable {
     @Size(max = 512, message = "文档备注长度不能超过 512")
     private String remark;
 
-    /** 全量文档参数。 */
+    /**
+     * 全量文档参数。
+     * 默认初始化为空列表，前端可直接 add 而无需 null 检查。
+     * Service 层使用 isEmpty() 判断是否有数据，兼容空列表和 null。
+     */
     @Valid
     @Size(max = 200, message = "文档参数数量不能超过 200")
     private List<InterfaceDocParamSaveRequest> params = new ArrayList<>();
 
-    /** 全量错误码。 */
+    /**
+     * 全量错误码。
+     * 默认初始化为空列表，前端可直接 add 而无需 null 检查。
+     * Service 层使用 isEmpty() 判断是否有数据，兼容空列表和 null。
+     */
     @Valid
     @Size(max = 100, message = "错误码数量不能超过 100")
     private List<InterfaceDocErrorCodeSaveRequest> errorCodes = new ArrayList<>();
