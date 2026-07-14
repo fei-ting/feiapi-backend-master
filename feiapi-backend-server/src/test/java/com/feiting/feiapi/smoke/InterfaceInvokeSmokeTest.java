@@ -35,6 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 接口调用冒烟测试。
  *
+ * <p>验证成功状态机: OFFLINE -> PUBLISHING -> ONLINE -> OFFLINE</p>
  * <p>验证状态机: OFFLINE -> PUBLISHING -> (失败回滚) -> OFFLINE</p>
  * <p>验证权限: 非管理员不能发布/下线</p>
  * <p>验证调用: 未上线接口不可调用</p>
@@ -175,7 +176,7 @@ class InterfaceInvokeSmokeTest {
     }
 
     @Test
-    @DisplayName("成功调用全链路: 创建 -> 发布(mock成功) -> ONLINE -> 调用 -> 返回 data")
+    @DisplayName("成功调用全链路: 创建 -> 发布 -> 调用 -> 下线 -> 禁止再次调用")
     void fullSuccessfulInvokeLifecycle() throws Exception {
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
         String adminAccount = buildTestAccount("ai");
@@ -258,6 +259,29 @@ class InterfaceInvokeSmokeTest {
             assertThat(invokeData).as("调用成功应返回 data").isNotNull();
             // 验证返回内容包含 mock 设置的内容
             assertThat(invokeData.asText()).contains("test_love_words");
+
+            // ======== Step4: 下线接口，验证 ONLINE -> OFFLINE ========
+            String offlineJson = "{\"id\":" + interfaceInfoId + "}";
+            mockMvc.perform(post("/interfaceInfo/offline")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(offlineJson)
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data").value(true));
+
+            InterfaceInfo offline = interfaceInfoService.getById(interfaceInfoId);
+            assertThat(offline.getStatus())
+                    .as("下线成功后状态应为 OFFLINE")
+                    .isEqualTo(InterfaceInfoStatusEnum.OFFLINE.getValue());
+
+            // ======== Step5: 已下线接口不可再次调用 ========
+            mockMvc.perform(post("/interfaceInfo/invoke")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(invokeRequest))
+                            .session(userSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(50000));
         } finally {
             cleanupTestData(interfaceInfoId, adminId, adminAccount, userId, userAccount);
         }
