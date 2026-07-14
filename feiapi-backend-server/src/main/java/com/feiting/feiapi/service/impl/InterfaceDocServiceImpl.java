@@ -551,8 +551,10 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      */
     private List<ParamSaveNode> validateAndBuildParamNodes(InterfaceInfo interfaceInfo,
                                                            List<InterfaceDocParamSaveRequest> paramRequests) {
+        // 先校验所有参数基础字段，再构建节点
+        paramRequests.forEach(this::validateParamBasic);
+
         Map<String, ParamSaveNode> nodeMap = paramRequests.stream()
-                .peek(this::validateParamBasic)
                 .map(request -> new ParamSaveNode(request, toParamEntity(interfaceInfo.getId(), request)))
                 .collect(Collectors.toMap(
                         node -> node.getRequest().getParamKey().trim(),
@@ -566,16 +568,20 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         validateRuntimeRequestParams(interfaceInfo, nodeMap.values().stream()
                 .map(ParamSaveNode::getRequest)
                 .collect(Collectors.toList()));
-        return nodeMap.values().stream()
-                .peek(node -> node.setDepth(resolveParamDepth(node, new HashSet<>())))
-                .peek(node -> {
-                    if (node.getDepth() > MAX_RESPONSE_DEPTH) {
-                        throw new BusinessException(ErrorCode.PARAMS_ERROR, "响应参数嵌套深度不能超过 8");
-                    }
-                })
-                .sorted(Comparator.comparingInt(ParamSaveNode::getDepth)
-                        .thenComparing(node -> Optional.ofNullable(node.getRequest().getSortOrder()).orElse(0)))
-                .collect(Collectors.toList());
+
+        // 计算深度并校验
+        List<ParamSaveNode> nodes = new ArrayList<>(nodeMap.values());
+        for (ParamSaveNode node : nodes) {
+            node.setDepth(resolveParamDepth(node, new HashSet<>()));
+            if (node.getDepth() > MAX_RESPONSE_DEPTH) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "响应参数嵌套深度不能超过 8");
+            }
+        }
+
+        // 按深度和排序值排序
+        nodes.sort(Comparator.comparingInt(ParamSaveNode::getDepth)
+                .thenComparing(node -> Optional.ofNullable(node.getRequest().getSortOrder()).orElse(0)));
+        return nodes;
     }
 
     /**
@@ -998,12 +1004,19 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
     /**
      * 转换参数视图。
      *
+     * <p>类型映射说明：</p>
+     * <ul>
+     *   <li>required: 数据库 Integer(0/1) -> VO Boolean</li>
+     *   <li>nullable: 数据库 Integer(0/1) -> VO Boolean</li>
+     * </ul>
+     *
      * @param param 参数实体
      * @return 参数视图
      */
     private InterfaceDocParamVO toParamVO(InterfaceDocParam param) {
         InterfaceDocParamVO paramVO = new InterfaceDocParamVO();
         BeanUtils.copyProperties(param, paramVO);
+        // Integer -> Boolean 转换：1 表示 true，0 或 null 表示 false
         paramVO.setRequired(Objects.equals(param.getRequired(), 1));
         paramVO.setNullable(Objects.equals(param.getNullable(), 1));
         return paramVO;

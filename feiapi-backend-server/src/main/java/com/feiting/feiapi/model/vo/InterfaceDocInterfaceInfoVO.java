@@ -21,14 +21,22 @@ public class InterfaceDocInterfaceInfoVO implements Serializable {
     /** 接口描述。 */
     private String description;
 
-    /** 接口展示地址，仅管理员可见。 */
+    /**
+     * 接口展示地址，仅管理员可见。
+     * @JsonInclude(NON_NULL) 确保非管理员时不返回此字段。
+     * 权限校验兜底：Service 层 toInterfaceInfoVO() 方法根据 admin 参数决定是否设置值。
+     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String url;
 
     /** 网关匹配路径。 */
     private String path;
 
-    /** 真实后端服务地址，仅管理员可见。 */
+    /**
+     * 真实后端服务地址，仅管理员可见。
+     * @JsonInclude(NON_NULL) 确保非管理员时不返回此字段。
+     * 权限校验兜底：Service 层 toInterfaceInfoVO() 方法根据 admin 参数决定是否设置值。
+     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String targetHost;
 

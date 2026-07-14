@@ -19,6 +19,11 @@ import java.util.Date;
 public class InterfaceDocErrorCode implements Serializable {
 
     /**
+     * 序列化版本号。
+     */
+    private static final long serialVersionUID = 1L;
+
+    /**
      * 主键。
      */
     @TableId(type = IdType.AUTO)
@@ -69,9 +74,4 @@ public class InterfaceDocErrorCode implements Serializable {
      */
     @TableLogic(value = "0", delval = "id")
     private Long isDelete;
-
-    /**
-     * 序列化版本号。
-     */
-    private static final long serialVersionUID = 1L;
 }
