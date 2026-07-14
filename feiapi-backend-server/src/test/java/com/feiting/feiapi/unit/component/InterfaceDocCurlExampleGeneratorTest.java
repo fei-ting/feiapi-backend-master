@@ -8,9 +8,11 @@ import com.feiting.feiapi.model.vo.InterfaceDocParamVO;
 import com.feiting.feiapi.model.vo.InterfaceDocVO;
 import com.feiting.feiapiclientsdk.utils.SignUtils;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
@@ -36,8 +38,22 @@ class InterfaceDocCurlExampleGeneratorTest {
     /** 固定测试时间戳。 */
     private static final String TEST_TIMESTAMP = "1700000000";
 
+    /** 测试用签名盐值。 */
+    private static final String TEST_SIGN_SALT = "feiting";
+
     /** 被测 curl 示例生成器。 */
     private final InterfaceDocCurlExampleGenerator generator = new InterfaceDocCurlExampleGenerator();
+
+    /**
+     * 设置测试用的签名盐值。
+     * 由于单元测试不走 Spring 容器，需要通过反射注入 @Value 字段。
+     */
+    @BeforeEach
+    void setUp() throws Exception {
+        Field signSaltField = InterfaceDocCurlExampleGenerator.class.getDeclaredField("signSalt");
+        signSaltField.setAccessible(true);
+        signSaltField.set(generator, TEST_SIGN_SALT);
+    }
 
     /**
      * 验证 GET 空正文规范字符串保留最后一个换行，签名与 SDK 一致。

@@ -13,6 +13,7 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonSyntaxException;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -41,12 +42,13 @@ public class InterfaceDocCurlExampleGenerator {
     /** 默认请求内容类型。 */
     private static final String DEFAULT_REQUEST_CONTENT_TYPE = "application/json";
 
-    /** 签名盐值。 */
-    private static final String SIGN_SALT = "feiting";
-
     /** 自动生成的鉴权 Header 名称。 */
     private static final Set<String> AUTH_HEADER_NAMES = Collections.unmodifiableSet(new HashSet<>(
             Arrays.asList("accesskey", "nonce", "timestamp", "sign")));
+
+    /** 签名盐值，从配置文件注入。 */
+    @Value("${feiapi.client.sign-salt}")
+    private String signSalt;
 
     /**
      * 生成 curl 调用示例。
@@ -83,7 +85,7 @@ public class InterfaceDocCurlExampleGenerator {
                         "NONCE=\"${NONCE:-$(openssl rand -hex 16)}\"",
                         "TIMESTAMP=\"${TIMESTAMP:-$(date +%s)}\"",
                         "SIGN=\"$(",
-                        "  printf 'feiting\\n%s\\n%s\\n%s\\n%s\\n%s' \\",
+                        "  printf " + shellSingleQuote(signSalt + "\\n%s\\n%s\\n%s\\n%s\\n%s") + " \\",
                         "    \"$METHOD\" \"$PATH_VALUE\" \"$NONCE\" \"$TIMESTAMP\" \"$BODY\" |",
                         "  openssl dgst -sha256 -hmac \"$SECRET_KEY\" |",
                         "  awk '{print $2}'",
@@ -104,7 +106,7 @@ public class InterfaceDocCurlExampleGenerator {
      * @return 规范签名原文
      */
     public String buildCanonicalString(String method, String path, String nonce, String timestamp, String body) {
-        return SIGN_SALT + "\n"
+        return signSalt + "\n"
                 + nullToEmpty(method) + "\n"
                 + nullToEmpty(path) + "\n"
                 + nullToEmpty(nonce) + "\n"
