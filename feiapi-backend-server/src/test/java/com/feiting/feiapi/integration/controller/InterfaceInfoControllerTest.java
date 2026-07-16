@@ -420,6 +420,27 @@ class InterfaceInfoControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(40400));
         }
+
+        /**
+         * 在线接口不能通过通用更新入口修改。
+         */
+        @Test
+        @DisplayName("在线接口更新被后端状态门禁拒绝")
+        void shouldRejectOnlineInterfaceUpdate() throws Exception {
+            MockHttpSession session = loginAsAdmin();
+            long id = createInterfaceInfo("onlineUpdateApi", "/api/online_update_gate", "GET",
+                    InterfaceInfoStatusEnum.ONLINE.getValue());
+            InterfaceInfoUpdateRequest request = new InterfaceInfoUpdateRequest();
+            request.setId(id);
+            request.setDescription("不应保存");
+
+            mockMvc.perform(post("/interfaceInfo/update")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request))
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(50001));
+        }
     }
 
     @Nested
@@ -472,6 +493,24 @@ class InterfaceInfoControllerTest {
                             .session(session))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(40000));
+        }
+
+        /**
+         * 在线接口不能通过删除入口删除。
+         */
+        @Test
+        @DisplayName("在线接口删除被后端状态门禁拒绝")
+        void shouldRejectOnlineInterfaceDelete() throws Exception {
+            MockHttpSession session = loginAsAdmin();
+            long id = createInterfaceInfo("onlineDeleteApi", "/api/online_delete_gate", "GET",
+                    InterfaceInfoStatusEnum.ONLINE.getValue());
+
+            mockMvc.perform(post("/interfaceInfo/delete")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"id\":" + id + "}")
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(50001));
         }
     }
 

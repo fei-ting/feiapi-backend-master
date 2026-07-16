@@ -22,4 +22,12 @@ public interface InterfaceInfoLifecycleService {
      * @return 是否更新成功
      */
     Boolean updateInterfaceInfoWithDoc(InterfaceInfo interfaceInfo);
+
+    /**
+     * 删除处于下线状态的接口信息。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     * @return 是否删除成功
+     */
+    Boolean deleteOfflineInterfaceInfo(Long interfaceInfoId);
 }

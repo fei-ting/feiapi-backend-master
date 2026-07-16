@@ -247,6 +247,9 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         if (interfaceInfo == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
+        if (!Objects.equals(interfaceInfo.getStatus(), InterfaceInfoStatusEnum.OFFLINE.getValue())) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口仅允许在下线状态维护文档");
+        }
         validateDocMain(saveRequest);
         List<InterfaceDocParamSaveRequest> paramRequests = Optional.ofNullable(saveRequest.getParams())
                 .orElse(Collections.emptyList());
@@ -905,6 +908,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         InterfaceDocInterfaceInfoVO interfaceInfoVO = new InterfaceDocInterfaceInfoVO();
         interfaceInfoVO.setId(interfaceInfo.getId());
         interfaceInfoVO.setName(interfaceInfo.getName());
+        interfaceInfoVO.setSdkMethodName(interfaceInfo.getSdkMethodName());
         interfaceInfoVO.setDescription(interfaceInfo.getDescription());
         interfaceInfoVO.setPath(interfaceInfo.getPath());
         interfaceInfoVO.setStatus(interfaceInfo.getStatus());
