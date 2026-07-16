@@ -138,7 +138,7 @@ class InterfaceDocControllerTest {
         assertThat(data.get("interfaceInfo").has("requestParams")).isFalse();
         assertThat(data.get("interfaceInfo").has("requestHeader")).isFalse();
         assertThat(data.get("interfaceInfo").has("responseHeader")).isFalse();
-        assertThat(data.get("interfaceInfo").has("sdkMethodName")).isFalse();
+        assertThat(data.get("interfaceInfo").has("sdkMethodName")).isTrue();
         assertThat(data.get("interfaceInfo").has("userId")).isFalse();
         assertThat(data.get("requestHeaders")).isEmpty();
         assertThat(data.get("requestParams")).isEmpty();
@@ -185,7 +185,7 @@ class InterfaceDocControllerTest {
         MockHttpSession adminSession = loginWithRole("idsave" + suffix(), "admin");
         String template = "{\"name\":\"string\",\"age\":18,\"enabled\":true,\"meta\":{},\"tags\":[]}";
         long id = createInterfaceInfo("saveDocApi", "/api/save_doc_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", template);
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", template);
 
         saveDocByAdmin(adminSession, buildFullSaveRequest(id));
 
@@ -220,7 +220,7 @@ class InterfaceDocControllerTest {
     void shouldRejectNonAdminSaveDoc() throws Exception {
         MockHttpSession userSession = loginWithRole("iduser" + suffix(), "user");
         long id = createInterfaceInfo("normalSaveApi", "/api/normal_save_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         JsonNode response = postSave(userSession, buildBasicSaveRequest(id));
 
@@ -235,7 +235,7 @@ class InterfaceDocControllerTest {
     void shouldRejectNonAdminUpdateInterfaceInfo() throws Exception {
         MockHttpSession userSession = loginWithRole("idupdate" + suffix(), "user");
         long id = createInterfaceInfo("normalUpdateApi", "/api/normal_update_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceInfoUpdateRequest updateRequest = new InterfaceInfoUpdateRequest();
         updateRequest.setId(id);
@@ -262,7 +262,7 @@ class InterfaceDocControllerTest {
     void shouldRejectIllegalJsonExample() throws Exception {
         MockHttpSession adminSession = loginWithRole("idjson" + suffix(), "admin");
         long id = createInterfaceInfo("illegalJsonApi", "/api/illegal_json_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.setSuccessExample("{bad json");
@@ -277,7 +277,7 @@ class InterfaceDocControllerTest {
     void shouldRejectPhoneSensitiveInfo() throws Exception {
         MockHttpSession adminSession = loginWithRole("idphone" + suffix(), "admin");
         long id = createInterfaceInfo("phoneApi", "/api/phone_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.setSuccessExample("{\"phone\":\"13800138000\"}");
@@ -292,7 +292,7 @@ class InterfaceDocControllerTest {
     void shouldRejectAccessKeySensitiveInfo() throws Exception {
         MockHttpSession adminSession = loginWithRole("idakey" + suffix(), "admin");
         long id = createInterfaceInfo("akeyApi", "/api/akey_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.setSuccessExample("{\"accessKey\":\"abcd1234\"}");
@@ -307,7 +307,7 @@ class InterfaceDocControllerTest {
     void shouldRejectBearerToken() throws Exception {
         MockHttpSession adminSession = loginWithRole("idtoken" + suffix(), "admin");
         long id = createInterfaceInfo("tokenApi", "/api/token_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.setAuthDescription("token: Bearer eyJhbGciOiJIUzI1NiJ9");
@@ -322,7 +322,7 @@ class InterfaceDocControllerTest {
     void shouldRejectComplexPassword() throws Exception {
         MockHttpSession adminSession = loginWithRole("idpwd" + suffix(), "admin");
         long id = createInterfaceInfo("pwdApi", "/api/pwd_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.setRemark("password: P@ssw0rd!");
@@ -337,7 +337,7 @@ class InterfaceDocControllerTest {
     void shouldRejectScriptInValidationRule() throws Exception {
         MockHttpSession adminSession = loginWithRole("idscript" + suffix(), "admin");
         long id = createInterfaceInfo("scriptApi", "/api/script_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.getParams().add(param("resp", null, "RESPONSE", "data", "string", true, false, 2));
@@ -353,7 +353,7 @@ class InterfaceDocControllerTest {
     void shouldRejectInternalInfoInSolution() throws Exception {
         MockHttpSession adminSession = loginWithRole("idinternal" + suffix(), "admin");
         long id = createInterfaceInfo("internalApi", "/api/internal_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         InterfaceDocErrorCodeSaveRequest errorCode = errorCode("I001", "内部错误", 1);
@@ -370,7 +370,7 @@ class InterfaceDocControllerTest {
     void shouldRejectDuplicateErrorCodes() throws Exception {
         MockHttpSession adminSession = loginWithRole("iddup" + suffix(), "admin");
         long id = createInterfaceInfo("dupApi", "/api/dup_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.getErrorCodes().add(errorCode("A001", "错误 A", 1));
@@ -386,7 +386,7 @@ class InterfaceDocControllerTest {
     void shouldRejectParamCountExceedsLimit() throws Exception {
         MockHttpSession adminSession = loginWithRole("idparam" + suffix(), "admin");
         long id = createInterfaceInfo("paramApi", "/api/param_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.setParams(IntStream.rangeClosed(1, 201)
@@ -403,7 +403,7 @@ class InterfaceDocControllerTest {
     void shouldRejectErrorCodeCountExceedsLimit() throws Exception {
         MockHttpSession adminSession = loginWithRole("iderr" + suffix(), "admin");
         long id = createInterfaceInfo("errApi", "/api/err_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.setErrorCodes(IntStream.rangeClosed(1, 101)
@@ -420,7 +420,7 @@ class InterfaceDocControllerTest {
     void shouldAllowAllSupportedMaskPlaceholders() throws Exception {
         MockHttpSession adminSession = loginWithRole("idmask" + suffix(), "admin");
         long id = createInterfaceInfo("maskDocApi", "/api/mask_doc_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.setAuthDescription("Authorization: Bearer <TOKEN>");
         request.setRemark("password: <PASSWORD>");
@@ -439,7 +439,7 @@ class InterfaceDocControllerTest {
         MockHttpSession adminSession = loginWithRole("idgetcurl" + suffix(), "admin");
         String path = "/api/get_curl_" + suffix();
         long id = createInterfaceInfo("getCurlApi", path,
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "GET", "{\"keyword\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "GET", "{\"keyword\":\"string\"}");
         InterfaceDocSaveRequest request = baseSaveRequest(id);
         InterfaceDocParamSaveRequest queryParam = param(
                 "queryKeyword", null, "QUERY", "keyword", "string", true, false, 1);
@@ -472,7 +472,7 @@ class InterfaceDocControllerTest {
     void shouldRejectInvalidParamHierarchy() throws Exception {
         MockHttpSession adminSession = loginWithRole("idhierarchy" + suffix(), "admin");
         long id = createInterfaceInfo("hierarchyApi", "/api/hierarchy_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest missingParentRequest = buildBasicSaveRequest(id);
         missingParentRequest.getParams().add(param("resp", "missing", "RESPONSE", "data", "string", true, false, 2));
@@ -509,7 +509,7 @@ class InterfaceDocControllerTest {
         try {
             adminSession = loginWithRole("idrollback" + suffix(), "admin");
             interfaceInfoId = createInterfaceInfo("rollbackApi", "/api/rollback_" + suffix(),
-                    InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                    InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
             InterfaceDocSaveRequest validRequest = buildBasicSaveRequest(interfaceInfoId);
             validRequest.getErrorCodes().add(errorCode("A001", "错误 A", 1));
             saveDocByAdmin(adminSession, validRequest);
@@ -544,7 +544,7 @@ class InterfaceDocControllerTest {
     void shouldPreserveManualFieldsWhenNormalUpdate() throws Exception {
         MockHttpSession adminSession = loginWithRole("idsync" + suffix(), "admin");
         long id = createInterfaceInfo("syncDocApi", "/api/sync_doc_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\",\"age\":18}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\",\"age\":18}");
         InterfaceInfo interfaceInfo = interfaceInfoService.getById(id);
         interfaceDocService.syncRequestDocFromInterfaceInfo(interfaceInfo);
 
@@ -579,7 +579,7 @@ class InterfaceDocControllerTest {
     void shouldSyncRequestDocWhenTemplateChangesAndPreserveManualFields() throws Exception {
         MockHttpSession adminSession = loginWithRole("idsync2" + suffix(), "admin");
         long id = createInterfaceInfo("syncDocApi2", "/api/sync_doc2_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\",\"age\":18}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\",\"age\":18}");
         InterfaceInfo interfaceInfo = interfaceInfoService.getById(id);
         interfaceDocService.syncRequestDocFromInterfaceInfo(interfaceInfo);
 
