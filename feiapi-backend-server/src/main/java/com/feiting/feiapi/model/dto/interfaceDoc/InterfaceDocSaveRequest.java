@@ -8,7 +8,6 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.io.Serializable;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -55,21 +54,21 @@ public class InterfaceDocSaveRequest implements Serializable {
 
     /**
      * 全量文档参数。
-     * 默认初始化为空列表，前端可直接 add 而无需 null 检查。
-     * Service 层使用 isEmpty() 判断是否有数据，兼容空列表和 null。
+     * 必须显式提供，空列表表示确认清空全部文档参数。
      */
     @Valid
+    @NotNull(message = "文档参数必须显式提供")
     @Size(max = 200, message = "文档参数数量不能超过 200")
-    private List<InterfaceDocParamSaveRequest> params = new ArrayList<>();
+    private List<InterfaceDocParamSaveRequest> params;
 
     /**
      * 全量错误码。
-     * 默认初始化为空列表，前端可直接 add 而无需 null 检查。
-     * Service 层使用 isEmpty() 判断是否有数据，兼容空列表和 null。
+     * 必须显式提供，空列表表示确认清空全部错误码。
      */
     @Valid
+    @NotNull(message = "错误码必须显式提供")
     @Size(max = 100, message = "错误码数量不能超过 100")
-    private List<InterfaceDocErrorCodeSaveRequest> errorCodes = new ArrayList<>();
+    private List<InterfaceDocErrorCodeSaveRequest> errorCodes;
 
     /** 序列化版本号。 */
     private static final long serialVersionUID = 1L;

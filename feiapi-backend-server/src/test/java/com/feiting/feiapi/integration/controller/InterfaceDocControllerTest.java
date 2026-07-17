@@ -2,7 +2,9 @@ package com.feiting.feiapi.integration.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.feiting.feiapi.constant.UserConstant;
+import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocErrorCodeSaveRequest;
 import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocParamSaveRequest;
 import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocSaveRequest;
@@ -210,6 +212,81 @@ class InterfaceDocControllerTest {
         assertThat(curlExample)
                 .contains("\"age\":18", "\"enabled\":true", "\"meta\":{}", "\"tags\":[]")
                 .doesNotContain("\"age\":\"18\"", "\"enabled\":\"true\"");
+    }
+
+    /**
+     * 测试聚合保存请求缺失全量集合字段时返回参数错误。
+     */
+    @Test
+    @DisplayName("聚合保存接口拒绝缺失全量集合字段")
+    void shouldRejectMissingCollectionSnapshots() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idmissing" + suffix(), "admin");
+        long id = createInterfaceInfo("missingCollectionsApi", "/api/missing_collections_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", null);
+        ObjectNode missingParamsPayload = objectMapper.valueToTree(baseSaveRequest(id));
+        missingParamsPayload.remove("params");
+        ObjectNode missingErrorCodesPayload = objectMapper.valueToTree(baseSaveRequest(id));
+        missingErrorCodesPayload.remove("errorCodes");
+
+        assertThat(postSaveJson(adminSession, missingParamsPayload.toString()).get("code").asInt()).isEqualTo(40000);
+        assertThat(postSaveJson(adminSession, missingErrorCodesPayload.toString()).get("code").asInt()).isEqualTo(40000);
+    }
+
+    /**
+     * 测试聚合保存请求显式传入 null 时被拒绝且不会清空已有数据。
+     */
+    @Test
+    @DisplayName("聚合保存接口拒绝 null 集合且保留已有数据")
+    void shouldRejectNullCollectionSnapshotsWithoutClearingData() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idnull" + suffix(), "admin");
+        long id = createInterfaceInfo("nullCollectionsApi", "/api/null_collections_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+        InterfaceDocSaveRequest validRequest = buildBasicSaveRequest(id);
+        validRequest.getErrorCodes().add(errorCode("A001", "参数错误", 1));
+        saveDocByAdmin(adminSession, validRequest);
+
+        ObjectNode nullPayload = objectMapper.valueToTree(validRequest);
+        nullPayload.putNull("params");
+        nullPayload.putNull("errorCodes");
+        assertThat(postSaveJson(adminSession, nullPayload.toString()).get("code").asInt()).isEqualTo(40000);
+
+        List<InterfaceDocParamSaveRequest> originalParams = validRequest.getParams();
+        validRequest.setParams(null);
+        assertThatThrownBy(() -> interfaceDocService.saveDoc(validRequest))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("文档参数必须显式提供");
+        validRequest.setParams(originalParams);
+        validRequest.setErrorCodes(null);
+        assertThatThrownBy(() -> interfaceDocService.saveDoc(validRequest))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("错误码必须显式提供");
+
+        assertThat(interfaceDocParamService.lambdaQuery()
+                .eq(InterfaceDocParam::getInterfaceInfoId, id)
+                .count()).isEqualTo(1L);
+        assertThat(interfaceDocErrorCodeService.lambdaQuery()
+                .eq(InterfaceDocErrorCode::getInterfaceInfoId, id)
+                .count()).isEqualTo(1L);
+    }
+
+    /**
+     * 测试显式空集合可以保存并表达确认清空。
+     */
+    @Test
+    @DisplayName("聚合保存接口接受显式空集合")
+    void shouldAllowExplicitEmptyCollectionSnapshots() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idempty" + suffix(), "admin");
+        long id = createInterfaceInfo("emptyCollectionsApi", "/api/empty_collections_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", null);
+
+        saveDocByAdmin(adminSession, baseSaveRequest(id));
+
+        assertThat(interfaceDocParamService.lambdaQuery()
+                .eq(InterfaceDocParam::getInterfaceInfoId, id)
+                .count()).isZero();
+        assertThat(interfaceDocErrorCodeService.lambdaQuery()
+                .eq(InterfaceDocErrorCode::getInterfaceInfoId, id)
+                .count()).isZero();
     }
 
     /**
@@ -729,9 +806,20 @@ class InterfaceDocControllerTest {
      * @return 响应 JSON
      */
     private JsonNode postSave(MockHttpSession session, InterfaceDocSaveRequest request) throws Exception {
+        return postSaveJson(session, objectMapper.writeValueAsString(request));
+    }
+
+    /**
+     * 使用原始 JSON 发起保存接口文档请求。
+     *
+     * @param session     会话
+     * @param requestJson 保存请求 JSON
+     * @return 响应 JSON
+     */
+    private JsonNode postSaveJson(MockHttpSession session, String requestJson) throws Exception {
         String response = mockMvc.perform(post("/interfaceDoc/save")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request))
+                        .content(requestJson)
                         .session(session))
                 .andExpect(status().isOk())
                 .andReturn()
