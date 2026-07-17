@@ -35,7 +35,7 @@ public class InterfaceDocParam implements Serializable {
     private Long interfaceInfoId;
 
     /**
-     * 参数场景，取值包括 HEADER、QUERY、BODY、RESPONSE。
+     * 参数场景，取值包括 QUERY、BODY、RESPONSE。
      */
     private String paramScene;
 

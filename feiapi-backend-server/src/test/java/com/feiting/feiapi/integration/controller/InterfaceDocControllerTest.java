@@ -14,7 +14,6 @@ import com.feiting.feiapi.model.dto.user.UserLoginRequest;
 import com.feiting.feiapi.model.entity.InterfaceDoc;
 import com.feiting.feiapi.model.entity.InterfaceDocErrorCode;
 import com.feiting.feiapi.model.entity.InterfaceDocParam;
-import com.feiting.feiapi.model.enums.InterfaceDocParamSceneEnum;
 import com.feiting.feiapi.service.InterfaceDocErrorCodeService;
 import com.feiting.feiapi.service.InterfaceDocParamService;
 import com.feiting.feiapi.service.InterfaceDocService;
@@ -142,7 +141,10 @@ class InterfaceDocControllerTest {
         assertThat(data.get("interfaceInfo").has("responseHeader")).isFalse();
         assertThat(data.get("interfaceInfo").has("sdkMethodName")).isTrue();
         assertThat(data.get("interfaceInfo").has("userId")).isFalse();
-        assertThat(data.get("requestHeaders")).isEmpty();
+        assertThat(data.get("requestHeaders")).hasSize(1);
+        assertThat(data.get("requestHeaders").get(0).get("name").asText()).isEqualTo("Content-Type");
+        assertThat(data.get("requestHeaders").get(0).get("exampleValue").asText())
+                .isEqualTo("application/json");
         assertThat(data.get("requestParams")).isEmpty();
         assertThat(data.get("responseParams")).isEmpty();
     }
@@ -192,12 +194,16 @@ class InterfaceDocControllerTest {
         saveDocByAdmin(adminSession, buildFullSaveRequest(id));
 
         JsonNode data = requestDoc(id, adminSession).get("data");
+        JsonNode requestHeaders = data.get("requestHeaders");
         JsonNode requestParams = data.get("requestParams");
         JsonNode responseParams = data.get("responseParams");
         String curlExample = data.get("curlExample").asText();
 
         assertThat(data.get("structuredDocMissing").asBoolean()).isFalse();
         assertThat(data.get("doc").get("successExample").asText()).contains("\"ok\":true");
+        assertThat(requestHeaders).hasSize(1);
+        assertThat(requestHeaders.get(0).get("name").asText()).isEqualTo("Content-Type");
+        assertThat(requestHeaders.get(0).get("exampleValue").asText()).isEqualTo("application/json");
         assertThat(requestParams).hasSize(5);
         assertThat(requestParams.findValuesAsText("type")).contains("string", "number", "boolean", "object", "array");
         assertThat(responseParams).hasSize(2);
@@ -287,6 +293,45 @@ class InterfaceDocControllerTest {
         assertThat(interfaceDocErrorCodeService.lambdaQuery()
                 .eq(InterfaceDocErrorCode::getInterfaceInfoId, id)
                 .count()).isZero();
+    }
+
+    /**
+     * 测试控制器和服务入口均拒绝自定义 Header 场景，聚合查询也不展示遗留记录。
+     */
+    @Test
+    @DisplayName("聚合保存拒绝自定义 Header 且查询只返回系统协议 Header")
+    void shouldRejectCustomHeaderAndOnlyReturnSystemHeader() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idheader" + suffix(), "admin");
+        long id = createInterfaceInfo("rejectHeaderApi", "/api/reject_header_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", null);
+        InterfaceDocSaveRequest request = baseSaveRequest(id);
+        request.setParams(List.of(param(
+                "customHeader", null, "HEADER", "X-Legacy", "string", false, false, 1)));
+
+        assertThat(postSave(adminSession, request).get("code").asInt()).isEqualTo(40000);
+        assertThatThrownBy(() -> interfaceDocService.saveDoc(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("参数场景不支持");
+        assertThat(interfaceDocParamService.lambdaQuery()
+                .eq(InterfaceDocParam::getInterfaceInfoId, id)
+                .count()).isZero();
+
+        InterfaceDocParam legacyHeader = new InterfaceDocParam();
+        legacyHeader.setInterfaceInfoId(id);
+        legacyHeader.setParamScene("HEADER");
+        legacyHeader.setName("X-Legacy");
+        legacyHeader.setType("string");
+        legacyHeader.setRequired(0);
+        legacyHeader.setNullable(0);
+        legacyHeader.setExampleValue("legacy-value");
+        legacyHeader.setSortOrder(1);
+        assertThat(interfaceDocParamService.save(legacyHeader)).isTrue();
+
+        JsonNode requestHeaders = requestDoc(id, adminSession).get("data").get("requestHeaders");
+        assertThat(requestHeaders).hasSize(1);
+        assertThat(requestHeaders.get(0).get("name").asText()).isEqualTo("Content-Type");
+        assertThat(requestHeaders.get(0).get("exampleValue").asText()).isEqualTo("application/json");
+        assertThat(requestHeaders.findValuesAsText("name")).doesNotContain("X-Legacy");
     }
 
     /**
@@ -508,10 +553,10 @@ class InterfaceDocControllerTest {
     }
 
     /**
-     * 测试 GET curl 的 Query、签名管道、Shell 转义和 Header 去重。
+     * 测试 GET curl 的 Query、签名管道和系统 Content-Type。
      */
     @Test
-    @DisplayName("GET curl 正确生成 Query 并安全处理特殊字符与 Content-Type 冲突")
+    @DisplayName("GET curl 正确生成 Query 和系统 Content-Type")
     void shouldGenerateSafeGetCurlWithAuthoritativeContentType() throws Exception {
         MockHttpSession adminSession = loginWithRole("idgetcurl" + suffix(), "admin");
         String path = "/api/get_curl_" + suffix();
@@ -521,13 +566,7 @@ class InterfaceDocControllerTest {
         InterfaceDocParamSaveRequest queryParam = param(
                 "queryKeyword", null, "QUERY", "keyword", "string", true, false, 1);
         queryParam.setExampleValue("中文 空格");
-        InterfaceDocParamSaveRequest contentTypeHeader = param(
-                "headerContentType", null, "HEADER", "content-type", "string", true, false, 2);
-        contentTypeHeader.setExampleValue("text/plain");
-        InterfaceDocParamSaveRequest specialHeader = param(
-                "headerSpecial", null, "HEADER", "X-Test", "string", false, false, 3);
-        specialHeader.setExampleValue("a'b\"$`!\\ value");
-        request.setParams(List.of(queryParam, contentTypeHeader, specialHeader));
+        request.setParams(List.of(queryParam));
 
         saveDocByAdmin(adminSession, request);
         String curlExample = requestDoc(id, adminSession).get("data").get("curlExample").asText();
@@ -536,9 +575,8 @@ class InterfaceDocControllerTest {
                 .contains("URL='http://localhost:8090" + path
                         + "?keyword=%E4%B8%AD%E6%96%87%20%E7%A9%BA%E6%A0%BC'")
                 .contains("BODY=''", "printf 'feiting\\n%s\\n%s\\n%s\\n%s\\n%s'")
-                .contains("a'\"'\"'b\"$`!\\ value")
                 .containsOnlyOnce("Content-Type: application/json")
-                .doesNotContain("CANONICAL_STRING", "--data", "Content-Type: text/plain");
+                .doesNotContain("CANONICAL_STRING", "--data");
     }
 
     /**

@@ -19,15 +19,11 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -41,10 +37,6 @@ public class InterfaceDocCurlExampleGenerator {
 
     /** 默认请求内容类型。 */
     private static final String DEFAULT_REQUEST_CONTENT_TYPE = "application/json";
-
-    /** 自动生成的鉴权 Header 名称。 */
-    private static final Set<String> AUTH_HEADER_NAMES = Collections.unmodifiableSet(new HashSet<>(
-            Arrays.asList("accesskey", "nonce", "timestamp", "sign")));
 
     /** 签名盐值，从配置文件注入。 */
     @Value("${feiapi.client.sign-salt}")
@@ -129,44 +121,19 @@ public class InterfaceDocCurlExampleGenerator {
                 ? DEFAULT_REQUEST_CONTENT_TYPE
                 : firstText(detailVO.getDoc().getRequestContentType(), DEFAULT_REQUEST_CONTENT_TYPE);
         assertNoShellControlCharacter(contentType, "请求内容类型不能包含控制字符");
-        Set<String> headerNames = new HashSet<>(AUTH_HEADER_NAMES);
-        headerNames.add("content-type");
         List<String> authHeaders = Stream.of(
                         "  -H \"accessKey: ${ACCESS_KEY}\"",
                         "  -H \"nonce: ${NONCE}\"",
                         "  -H \"timestamp: ${TIMESTAMP}\"",
                         "  -H \"sign: ${SIGN}\"",
                         "  -H " + shellSingleQuote("Content-Type: " + contentType))
-                .collect(Collectors.toCollection(ArrayList::new));
-        // 先校验 Header 参数，再进行过滤和映射
-        List<InterfaceDocParamVO> requestHeaders = safeList(detailVO.getRequestHeaders());
-        requestHeaders.forEach(this::validateHeaderParam);
-        List<String> customHeaders = requestHeaders.stream()
-                .filter(param -> StringUtils.isNotBlank(param.getName()))
-                .filter(param -> headerNames.add(param.getName().trim().toLowerCase(Locale.ROOT)))
-                .map(param -> "  -H " + shellSingleQuote(
-                        param.getName().trim() + ": " + firstText(param.getExampleValue(), param.getDefaultValue())))
                 .collect(Collectors.toList());
         List<String> bodyOption = StringUtils.isEmpty(body)
                 ? Collections.emptyList()
                 : Collections.singletonList("  --data \"$BODY\"");
-        return Stream.of(authHeaders, customHeaders, bodyOption)
+        return Stream.of(authHeaders, bodyOption)
                 .flatMap(List::stream)
                 .collect(Collectors.toList());
-    }
-
-    /**
-     * 校验请求 Header 参数不包含脚本控制字符。
-     *
-     * @param param Header 参数
-     */
-    private void validateHeaderParam(InterfaceDocParamVO param) {
-        if (param == null) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求 Header 不能为空");
-        }
-        assertNoShellControlCharacter(param.getName(), "请求 Header 名称不能包含控制字符");
-        assertNoShellControlCharacter(param.getExampleValue(), "请求 Header 值不能包含控制字符");
-        assertNoShellControlCharacter(param.getDefaultValue(), "请求 Header 值不能包含控制字符");
     }
 
     /**
