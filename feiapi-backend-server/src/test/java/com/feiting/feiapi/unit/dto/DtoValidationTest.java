@@ -2,6 +2,7 @@ package com.feiting.feiapi.unit.dto;
 
 import com.feiting.feiapi.common.IdRequest;
 import com.feiting.feiapi.common.PageRequest;
+import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocSaveRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
 import com.feiting.feiapi.model.dto.user.CurrentUserPasswordUpdateRequest;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -221,6 +223,27 @@ class DtoValidationTest {
                         "总调用次数不能小于 0",
                         "剩余调用次数不能小于 0",
                         "状态不能大于 1");
+    }
+
+    /**
+     * 接口文档保存请求必须显式提供全量参数和错误码集合。
+     */
+    @Test
+    @DisplayName("接口文档保存请求校验全量集合显式提供")
+    void shouldRequireInterfaceDocCollections() {
+        InterfaceDocSaveRequest request = new InterfaceDocSaveRequest();
+        request.setInterfaceInfoId(1L);
+        request.setDocVersion("v1");
+        request.setRequestContentType("application/json");
+        request.setResponseContentType("application/json");
+
+        assertThat(violationMessages(request))
+                .contains("文档参数必须显式提供", "错误码必须显式提供");
+
+        request.setParams(Collections.emptyList());
+        request.setErrorCodes(Collections.emptyList());
+
+        assertThat(violationMessages(request)).isEmpty();
     }
 
     /**

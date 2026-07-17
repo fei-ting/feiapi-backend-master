@@ -250,11 +250,15 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         if (!Objects.equals(interfaceInfo.getStatus(), InterfaceInfoStatusEnum.OFFLINE.getValue())) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口仅允许在下线状态维护文档");
         }
+        if (saveRequest.getParams() == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "文档参数必须显式提供");
+        }
+        if (saveRequest.getErrorCodes() == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "错误码必须显式提供");
+        }
         validateDocMain(saveRequest);
-        List<InterfaceDocParamSaveRequest> paramRequests = Optional.ofNullable(saveRequest.getParams())
-                .orElse(Collections.emptyList());
-        List<InterfaceDocErrorCodeSaveRequest> errorCodeRequests = Optional.ofNullable(saveRequest.getErrorCodes())
-                .orElse(Collections.emptyList());
+        List<InterfaceDocParamSaveRequest> paramRequests = saveRequest.getParams();
+        List<InterfaceDocErrorCodeSaveRequest> errorCodeRequests = saveRequest.getErrorCodes();
         if (paramRequests.size() > MAX_PARAM_COUNT) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "文档参数数量不能超过 200");
         }
