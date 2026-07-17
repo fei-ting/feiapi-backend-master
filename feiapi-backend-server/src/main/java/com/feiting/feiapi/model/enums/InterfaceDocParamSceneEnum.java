@@ -10,11 +10,6 @@ import java.util.stream.Collectors;
 public enum InterfaceDocParamSceneEnum {
 
     /**
-     * 请求 Header 参数。
-     */
-    HEADER("请求 Header", "HEADER"),
-
-    /**
      * URL Query 参数。
      */
     QUERY("请求 Query 参数", "QUERY"),

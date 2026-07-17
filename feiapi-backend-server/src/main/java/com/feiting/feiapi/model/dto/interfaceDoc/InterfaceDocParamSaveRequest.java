@@ -23,10 +23,10 @@ public class InterfaceDocParamSaveRequest implements Serializable {
     @Size(max = 64, message = "父级参数键长度不能超过 64")
     private String parentParamKey;
 
-    /** 参数场景，取值为 HEADER、QUERY、BODY 或 RESPONSE。 */
+    /** 参数场景，取值为 QUERY、BODY 或 RESPONSE。 */
     @NotBlank(message = "参数场景不能为空")
     @Size(max = 32, message = "参数场景长度不能超过 32")
-    @Pattern(regexp = "HEADER|QUERY|BODY|RESPONSE", message = "参数场景必须是 HEADER、QUERY、BODY 或 RESPONSE")
+    @Pattern(regexp = "QUERY|BODY|RESPONSE", message = "参数场景必须是 QUERY、BODY 或 RESPONSE")
     private String paramScene;
 
     /** 参数名称。 */

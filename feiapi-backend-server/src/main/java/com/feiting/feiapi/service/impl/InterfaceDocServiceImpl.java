@@ -201,10 +201,11 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
 
         InterfaceDocDetailVO detailVO = new InterfaceDocDetailVO();
         detailVO.setInterfaceInfo(toInterfaceInfoVO(interfaceInfo, admin));
-        detailVO.setDoc(toInterfaceDocVO(doc, interfaceInfo));
+        InterfaceDocVO docVO = toInterfaceDocVO(doc, interfaceInfo);
+        detailVO.setDoc(docVO);
         detailVO.setGatewayUrl(buildGatewayUrl(interfaceInfo));
         detailVO.setStructuredDocMissing(structuredDocMissing);
-        detailVO.setRequestHeaders(resolveParams(docParams, InterfaceDocParamSceneEnum.HEADER));
+        detailVO.setRequestHeaders(buildSystemRequestHeaders(docVO));
         detailVO.setRequestParams(resolveRequestParams(docParams));
         detailVO.setResponseParams(resolveParams(docParams, InterfaceDocParamSceneEnum.RESPONSE));
         detailVO.setErrorCodes(errorCodes.stream()
@@ -965,6 +966,29 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         docVO.setResponseContentType(DEFAULT_RESPONSE_CONTENT_TYPE);
         docVO.setAuthDescription("通过平台 AccessKey/SecretKey 签名鉴权，由网关统一校验。");
         return docVO;
+    }
+
+    /**
+     * 根据文档请求内容类型构建系统协议 Header。
+     *
+     * <p>协议 Header 不写入结构化参数表，管理员不能新增、修改或删除。</p>
+     *
+     * @param docVO 文档主信息视图
+     * @return 系统协议 Header 列表
+     */
+    private List<InterfaceDocParamVO> buildSystemRequestHeaders(InterfaceDocVO docVO) {
+        String requestContentType = docVO == null
+                ? DEFAULT_REQUEST_CONTENT_TYPE
+                : firstText(docVO.getRequestContentType(), DEFAULT_REQUEST_CONTENT_TYPE);
+        InterfaceDocParamVO contentTypeHeader = new InterfaceDocParamVO();
+        contentTypeHeader.setName("Content-Type");
+        contentTypeHeader.setType("string");
+        contentTypeHeader.setRequired(true);
+        contentTypeHeader.setNullable(false);
+        contentTypeHeader.setExampleValue(requestContentType);
+        contentTypeHeader.setDescription("由系统根据请求内容类型自动生成");
+        contentTypeHeader.setSortOrder(1);
+        return Stream.of(contentTypeHeader).collect(Collectors.toList());
     }
 
     /**

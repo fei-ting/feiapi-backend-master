@@ -23,7 +23,7 @@ public class InterfaceDocParamVO implements Serializable {
     private Long interfaceInfoId;
 
     /**
-     * 参数场景，取值包括 HEADER、QUERY、BODY、RESPONSE。
+     * 参数场景，取值包括 QUERY、BODY、RESPONSE；系统协议 Header 不设置该字段。
      */
     private String paramScene;
 

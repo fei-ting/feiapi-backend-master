@@ -34,7 +34,7 @@ public class InterfaceDocDetailVO implements Serializable {
     private Boolean structuredDocMissing;
 
     /**
-     * 请求 Header 参数列表。
+     * 系统动态生成的请求协议 Header 列表。
      */
     private List<InterfaceDocParamVO> requestHeaders;
 
