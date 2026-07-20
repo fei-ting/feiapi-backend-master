@@ -183,29 +183,27 @@ class InterfaceDocCurlExampleGeneratorTest {
     }
 
     /**
-     * 验证 Shell 单引号按 POSIX 规则转换，其他特殊字符保持原值。
+     * 验证静态 URL 中的 Shell 单引号按 POSIX 规则转换，其他特殊字符保持原值。
      */
     @Test
     @DisplayName("Shell 特殊字符保持原值且单引号安全转换")
     void shouldEscapeOnlySingleQuoteInStaticShellText() {
-        InterfaceDocDetailVO detail = detail("http://localhost/api/create");
-        detail.setRequestHeaders(Collections.singletonList(
-                header("X-Test", "a'b\"$`!\\ value")));
+        InterfaceDocDetailVO detail = detail("http://localhost/api/a'b\"$`!\\value");
 
         String script = generator.generate(interfaceInfo("POST", "/api/create"), detail);
 
         assertThat(script)
-                .contains("a'\"'\"'b\"$`!\\ value")
+                .contains("a'\"'\"'b\"$`!\\value")
                 .doesNotContain("\\$")
                 .doesNotContain("\\`")
                 .doesNotContain("\\!");
     }
 
     /**
-     * 验证文档主信息的内容类型具有唯一优先级，Header 中的冲突值会被忽略。
+     * 验证 curl 仅使用文档主信息的内容类型，忽略聚合视图中的自定义 Header。
      */
     @Test
-    @DisplayName("Content-Type 冲突时仅保留主信息权威值")
+    @DisplayName("curl 忽略自定义 Header 并仅保留主信息 Content-Type")
     void shouldKeepOnlyAuthoritativeContentType() {
         InterfaceDocDetailVO detail = detail("http://localhost/api/create");
         detail.getDoc().setRequestContentType("application/xml");
@@ -221,14 +219,14 @@ class InterfaceDocCurlExampleGeneratorTest {
                 .contains("Content-Type: application/xml")
                 .doesNotContain("Content-Type: text/plain")
                 .doesNotContain("Content-Type: application/json")
-                .contains("X-Trace: trace-value");
+                .doesNotContain("X-Trace: trace-value");
     }
 
     /**
-     * 验证 URL、路径和 Header 中的控制字符会被拒绝。
+     * 验证 URL、路径和系统 Content-Type 中的控制字符会被拒绝。
      */
     @Test
-    @DisplayName("拒绝 URL 路径和 Header 中的控制字符")
+    @DisplayName("拒绝 URL 路径和系统 Content-Type 中的控制字符")
     void shouldRejectShellControlCharacters() {
         assertThatThrownBy(() -> generator.generate(
                 interfaceInfo("GET", "/api/users\nmalicious"), detail("http://localhost/api/users")))
@@ -239,15 +237,10 @@ class InterfaceDocCurlExampleGeneratorTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("控制字符");
 
-        InterfaceDocDetailVO detailWithHeader = detail("http://localhost/api/users");
-        detailWithHeader.setRequestHeaders(Collections.singletonList(header("X-Test", "value\nInjected: true")));
-        assertThatThrownBy(() -> generator.generate(interfaceInfo("GET", "/api/users"), detailWithHeader))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("控制字符");
-
-        InterfaceDocDetailVO detailWithInvalidHeaderName = detail("http://localhost/api/users");
-        detailWithInvalidHeaderName.setRequestHeaders(Collections.singletonList(header("X\0Test", "value")));
-        assertThatThrownBy(() -> generator.generate(interfaceInfo("GET", "/api/users"), detailWithInvalidHeaderName))
+        InterfaceDocDetailVO detailWithInvalidContentType = detail("http://localhost/api/users");
+        detailWithInvalidContentType.getDoc().setRequestContentType("application/json\nInjected: true");
+        assertThatThrownBy(() -> generator.generate(interfaceInfo("GET", "/api/users"),
+                detailWithInvalidContentType))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("控制字符");
     }
@@ -326,7 +319,7 @@ class InterfaceDocCurlExampleGeneratorTest {
     }
 
     /**
-     * 构建测试 Header 参数。
+     * 构建已废弃的自定义 Header 测试数据，用于确认生成器不会消费该字段。
      *
      * @param name  Header 名称
      * @param value Header 值

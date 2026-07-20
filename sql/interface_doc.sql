@@ -23,7 +23,7 @@ create table if not exists feiapi.`interface_doc_param`
 (
     `id` bigint not null auto_increment comment '主键' primary key,
     `interface_info_id` bigint not null comment '接口信息 ID',
-    `param_scene` varchar(32) not null comment '参数场景 HEADER/QUERY/BODY/RESPONSE',
+    `param_scene` varchar(32) not null comment '参数场景 QUERY/BODY/RESPONSE',
     `parent_id` bigint null comment '父级参数 ID',
     `name` varchar(128) not null comment '参数名称',
     `type` varchar(64) not null comment '参数类型',
@@ -39,6 +39,12 @@ create table if not exists feiapi.`interface_doc_param`
     `is_delete` bigint default 0 not null comment '逻辑删除标识 0-未删除 其他值-已删除记录 ID',
     key `idx_interface_doc_param_info_scene` (`interface_info_id`, `param_scene`, `is_delete`, `sort_order`)
 ) comment '接口文档参数';
+
+-- 阶段 2 不再开放自定义业务 Header，统一逻辑删除阶段 1 遗留记录
+update feiapi.`interface_doc_param`
+set `is_delete` = `id`
+where `param_scene` = 'HEADER'
+  and `is_delete` = 0;
 
 -- 接口文档错误码
 create table if not exists feiapi.`interface_doc_error_code`

@@ -18,6 +18,9 @@ public class InterfaceDocInterfaceInfoVO implements Serializable {
     /** 接口名称。 */
     private String name;
 
+    /** SDK 方法名。 */
+    private String sdkMethodName;
+
     /** 接口描述。 */
     private String description;
 

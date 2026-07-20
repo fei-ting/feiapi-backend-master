@@ -135,13 +135,7 @@ public class InterfaceInfoController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         long id = idRequest.getId();
-        // 判断是否存在，接口维护入口仅允许管理员操作，不再按接口拥有者放行。
-        InterfaceInfo oldInterfaceInfo = interfaceInfoService.getById(id);
-        if (oldInterfaceInfo == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
-        }
-        boolean b = interfaceInfoService.removeById(id);
-        return ResultUtils.success(b);
+        return ResultUtils.success(interfaceInfoLifecycleService.deleteOfflineInterfaceInfo(id));
     }
 
     /**

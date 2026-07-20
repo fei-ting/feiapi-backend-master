@@ -2,7 +2,9 @@ package com.feiting.feiapi.integration.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.feiting.feiapi.constant.UserConstant;
+import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocErrorCodeSaveRequest;
 import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocParamSaveRequest;
 import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocSaveRequest;
@@ -12,7 +14,6 @@ import com.feiting.feiapi.model.dto.user.UserLoginRequest;
 import com.feiting.feiapi.model.entity.InterfaceDoc;
 import com.feiting.feiapi.model.entity.InterfaceDocErrorCode;
 import com.feiting.feiapi.model.entity.InterfaceDocParam;
-import com.feiting.feiapi.model.enums.InterfaceDocParamSceneEnum;
 import com.feiting.feiapi.service.InterfaceDocErrorCodeService;
 import com.feiting.feiapi.service.InterfaceDocParamService;
 import com.feiting.feiapi.service.InterfaceDocService;
@@ -138,9 +139,12 @@ class InterfaceDocControllerTest {
         assertThat(data.get("interfaceInfo").has("requestParams")).isFalse();
         assertThat(data.get("interfaceInfo").has("requestHeader")).isFalse();
         assertThat(data.get("interfaceInfo").has("responseHeader")).isFalse();
-        assertThat(data.get("interfaceInfo").has("sdkMethodName")).isFalse();
+        assertThat(data.get("interfaceInfo").has("sdkMethodName")).isTrue();
         assertThat(data.get("interfaceInfo").has("userId")).isFalse();
-        assertThat(data.get("requestHeaders")).isEmpty();
+        assertThat(data.get("requestHeaders")).hasSize(1);
+        assertThat(data.get("requestHeaders").get(0).get("name").asText()).isEqualTo("Content-Type");
+        assertThat(data.get("requestHeaders").get(0).get("exampleValue").asText())
+                .isEqualTo("application/json");
         assertThat(data.get("requestParams")).isEmpty();
         assertThat(data.get("responseParams")).isEmpty();
     }
@@ -185,17 +189,21 @@ class InterfaceDocControllerTest {
         MockHttpSession adminSession = loginWithRole("idsave" + suffix(), "admin");
         String template = "{\"name\":\"string\",\"age\":18,\"enabled\":true,\"meta\":{},\"tags\":[]}";
         long id = createInterfaceInfo("saveDocApi", "/api/save_doc_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", template);
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", template);
 
         saveDocByAdmin(adminSession, buildFullSaveRequest(id));
 
         JsonNode data = requestDoc(id, adminSession).get("data");
+        JsonNode requestHeaders = data.get("requestHeaders");
         JsonNode requestParams = data.get("requestParams");
         JsonNode responseParams = data.get("responseParams");
         String curlExample = data.get("curlExample").asText();
 
         assertThat(data.get("structuredDocMissing").asBoolean()).isFalse();
         assertThat(data.get("doc").get("successExample").asText()).contains("\"ok\":true");
+        assertThat(requestHeaders).hasSize(1);
+        assertThat(requestHeaders.get(0).get("name").asText()).isEqualTo("Content-Type");
+        assertThat(requestHeaders.get(0).get("exampleValue").asText()).isEqualTo("application/json");
         assertThat(requestParams).hasSize(5);
         assertThat(requestParams.findValuesAsText("type")).contains("string", "number", "boolean", "object", "array");
         assertThat(responseParams).hasSize(2);
@@ -213,6 +221,120 @@ class InterfaceDocControllerTest {
     }
 
     /**
+     * 测试聚合保存请求缺失全量集合字段时返回参数错误。
+     */
+    @Test
+    @DisplayName("聚合保存接口拒绝缺失全量集合字段")
+    void shouldRejectMissingCollectionSnapshots() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idmissing" + suffix(), "admin");
+        long id = createInterfaceInfo("missingCollectionsApi", "/api/missing_collections_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", null);
+        ObjectNode missingParamsPayload = objectMapper.valueToTree(baseSaveRequest(id));
+        missingParamsPayload.remove("params");
+        ObjectNode missingErrorCodesPayload = objectMapper.valueToTree(baseSaveRequest(id));
+        missingErrorCodesPayload.remove("errorCodes");
+
+        assertThat(postSaveJson(adminSession, missingParamsPayload.toString()).get("code").asInt()).isEqualTo(40000);
+        assertThat(postSaveJson(adminSession, missingErrorCodesPayload.toString()).get("code").asInt()).isEqualTo(40000);
+    }
+
+    /**
+     * 测试聚合保存请求显式传入 null 时被拒绝且不会清空已有数据。
+     */
+    @Test
+    @DisplayName("聚合保存接口拒绝 null 集合且保留已有数据")
+    void shouldRejectNullCollectionSnapshotsWithoutClearingData() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idnull" + suffix(), "admin");
+        long id = createInterfaceInfo("nullCollectionsApi", "/api/null_collections_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+        InterfaceDocSaveRequest validRequest = buildBasicSaveRequest(id);
+        validRequest.getErrorCodes().add(errorCode("A001", "参数错误", 1));
+        saveDocByAdmin(adminSession, validRequest);
+
+        ObjectNode nullPayload = objectMapper.valueToTree(validRequest);
+        nullPayload.putNull("params");
+        nullPayload.putNull("errorCodes");
+        assertThat(postSaveJson(adminSession, nullPayload.toString()).get("code").asInt()).isEqualTo(40000);
+
+        List<InterfaceDocParamSaveRequest> originalParams = validRequest.getParams();
+        validRequest.setParams(null);
+        assertThatThrownBy(() -> interfaceDocService.saveDoc(validRequest))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("文档参数必须显式提供");
+        validRequest.setParams(originalParams);
+        validRequest.setErrorCodes(null);
+        assertThatThrownBy(() -> interfaceDocService.saveDoc(validRequest))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("错误码必须显式提供");
+
+        assertThat(interfaceDocParamService.lambdaQuery()
+                .eq(InterfaceDocParam::getInterfaceInfoId, id)
+                .count()).isEqualTo(1L);
+        assertThat(interfaceDocErrorCodeService.lambdaQuery()
+                .eq(InterfaceDocErrorCode::getInterfaceInfoId, id)
+                .count()).isEqualTo(1L);
+    }
+
+    /**
+     * 测试显式空集合可以保存并表达确认清空。
+     */
+    @Test
+    @DisplayName("聚合保存接口接受显式空集合")
+    void shouldAllowExplicitEmptyCollectionSnapshots() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idempty" + suffix(), "admin");
+        long id = createInterfaceInfo("emptyCollectionsApi", "/api/empty_collections_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", null);
+
+        saveDocByAdmin(adminSession, baseSaveRequest(id));
+
+        assertThat(interfaceDocParamService.lambdaQuery()
+                .eq(InterfaceDocParam::getInterfaceInfoId, id)
+                .count()).isZero();
+        assertThat(interfaceDocErrorCodeService.lambdaQuery()
+                .eq(InterfaceDocErrorCode::getInterfaceInfoId, id)
+                .count()).isZero();
+    }
+
+    /**
+     * 测试控制器和服务入口均拒绝自定义 Header 场景，聚合查询也不展示遗留记录。
+     */
+    @Test
+    @DisplayName("聚合保存拒绝自定义 Header 且查询只返回系统协议 Header")
+    void shouldRejectCustomHeaderAndOnlyReturnSystemHeader() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idheader" + suffix(), "admin");
+        long id = createInterfaceInfo("rejectHeaderApi", "/api/reject_header_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", null);
+        InterfaceDocSaveRequest request = baseSaveRequest(id);
+        request.setParams(List.of(param(
+                "customHeader", null, "HEADER", "X-Legacy", "string", false, false, 1)));
+
+        assertThat(postSave(adminSession, request).get("code").asInt()).isEqualTo(40000);
+        assertThatThrownBy(() -> interfaceDocService.saveDoc(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("参数场景不支持");
+        assertThat(interfaceDocParamService.lambdaQuery()
+                .eq(InterfaceDocParam::getInterfaceInfoId, id)
+                .count()).isZero();
+
+        InterfaceDocParam legacyHeader = new InterfaceDocParam();
+        legacyHeader.setInterfaceInfoId(id);
+        legacyHeader.setParamScene("HEADER");
+        legacyHeader.setName("X-Legacy");
+        legacyHeader.setType("string");
+        legacyHeader.setRequired(0);
+        legacyHeader.setNullable(0);
+        legacyHeader.setExampleValue("legacy-value");
+        legacyHeader.setSortOrder(1);
+        assertThat(interfaceDocParamService.save(legacyHeader)).isTrue();
+
+        JsonNode requestHeaders = requestDoc(id, adminSession).get("data").get("requestHeaders");
+        assertThat(requestHeaders).hasSize(1);
+        assertThat(requestHeaders.get(0).get("name").asText()).isEqualTo("Content-Type");
+        assertThat(requestHeaders.get(0).get("exampleValue").asText()).isEqualTo("application/json");
+        assertThat(requestHeaders.findValuesAsText("name")).doesNotContain("X-Legacy");
+    }
+
+    /**
      * 测试非管理员无法保存接口文档。
      */
     @Test
@@ -220,7 +342,7 @@ class InterfaceDocControllerTest {
     void shouldRejectNonAdminSaveDoc() throws Exception {
         MockHttpSession userSession = loginWithRole("iduser" + suffix(), "user");
         long id = createInterfaceInfo("normalSaveApi", "/api/normal_save_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         JsonNode response = postSave(userSession, buildBasicSaveRequest(id));
 
@@ -235,7 +357,7 @@ class InterfaceDocControllerTest {
     void shouldRejectNonAdminUpdateInterfaceInfo() throws Exception {
         MockHttpSession userSession = loginWithRole("idupdate" + suffix(), "user");
         long id = createInterfaceInfo("normalUpdateApi", "/api/normal_update_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceInfoUpdateRequest updateRequest = new InterfaceInfoUpdateRequest();
         updateRequest.setId(id);
@@ -262,7 +384,7 @@ class InterfaceDocControllerTest {
     void shouldRejectIllegalJsonExample() throws Exception {
         MockHttpSession adminSession = loginWithRole("idjson" + suffix(), "admin");
         long id = createInterfaceInfo("illegalJsonApi", "/api/illegal_json_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.setSuccessExample("{bad json");
@@ -277,7 +399,7 @@ class InterfaceDocControllerTest {
     void shouldRejectPhoneSensitiveInfo() throws Exception {
         MockHttpSession adminSession = loginWithRole("idphone" + suffix(), "admin");
         long id = createInterfaceInfo("phoneApi", "/api/phone_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.setSuccessExample("{\"phone\":\"13800138000\"}");
@@ -292,7 +414,7 @@ class InterfaceDocControllerTest {
     void shouldRejectAccessKeySensitiveInfo() throws Exception {
         MockHttpSession adminSession = loginWithRole("idakey" + suffix(), "admin");
         long id = createInterfaceInfo("akeyApi", "/api/akey_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.setSuccessExample("{\"accessKey\":\"abcd1234\"}");
@@ -307,7 +429,7 @@ class InterfaceDocControllerTest {
     void shouldRejectBearerToken() throws Exception {
         MockHttpSession adminSession = loginWithRole("idtoken" + suffix(), "admin");
         long id = createInterfaceInfo("tokenApi", "/api/token_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.setAuthDescription("token: Bearer eyJhbGciOiJIUzI1NiJ9");
@@ -322,7 +444,7 @@ class InterfaceDocControllerTest {
     void shouldRejectComplexPassword() throws Exception {
         MockHttpSession adminSession = loginWithRole("idpwd" + suffix(), "admin");
         long id = createInterfaceInfo("pwdApi", "/api/pwd_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.setRemark("password: P@ssw0rd!");
@@ -337,7 +459,7 @@ class InterfaceDocControllerTest {
     void shouldRejectScriptInValidationRule() throws Exception {
         MockHttpSession adminSession = loginWithRole("idscript" + suffix(), "admin");
         long id = createInterfaceInfo("scriptApi", "/api/script_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.getParams().add(param("resp", null, "RESPONSE", "data", "string", true, false, 2));
@@ -353,7 +475,7 @@ class InterfaceDocControllerTest {
     void shouldRejectInternalInfoInSolution() throws Exception {
         MockHttpSession adminSession = loginWithRole("idinternal" + suffix(), "admin");
         long id = createInterfaceInfo("internalApi", "/api/internal_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         InterfaceDocErrorCodeSaveRequest errorCode = errorCode("I001", "内部错误", 1);
@@ -370,7 +492,7 @@ class InterfaceDocControllerTest {
     void shouldRejectDuplicateErrorCodes() throws Exception {
         MockHttpSession adminSession = loginWithRole("iddup" + suffix(), "admin");
         long id = createInterfaceInfo("dupApi", "/api/dup_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.getErrorCodes().add(errorCode("A001", "错误 A", 1));
@@ -386,7 +508,7 @@ class InterfaceDocControllerTest {
     void shouldRejectParamCountExceedsLimit() throws Exception {
         MockHttpSession adminSession = loginWithRole("idparam" + suffix(), "admin");
         long id = createInterfaceInfo("paramApi", "/api/param_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.setParams(IntStream.rangeClosed(1, 201)
@@ -403,7 +525,7 @@ class InterfaceDocControllerTest {
     void shouldRejectErrorCodeCountExceedsLimit() throws Exception {
         MockHttpSession adminSession = loginWithRole("iderr" + suffix(), "admin");
         long id = createInterfaceInfo("errApi", "/api/err_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.setErrorCodes(IntStream.rangeClosed(1, 101)
@@ -420,7 +542,7 @@ class InterfaceDocControllerTest {
     void shouldAllowAllSupportedMaskPlaceholders() throws Exception {
         MockHttpSession adminSession = loginWithRole("idmask" + suffix(), "admin");
         long id = createInterfaceInfo("maskDocApi", "/api/mask_doc_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.setAuthDescription("Authorization: Bearer <TOKEN>");
         request.setRemark("password: <PASSWORD>");
@@ -431,26 +553,20 @@ class InterfaceDocControllerTest {
     }
 
     /**
-     * 测试 GET curl 的 Query、签名管道、Shell 转义和 Header 去重。
+     * 测试 GET curl 的 Query、签名管道和系统 Content-Type。
      */
     @Test
-    @DisplayName("GET curl 正确生成 Query 并安全处理特殊字符与 Content-Type 冲突")
+    @DisplayName("GET curl 正确生成 Query 和系统 Content-Type")
     void shouldGenerateSafeGetCurlWithAuthoritativeContentType() throws Exception {
         MockHttpSession adminSession = loginWithRole("idgetcurl" + suffix(), "admin");
         String path = "/api/get_curl_" + suffix();
         long id = createInterfaceInfo("getCurlApi", path,
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "GET", "{\"keyword\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "GET", "{\"keyword\":\"string\"}");
         InterfaceDocSaveRequest request = baseSaveRequest(id);
         InterfaceDocParamSaveRequest queryParam = param(
                 "queryKeyword", null, "QUERY", "keyword", "string", true, false, 1);
         queryParam.setExampleValue("中文 空格");
-        InterfaceDocParamSaveRequest contentTypeHeader = param(
-                "headerContentType", null, "HEADER", "content-type", "string", true, false, 2);
-        contentTypeHeader.setExampleValue("text/plain");
-        InterfaceDocParamSaveRequest specialHeader = param(
-                "headerSpecial", null, "HEADER", "X-Test", "string", false, false, 3);
-        specialHeader.setExampleValue("a'b\"$`!\\ value");
-        request.setParams(List.of(queryParam, contentTypeHeader, specialHeader));
+        request.setParams(List.of(queryParam));
 
         saveDocByAdmin(adminSession, request);
         String curlExample = requestDoc(id, adminSession).get("data").get("curlExample").asText();
@@ -459,9 +575,8 @@ class InterfaceDocControllerTest {
                 .contains("URL='http://localhost:8090" + path
                         + "?keyword=%E4%B8%AD%E6%96%87%20%E7%A9%BA%E6%A0%BC'")
                 .contains("BODY=''", "printf 'feiting\\n%s\\n%s\\n%s\\n%s\\n%s'")
-                .contains("a'\"'\"'b\"$`!\\ value")
                 .containsOnlyOnce("Content-Type: application/json")
-                .doesNotContain("CANONICAL_STRING", "--data", "Content-Type: text/plain");
+                .doesNotContain("CANONICAL_STRING", "--data");
     }
 
     /**
@@ -472,7 +587,7 @@ class InterfaceDocControllerTest {
     void shouldRejectInvalidParamHierarchy() throws Exception {
         MockHttpSession adminSession = loginWithRole("idhierarchy" + suffix(), "admin");
         long id = createInterfaceInfo("hierarchyApi", "/api/hierarchy_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest missingParentRequest = buildBasicSaveRequest(id);
         missingParentRequest.getParams().add(param("resp", "missing", "RESPONSE", "data", "string", true, false, 2));
@@ -509,7 +624,7 @@ class InterfaceDocControllerTest {
         try {
             adminSession = loginWithRole("idrollback" + suffix(), "admin");
             interfaceInfoId = createInterfaceInfo("rollbackApi", "/api/rollback_" + suffix(),
-                    InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
+                    InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
             InterfaceDocSaveRequest validRequest = buildBasicSaveRequest(interfaceInfoId);
             validRequest.getErrorCodes().add(errorCode("A001", "错误 A", 1));
             saveDocByAdmin(adminSession, validRequest);
@@ -544,7 +659,7 @@ class InterfaceDocControllerTest {
     void shouldPreserveManualFieldsWhenNormalUpdate() throws Exception {
         MockHttpSession adminSession = loginWithRole("idsync" + suffix(), "admin");
         long id = createInterfaceInfo("syncDocApi", "/api/sync_doc_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\",\"age\":18}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\",\"age\":18}");
         InterfaceInfo interfaceInfo = interfaceInfoService.getById(id);
         interfaceDocService.syncRequestDocFromInterfaceInfo(interfaceInfo);
 
@@ -579,7 +694,7 @@ class InterfaceDocControllerTest {
     void shouldSyncRequestDocWhenTemplateChangesAndPreserveManualFields() throws Exception {
         MockHttpSession adminSession = loginWithRole("idsync2" + suffix(), "admin");
         long id = createInterfaceInfo("syncDocApi2", "/api/sync_doc2_" + suffix(),
-                InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\",\"age\":18}");
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\",\"age\":18}");
         InterfaceInfo interfaceInfo = interfaceInfoService.getById(id);
         interfaceDocService.syncRequestDocFromInterfaceInfo(interfaceInfo);
 
@@ -729,9 +844,20 @@ class InterfaceDocControllerTest {
      * @return 响应 JSON
      */
     private JsonNode postSave(MockHttpSession session, InterfaceDocSaveRequest request) throws Exception {
+        return postSaveJson(session, objectMapper.writeValueAsString(request));
+    }
+
+    /**
+     * 使用原始 JSON 发起保存接口文档请求。
+     *
+     * @param session     会话
+     * @param requestJson 保存请求 JSON
+     * @return 响应 JSON
+     */
+    private JsonNode postSaveJson(MockHttpSession session, String requestJson) throws Exception {
         String response = mockMvc.perform(post("/interfaceDoc/save")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request))
+                        .content(requestJson)
                         .session(session))
                 .andExpect(status().isOk())
                 .andReturn()
