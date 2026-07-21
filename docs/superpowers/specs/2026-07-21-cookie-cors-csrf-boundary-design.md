@@ -87,10 +87,11 @@ feiapi-gateway: 127.0.0.1:8090:8090
 ### 5.3 前端 HTTP 层
 
 1. API 基址固定为 `/api`，移除 `VITE_API_BASE` 分支。
-2. 保留 `withCredentials: true`，并显式配置 Axios 的 XSRF Cookie 与 Header 名称。
-3. 写请求发送前确保浏览器已取得 CSRF Cookie。
-4. 并发写请求复用同一个令牌初始化请求。
-5. CSRF 失败后不自动重放写请求。
+2. 主业务 Axios 实例保留 `withCredentials: true`，并显式配置 `withXSRFToken: true`、`xsrfCookieName: 'XSRF-TOKEN'` 和 `xsrfHeaderName: 'X-XSRF-TOKEN'`。
+3. CSRF 初始化 Axios 实例仅配置 `baseURL: '/api'`、`timeout: 15000` 和 `withCredentials: true`，不安装业务请求或响应拦截器，也不需要为安全的 `GET /csrf` 配置 XSRF Header。
+4. 写请求发送前确保浏览器已取得 CSRF Cookie。
+5. 并发写请求复用同一个令牌初始化请求。
+6. CSRF 失败后不自动重放写请求。
 
 ### 5.4 Spring Security 层
 
@@ -100,6 +101,23 @@ feiapi-gateway: 127.0.0.1:8090:8090
 4. 仅安全方法免除 CSRF；管理后端所有 `POST`、`PUT`、`PATCH` 和 `DELETE` 请求统一受保护。
 5. CSRF 拒绝由专用处理器返回统一 JSON。
 6. 显式关闭 Spring Security 默认表单登录、HTTP Basic、默认退出端点和 CORS，避免产生第二套认证及跨域行为。
+
+安全过滤链必须显式包含以下配置，不能依赖 Spring Security 默认行为：
+
+```java
+http
+        .csrf(csrf -> csrf
+                .csrfTokenRepository(csrfTokenRepository)
+                .csrfTokenRequestHandler(csrfTokenRequestAttributeHandler)
+                .accessDeniedHandler(csrfAccessDeniedHandler))
+        .formLogin(AbstractHttpConfigurer::disable)
+        .httpBasic(AbstractHttpConfigurer::disable)
+        .logout(AbstractHttpConfigurer::disable)
+        .cors(AbstractHttpConfigurer::disable)
+        .authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll());
+```
+
+`permitAll` 只表示 Spring Security 不接管身份授权，不会关闭 CSRF 校验。现有 AOP 和 Session 逻辑继续执行身份与角色鉴权。
 
 ### 5.5 会话管理层
 
@@ -115,8 +133,36 @@ feiapi-gateway: 127.0.0.1:8090:8090
 2. 请求拦截器检查 `XSRF-TOKEN` Cookie。
 3. Cookie 不存在时，通过不安装业务拦截器的独立 Axios 实例请求 `GET /api/csrf`。
 4. 多个并发写请求共享一个初始化 Promise。
-5. 后端访问 `CsrfToken` 以触发令牌生成并保存 Cookie，同时对该响应设置 `Cache-Control: no-store`。
+5. 后端 Controller 访问 `CsrfToken` 以触发令牌生成并保存 Cookie，同时对该响应设置 `Cache-Control: no-store`。
 6. 初始化成功后，原写请求继续发送；初始化失败时阻止写请求。
+
+接口不在响应体中返回令牌内容，只返回现有统一成功结构。Controller 接口签名固定如下：
+
+```java
+/**
+ * CSRF 令牌初始化接口。
+ */
+@RestController
+@RequestMapping("/csrf")
+public class CsrfController {
+
+    /**
+     * 初始化当前浏览器使用的 CSRF Cookie。
+     *
+     * @param csrfToken Spring Security 延迟生成的 CSRF 令牌
+     * @param response  HTTP 响应
+     * @return 不包含令牌内容的统一成功响应
+     */
+    @GetMapping
+    public BaseResponse<Void> getCsrfToken(CsrfToken csrfToken, HttpServletResponse response) {
+        csrfToken.getToken();
+        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
+        return ResultUtils.success(null);
+    }
+}
+```
+
+`GET /api/csrf` 属于安全方法，本身不要求 CSRF Token；全局 `anyRequest().permitAll()` 已允许访问，因此不需要额外的授权 Matcher。禁止使用 `ignoringRequestMatchers("/csrf")`，避免未来该路径新增写方法后被整体豁免。
 
 ### 6.2 写请求校验
 
@@ -131,7 +177,8 @@ feiapi-gateway: 127.0.0.1:8090:8090
 1. 注册、登录和退出均属于写请求，必须通过 CSRF 校验。
 2. 登录成功后轮换 Session ID，再写入登录用户。
 3. 退出请求通过 CSRF 校验后销毁 Session，并确保身份 Cookie 失效。
-4. CSRF Cookie 本身不代表登录身份；校验失败时由拒绝处理器使其过期，下一次写操作重新初始化。
+4. CSRF Cookie 本身不代表登录身份；校验失败时，拒绝处理器调用 `csrfTokenRepository.saveToken(null, request, response)`，由统一配置的 `CookieCsrfTokenRepository` 写入同名、同 Path、`Max-Age=0` 的 Cookie 使旧令牌过期。
+5. Cookie 被删除后，下一次明确的写操作重新请求 `GET /api/csrf`，不依赖旧 Cookie 自然刷新。
 
 ## 7. Cookie 策略
 
@@ -163,6 +210,8 @@ Domain 不设置
 ```
 
 `HttpOnly=false` 是双提交 Cookie 方案的必要条件，因为 Axios 需要读取令牌并写入请求 Header。CSRF Cookie 不是身份凭据，真正的身份仍只由 `HttpOnly` Session Cookie 表示。
+
+两个 Cookie 的 Path 不同是有意设计。Session Cookie 使用 `/api`，使浏览器只向管理 API 发送身份凭据；CSRF Cookie 使用 `/`，因为 SPA 可能运行在 `/profile`、`/admin` 等页面路径，Axios 需要从这些页面通过 `document.cookie` 读取令牌。如果 CSRF Cookie 也限制为 `/api`，运行在其他页面路径的前端脚本将无法读取它。
 
 CSRF 令牌不得写入 `localStorage`、`sessionStorage`、Pinia、日志或业务 DTO。
 
@@ -219,11 +268,13 @@ CSRF 拒绝返回 HTTP `403` 和现有 `BaseResponse` JSON：
 
 拒绝处理器只记录请求方法、URI 和必要的追踪信息，不记录 CSRF Token、Cookie、Session ID 或请求敏感数据。普通业务权限不足继续由现有全局异常处理链路响应，从而与 CSRF 拒绝保持职责分离。
 
+拒绝处理器必须注入安全配置使用的同一个 `CookieCsrfTokenRepository`，并在写入错误响应前调用 `saveToken(null, request, response)`。这样删除 Cookie 时会复用 `Path=/`、Host-only、`SameSite=Lax` 和当前环境的 `Secure` 配置，避免手工拼接 `Set-Cookie` 产生属性不一致。
+
 ### 10.2 前端处理
 
 1. CSRF 初始化失败时拒绝本次写请求并显示固定安全提示。
 2. 收到 CSRF `403` 时不自动重放写请求，避免删除、更新或提交操作重复执行。
-3. 后端使失效的 CSRF Cookie 过期，下一次明确的用户操作重新初始化令牌。
+3. 后端通过 `csrfTokenRepository.saveToken(null, request, response)` 返回 `Max-Age=0` 的删除 Cookie，下一次明确的用户操作重新初始化令牌。
 4. 读取类页面不因 CSRF 初始化服务暂时不可用而整体失效。
 
 ## 11. 测试设计
@@ -231,15 +282,17 @@ CSRF 拒绝返回 HTTP `403` 和现有 `BaseResponse` JSON：
 ### 11.1 后端测试
 
 1. 无 CSRF 令牌的写请求返回 HTTP `403` 和业务码 `40300`。
-2. 合法令牌写请求能够进入现有 Controller。
-3. `GET`、`HEAD` 和 `OPTIONS` 等安全方法不要求令牌。
-4. CSRF 初始化接口签发属性正确的 Cookie。
-5. 生产配置下 Session Cookie 和 CSRF Cookie 均带 `Secure`，Session Cookie 带 `HttpOnly`。
-6. Cookie 不包含 `Domain`，Session Cookie 的 `Path` 为 `/api`，CSRF Cookie 的 `Path` 为 `/`。
-7. 登录前后 Session ID 不同，登录用户信息仍可读取。
-8. 退出后原 Session 不再有效。
-9. 非同源请求不会收到 `Access-Control-Allow-Origin`。
-10. CSRF 拒绝日志和响应不包含令牌或会话信息。
+2. CSRF Cookie 存在但值为空时，写请求返回 HTTP `403`。
+3. CSRF Cookie 与 `X-XSRF-TOKEN` Header 值不一致时，写请求返回 HTTP `403`。
+4. 合法令牌写请求能够进入现有 Controller。
+5. `GET`、`HEAD` 和 `OPTIONS` 等安全方法不要求令牌。
+6. CSRF 初始化接口签发属性正确的 Cookie，响应体不包含令牌且带 `Cache-Control: no-store`。
+7. 生产配置下 Session Cookie 和 CSRF Cookie 均带 `Secure`，Session Cookie 带 `HttpOnly`。
+8. Cookie 不包含 `Domain`，Session Cookie 的 `Path` 为 `/api`，CSRF Cookie 的 `Path` 为 `/`。
+9. 登录前后 Session ID 不同，登录用户信息仍可读取。
+10. 退出后原 Session 不再有效。
+11. 非同源请求不会收到 `Access-Control-Allow-Origin` 和 `Access-Control-Allow-Credentials`。
+12. CSRF 拒绝日志和响应不包含令牌或会话信息。
 
 现有以下 8 个测试类中的 107 个 MockMvc 写请求补充 Spring Security Test 的合法 CSRF，不在测试 Profile 中关闭 CSRF：
 
@@ -256,7 +309,7 @@ CSRF 拒绝返回 HTTP `403` 和现有 `BaseResponse` JSON：
 
 1. 安全方法不会触发 CSRF 初始化。
 2. 首个写请求会先获取令牌。
-3. 多个并发写请求只产生一个初始化请求。
+3. 在 HTTP 层集成测试中并发发起多个写请求，断言初始化客户端只产生一个 `GET /csrf` 请求，并且所有原请求都在初始化完成后继续发送。
 4. 已有 Cookie 时不重复初始化。
 5. 初始化失败时原写请求不发送。
 6. CSRF `403` 被转换为固定提示且不会自动重试。
@@ -328,7 +381,7 @@ CSRF 拒绝返回 HTTP `403` 和现有 `BaseResponse` JSON：
 3. 合法前端写请求无需业务页面手动管理令牌。
 4. 登录轮换 Session ID，退出销毁 Session。
 5. Session Cookie 和 CSRF Cookie 属性符合本设计，且均为 Host-only Cookie。
-6. 管理后端不再启用跨域凭据访问。
+6. 对携带非同源 `Origin` 的管理后端请求，不返回 `Access-Control-Allow-Origin` 和 `Access-Control-Allow-Credentials` 响应头。
 7. 公网无法绕过边缘代理直接访问管理后端原始端口。
 8. SDK 仍可通过独立受控域名访问网关。
 9. 前端页面和静态资源包含设计规定的安全响应头，生产资源在 CSP 下正常加载。
