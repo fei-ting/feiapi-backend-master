@@ -18,6 +18,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -58,6 +60,7 @@ class UserSmokeTest {
             registerRequest.setCheckPassword(password);
 
             MvcResult registerResult = mockMvc.perform(post("/user/register")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(registerRequest)))
                     .andExpect(status().isOk())
@@ -76,6 +79,7 @@ class UserSmokeTest {
 
             MockHttpSession session = new MockHttpSession();
             MvcResult loginResult = mockMvc.perform(post("/user/login")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(loginRequest))
                             .session(session))
@@ -106,16 +110,18 @@ class UserSmokeTest {
             assertEquals(account, loginUser.get("userAccount").asText());
 
             // ======== Step4: 注销 ========
-            mockMvc.perform(post("/user/logout").session(session))
+            mockMvc.perform(post("/user/logout").with(csrf()).session(session))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(0))
                     .andExpect(jsonPath("$.data").value(true));
 
-            // 验证 session 中用户已被清除
-            assertNull(session.getAttribute("userLoginState"), "注销后 session 中应无用户信息");
+            // 注销会销毁整个 Session，原会话对象不得继续读取或复用
+            assertThat(session.isInvalid())
+                    .as("注销后原 Session 应失效")
+                    .isTrue();
 
             // ======== Step5: 注销后获取登录用户应返回未登录 ========
-            mockMvc.perform(get("/user/get/login").session(session))
+            mockMvc.perform(get("/user/get/login"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(40100));
         } finally {
@@ -140,6 +146,7 @@ class UserSmokeTest {
             request.setCheckPassword("password123");
 
             MvcResult first = mockMvc.perform(post("/user/register")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isOk())
@@ -150,6 +157,7 @@ class UserSmokeTest {
 
             // 第二次注册同账号应失败
             mockMvc.perform(post("/user/register")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isOk())
@@ -175,6 +183,7 @@ class UserSmokeTest {
             registerRequest.setCheckPassword("password123");
 
             MvcResult regResult = mockMvc.perform(post("/user/register")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(registerRequest)))
                     .andExpect(status().isOk())
@@ -189,6 +198,7 @@ class UserSmokeTest {
             loginRequest.setUserPassword("wrongpassword");
 
             mockMvc.perform(post("/user/login")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(loginRequest)))
                     .andExpect(status().isOk())

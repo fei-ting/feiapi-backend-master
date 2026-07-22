@@ -44,6 +44,7 @@ import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -364,6 +365,7 @@ class InterfaceDocControllerTest {
         updateRequest.setDescription("尝试修改接口描述");
 
         String response = mockMvc.perform(post("/interfaceInfo/update")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(updateRequest))
                         .session(userSession))
@@ -757,6 +759,7 @@ class InterfaceDocControllerTest {
         addRequest.setMethod("POST");
 
         String response = mockMvc.perform(post("/interfaceInfo/add")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(addRequest))
                         .session(adminSession))
@@ -828,6 +831,7 @@ class InterfaceDocControllerTest {
      */
     private void saveDocByAdmin(MockHttpSession adminSession, InterfaceDocSaveRequest request) throws Exception {
         mockMvc.perform(post("/interfaceDoc/save")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request))
                         .session(adminSession))
@@ -856,6 +860,7 @@ class InterfaceDocControllerTest {
      */
     private JsonNode postSaveJson(MockHttpSession session, String requestJson) throws Exception {
         String response = mockMvc.perform(post("/interfaceDoc/save")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson)
                         .session(session))
@@ -886,6 +891,7 @@ class InterfaceDocControllerTest {
      */
     private void updateInterfaceInfo(MockHttpSession adminSession, InterfaceInfoUpdateRequest request) throws Exception {
         mockMvc.perform(post("/interfaceInfo/update")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request))
                         .session(adminSession))
@@ -1181,6 +1187,7 @@ class InterfaceDocControllerTest {
         loginRequest.setUserPassword(TEST_PASSWORD);
         MockHttpSession session = new MockHttpSession();
         mockMvc.perform(post("/user/login")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(loginRequest))
                         .session(session))

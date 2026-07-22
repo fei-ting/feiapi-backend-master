@@ -25,9 +25,11 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.util.AopTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -69,6 +71,7 @@ class UserControllerTest {
         registerRequest.setCheckPassword(password);
 
         mockMvc.perform(post("/user/register")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(registerRequest)))
                 .andExpect(status().isOk());
@@ -80,6 +83,7 @@ class UserControllerTest {
         // 使用 MockHttpSession 并在 login 请求中携带，让 session 属性被设置
         MockHttpSession session = new MockHttpSession();
         mockMvc.perform(post("/user/login")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(loginRequest))
                         .session(session))
@@ -113,6 +117,7 @@ class UserControllerTest {
             request.setCheckPassword("password123");
 
             String response = mockMvc.perform(post("/user/register")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isOk())
@@ -131,6 +136,7 @@ class UserControllerTest {
         @DisplayName("请求体为空返回参数错误")
         void shouldFailWhenBodyNull() throws Exception {
             mockMvc.perform(post("/user/register")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(40000));
@@ -145,6 +151,7 @@ class UserControllerTest {
             request.setCheckPassword("password456");
 
             mockMvc.perform(post("/user/register")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isOk())
@@ -159,13 +166,14 @@ class UserControllerTest {
         @Test
         @DisplayName("正确账号密码登录成功")
         void shouldLoginSuccessfully() throws Exception {
-             userService.userRegister("loginctl01", "password123", "password123");
+            userService.userRegister("loginctl01", "password123", "password123");
 
             UserLoginRequest request = new UserLoginRequest();
             request.setUserAccount("loginctl01");
             request.setUserPassword("password123");
 
-            mockMvc.perform(post("/user/login")
+            MvcResult result = mockMvc.perform(post("/user/login")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isOk())
@@ -173,7 +181,35 @@ class UserControllerTest {
                     .andExpect(jsonPath("$.data.userAccount").value("loginctl01"))
                     .andExpect(jsonPath("$.data.userPassword").doesNotExist())
                     .andExpect(jsonPath("$.data.accessKey").doesNotExist())
-                    .andExpect(jsonPath("$.data.secretKey").doesNotExist());
+                    .andExpect(jsonPath("$.data.secretKey").doesNotExist())
+                    .andReturn();
+
+            org.assertj.core.api.Assertions.assertThat(result.getRequest().getSession(false))
+                    .as("没有既有 Session 时登录应创建新 Session")
+                    .isNotNull();
+        }
+
+        @Test
+        @DisplayName("已有 Session 登录成功后轮换 Session ID")
+        void shouldRotateExistingSessionIdAfterLogin() throws Exception {
+            userService.userRegister("loginctl03", "password123", "password123");
+            UserLoginRequest request = new UserLoginRequest();
+            request.setUserAccount("loginctl03");
+            request.setUserPassword("password123");
+            MockHttpSession session = new MockHttpSession();
+            String originalSessionId = session.getId();
+
+            mockMvc.perform(post("/user/login")
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request))
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0));
+
+            org.assertj.core.api.Assertions.assertThat(session.getId())
+                    .as("登录后应轮换已有 Session ID")
+                    .isNotEqualTo(originalSessionId);
         }
 
         @Test
@@ -186,6 +222,7 @@ class UserControllerTest {
             request.setUserPassword("wrongpassword");
 
             mockMvc.perform(post("/user/login")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isOk())
@@ -202,10 +239,27 @@ class UserControllerTest {
         void shouldLogoutSuccessfully() throws Exception {
             MockHttpSession session = registerAndLogin("logoutc01", "password123");
 
-            mockMvc.perform(post("/user/logout").session(session))
+            mockMvc.perform(post("/user/logout").with(csrf()).session(session))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(0))
                     .andExpect(jsonPath("$.data").value(true));
+
+            org.assertj.core.api.Assertions.assertThat(session.isInvalid())
+                    .as("退出后原 Session 应失效")
+                    .isTrue();
+        }
+
+        @Test
+        @DisplayName("没有 Session 时注销失败且不会创建 Session")
+        void shouldNotCreateSessionWhenLogoutWithoutExistingSession() throws Exception {
+            MvcResult result = mockMvc.perform(post("/user/logout").with(csrf()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(50001))
+                    .andReturn();
+
+            org.assertj.core.api.Assertions.assertThat(result.getRequest().getSession(false))
+                    .as("无会话注销不应创建 Session")
+                    .isNull();
         }
     }
 
@@ -278,6 +332,7 @@ class UserControllerTest {
             String requestBody = "{\"userName\":\"新的昵称\",\"gender\":1}";
 
             mockMvc.perform(post("/user/update/my/profile")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(session))
@@ -308,6 +363,7 @@ class UserControllerTest {
             String requestBody = "{\"userName\":\" \",\"gender\":1}";
 
             mockMvc.perform(post("/user/update/my/profile")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(session))
@@ -322,6 +378,7 @@ class UserControllerTest {
             String requestBody = "{\"userName\":\"短\",\"gender\":1}";
 
             mockMvc.perform(post("/user/update/my/profile")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(session))
@@ -336,6 +393,7 @@ class UserControllerTest {
             String requestBody = "{\"userName\":\"昵称_01\",\"gender\":1}";
 
             mockMvc.perform(post("/user/update/my/profile")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(session))
@@ -350,6 +408,7 @@ class UserControllerTest {
             String requestBody = "{\"userName\":\"官方用户\",\"gender\":1}";
 
             mockMvc.perform(post("/user/update/my/profile")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(session))
@@ -365,6 +424,7 @@ class UserControllerTest {
             String requestBody = "{\"userName\":\"昵称\",\"gender\":2}";
 
             mockMvc.perform(post("/user/update/my/profile")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(session))
@@ -378,6 +438,7 @@ class UserControllerTest {
             String requestBody = "{\"userName\":\"昵称\",\"gender\":1}";
 
             mockMvc.perform(post("/user/update/my/profile")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody))
                     .andExpect(status().isOk())
@@ -396,6 +457,7 @@ class UserControllerTest {
             String requestBody = "{\"oldPassword\":\"password123\",\"newPassword\":\"password456\",\"checkPassword\":\"password456\"}";
 
             mockMvc.perform(post("/user/update/my/password")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(session))
@@ -408,6 +470,7 @@ class UserControllerTest {
             loginRequest.setUserPassword("password456");
 
             mockMvc.perform(post("/user/login")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(loginRequest)))
                     .andExpect(status().isOk())
@@ -421,6 +484,7 @@ class UserControllerTest {
             String requestBody = "{\"oldPassword\":\"password456\",\"newPassword\":\"password789\",\"checkPassword\":\"password789\"}";
 
             mockMvc.perform(post("/user/update/my/password")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(session))
@@ -435,6 +499,7 @@ class UserControllerTest {
             String requestBody = "{\"oldPassword\":\"password123\",\"newPassword\":\"password456\",\"checkPassword\":\"password789\"}";
 
             mockMvc.perform(post("/user/update/my/password")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(session))
@@ -449,6 +514,7 @@ class UserControllerTest {
             String requestBody = "{\"oldPassword\":\"password123\",\"newPassword\":\"short\",\"checkPassword\":\"short\"}";
 
             mockMvc.perform(post("/user/update/my/password")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(session))
@@ -469,6 +535,7 @@ class UserControllerTest {
 
             mockMvc.perform(multipart("/user/avatar/upload")
                             .file(file)
+                            .with(csrf())
                             .session(session))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(50001))
@@ -597,6 +664,7 @@ class UserControllerTest {
                     + "\"userName\":\"新用户\",\"userRole\":\"admin\"}";
 
             String response = mockMvc.perform(post("/user/add")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(adminSession))
@@ -633,6 +701,7 @@ class UserControllerTest {
             String requestBody = "{\"id\":" + userId + ",\"userName\":\"修改后的名字\",\"userRole\":\"admin\"}";
 
             mockMvc.perform(post("/user/update")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(adminSession))
@@ -666,6 +735,7 @@ class UserControllerTest {
             String requestBody = "{\"id\":" + userId + ",\"userRole\":\"admin\"}";
 
             mockMvc.perform(post("/user/update/role")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(adminSession))
@@ -690,6 +760,7 @@ class UserControllerTest {
             String requestBody = "{\"id\":" + userId + ",\"userRole\":\"superadmin\"}";
 
             mockMvc.perform(post("/user/update/role")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(adminSession))
@@ -713,6 +784,7 @@ class UserControllerTest {
             String requestBody = "{\"id\":" + userId + ",\"userRole\":\"\"}";
 
             mockMvc.perform(post("/user/update/role")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(adminSession))
@@ -738,6 +810,7 @@ class UserControllerTest {
             String requestBody = "{\"id\":" + userId + ",\"userRole\":\"admin\"}";
 
             mockMvc.perform(post("/user/update/role")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(adminSession))
@@ -754,6 +827,7 @@ class UserControllerTest {
             String requestBody = "{\"id\":999999,\"userRole\":\"admin\"}";
 
             mockMvc.perform(post("/user/update/role")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(adminSession))
@@ -771,6 +845,7 @@ class UserControllerTest {
             String requestBody = "{\"id\":" + userId + ",\"userRole\":\"admin\"}";
 
             mockMvc.perform(post("/user/update/role")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(userSession))
@@ -791,6 +866,7 @@ class UserControllerTest {
             String requestBody = "{\"id\":" + adminUserId + ",\"userRole\":\"user\"}";
 
             mockMvc.perform(post("/user/update/role")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(adminSession))
@@ -822,6 +898,7 @@ class UserControllerTest {
             String requestBody = "{\"id\":" + targetUserId + ",\"userRole\":\"admin\"}";
 
             mockMvc.perform(post("/user/update/role")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(adminSession))
@@ -874,6 +951,7 @@ class UserControllerTest {
             String requestBody = "{\"id\":" + adminUserId + "}";
 
             mockMvc.perform(post("/user/delete")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(adminSession))
@@ -904,6 +982,7 @@ class UserControllerTest {
             String requestBody = "{\"id\":" + secondAdminId + "}";
 
             mockMvc.perform(post("/user/delete")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(adminSession))
@@ -930,6 +1009,7 @@ class UserControllerTest {
             String requestBody = "{\"id\":" + normalUserId + "}";
 
             mockMvc.perform(post("/user/delete")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(requestBody)
                             .session(adminSession))

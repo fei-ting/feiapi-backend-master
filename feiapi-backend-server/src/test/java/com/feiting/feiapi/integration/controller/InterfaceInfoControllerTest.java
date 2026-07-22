@@ -38,6 +38,7 @@ import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -87,6 +88,7 @@ class InterfaceInfoControllerTest {
         loginRequest.setUserPassword("password123");
         MockHttpSession session = new MockHttpSession();
         mockMvc.perform(post("/user/login")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(loginRequest))
                         .session(session))
@@ -172,6 +174,7 @@ class InterfaceInfoControllerTest {
             InterfaceInfoAddRequest request = buildAddRequest("addApi", "/api/add_test", "GET");
 
             MvcResult result = mockMvc.perform(post("/interfaceInfo/add")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request))
                             .session(session))
@@ -199,6 +202,7 @@ class InterfaceInfoControllerTest {
             InterfaceInfoAddRequest request = buildAddRequest("normalAddApi", "/api/normal_add", "GET");
 
             mockMvc.perform(post("/interfaceInfo/add")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request))
                             .session(session))
@@ -212,6 +216,7 @@ class InterfaceInfoControllerTest {
             MockHttpSession session = loginAsAdmin();
 
             mockMvc.perform(post("/interfaceInfo/add")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .session(session))
                     .andExpect(status().isOk())
@@ -224,6 +229,7 @@ class InterfaceInfoControllerTest {
             InterfaceInfoAddRequest request = buildAddRequest("noLoginApi", "/api/nologin", "GET");
 
             mockMvc.perform(post("/interfaceInfo/add")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isOk())
@@ -240,6 +246,7 @@ class InterfaceInfoControllerTest {
             InterfaceInfoAddRequest request = buildAddRequest(longName.toString(), "/api/longname", "GET");
 
             mockMvc.perform(post("/interfaceInfo/add")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request))
                             .session(session))
@@ -327,6 +334,7 @@ class InterfaceInfoControllerTest {
             updateRequest.setMethod("POST");
 
             mockMvc.perform(post("/interfaceInfo/update")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(updateRequest))
                             .session(session))
@@ -355,6 +363,7 @@ class InterfaceInfoControllerTest {
             updateRequest.setUserId(99999L);
 
             mockMvc.perform(post("/interfaceInfo/update")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(updateRequest))
                             .session(adminSession))
@@ -377,6 +386,7 @@ class InterfaceInfoControllerTest {
             updateRequest.setName("hacked");
 
             mockMvc.perform(post("/interfaceInfo/update")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(updateRequest))
                             .session(userSession))
@@ -397,6 +407,7 @@ class InterfaceInfoControllerTest {
             request.setId(0L);
 
             mockMvc.perform(post("/interfaceInfo/update")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request))
                             .session(session))
@@ -414,6 +425,7 @@ class InterfaceInfoControllerTest {
             request.setName("test");
 
             mockMvc.perform(post("/interfaceInfo/update")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request))
                             .session(session))
@@ -435,6 +447,7 @@ class InterfaceInfoControllerTest {
             request.setDescription("不应保存");
 
             mockMvc.perform(post("/interfaceInfo/update")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request))
                             .session(session))
@@ -455,6 +468,7 @@ class InterfaceInfoControllerTest {
 
             String deleteJson = "{\"id\":" + id + "}";
             mockMvc.perform(post("/interfaceInfo/delete")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(deleteJson)
                             .session(session))
@@ -472,6 +486,7 @@ class InterfaceInfoControllerTest {
             long id = createInterfaceInfo("adminDelApi", "/api/admin_del", "GET", InterfaceInfoStatusEnum.OFFLINE.getValue());
             String deleteJson = "{\"id\":" + id + "}";
             mockMvc.perform(post("/interfaceInfo/delete")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(deleteJson)
                             .session(adminSession))
@@ -488,6 +503,7 @@ class InterfaceInfoControllerTest {
             String deleteJson = "{\"id\":0}";
 
             mockMvc.perform(post("/interfaceInfo/delete")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(deleteJson)
                             .session(session))
@@ -506,6 +522,7 @@ class InterfaceInfoControllerTest {
                     InterfaceInfoStatusEnum.ONLINE.getValue());
 
             mockMvc.perform(post("/interfaceInfo/delete")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"id\":" + id + "}")
                             .session(session))
@@ -701,6 +718,7 @@ class InterfaceInfoControllerTest {
             // 发布（会因网关不可用而失败，但应验证状态机转换）
             String onlineJson = "{\"id\":" + id + "}";
             mockMvc.perform(post("/interfaceInfo/online")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(onlineJson)
                             .session(adminSession))
@@ -721,6 +739,7 @@ class InterfaceInfoControllerTest {
 
             String onlineJson = "{\"id\":" + id + "}";
             mockMvc.perform(post("/interfaceInfo/online")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(onlineJson)
                             .session(userSession))
@@ -735,6 +754,7 @@ class InterfaceInfoControllerTest {
 
             String onlineJson = "{\"id\":99999}";
             mockMvc.perform(post("/interfaceInfo/online")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(onlineJson)
                             .session(adminSession))
@@ -751,6 +771,7 @@ class InterfaceInfoControllerTest {
             // 尝试再次发布
             String onlineJson = "{\"id\":" + id + "}";
             mockMvc.perform(post("/interfaceInfo/online")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(onlineJson)
                             .session(adminSession))
@@ -765,6 +786,7 @@ class InterfaceInfoControllerTest {
 
             String onlineJson = "{\"id\":0}";
             mockMvc.perform(post("/interfaceInfo/online")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(onlineJson)
                             .session(adminSession))
@@ -786,6 +808,7 @@ class InterfaceInfoControllerTest {
             // 下线
             String offlineJson = "{\"id\":" + id + "}";
             mockMvc.perform(post("/interfaceInfo/offline")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(offlineJson)
                             .session(adminSession))
@@ -807,6 +830,7 @@ class InterfaceInfoControllerTest {
             // 非管理员尝试下线
             String offlineJson = "{\"id\":" + id + "}";
             mockMvc.perform(post("/interfaceInfo/offline")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(offlineJson)
                             .session(userSession))
@@ -823,6 +847,7 @@ class InterfaceInfoControllerTest {
             // 接口是 OFFLINE 状态，尝试下线
             String offlineJson = "{\"id\":" + id + "}";
             mockMvc.perform(post("/interfaceInfo/offline")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(offlineJson)
                             .session(adminSession))
@@ -837,6 +862,7 @@ class InterfaceInfoControllerTest {
 
             String offlineJson = "{\"id\":99999}";
             mockMvc.perform(post("/interfaceInfo/offline")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(offlineJson)
                             .session(adminSession))
@@ -851,6 +877,7 @@ class InterfaceInfoControllerTest {
 
             String offlineJson = "{\"id\":0}";
             mockMvc.perform(post("/interfaceInfo/offline")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(offlineJson)
                             .session(adminSession))
@@ -873,6 +900,7 @@ class InterfaceInfoControllerTest {
             request.setUserRequestParams("{\"name\":\"test\"}");
 
             mockMvc.perform(post("/interfaceInfo/invoke")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request))
                             .session(session))
@@ -891,6 +919,7 @@ class InterfaceInfoControllerTest {
             invokeRequest.setUserRequestParams("{\"name\":\"test\"}");
 
             mockMvc.perform(post("/interfaceInfo/invoke")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(invokeRequest))
                             .session(session))
@@ -907,6 +936,7 @@ class InterfaceInfoControllerTest {
             request.setId(0L);
 
             mockMvc.perform(post("/interfaceInfo/invoke")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request))
                             .session(session))
@@ -926,6 +956,7 @@ class InterfaceInfoControllerTest {
             request.setUserRequestParams("{\"name\":\"test\"");
 
             mockMvc.perform(post("/interfaceInfo/invoke")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request))
                             .session(session))
@@ -946,6 +977,7 @@ class InterfaceInfoControllerTest {
             request.setUserRequestParams("{\"ip\":\"8.8.8.8\"}");
 
             mockMvc.perform(post("/interfaceInfo/invoke")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request))
                             .session(session))
@@ -966,6 +998,7 @@ class InterfaceInfoControllerTest {
             request.setUserRequestParams("{\"ip\":123}");
 
             mockMvc.perform(post("/interfaceInfo/invoke")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request))
                             .session(session))
@@ -986,6 +1019,7 @@ class InterfaceInfoControllerTest {
             request.setUserRequestParams("");
 
             mockMvc.perform(post("/interfaceInfo/invoke")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request))
                             .session(session))
