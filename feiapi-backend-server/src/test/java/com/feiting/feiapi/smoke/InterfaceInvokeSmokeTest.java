@@ -28,6 +28,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -102,6 +103,7 @@ class InterfaceInvokeSmokeTest {
         loginRequest.setUserPassword(TEST_PASSWORD);
         MockHttpSession session = new MockHttpSession();
         mockMvc.perform(post("/user/login")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(loginRequest))
                         .session(session))
@@ -211,6 +213,7 @@ class InterfaceInvokeSmokeTest {
             addRequest.setRequestParams("");
 
             MvcResult createResult = mockMvc.perform(post("/interfaceInfo/add")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(addRequest))
                             .session(adminSession))
@@ -228,6 +231,7 @@ class InterfaceInvokeSmokeTest {
             // ======== Step2: 发布接口（mock 成功，状态变为 ONLINE） ========
             String onlineJson = "{\"id\":" + interfaceInfoId + "}";
             mockMvc.perform(post("/interfaceInfo/online")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(onlineJson)
                             .session(adminSession))
@@ -247,6 +251,7 @@ class InterfaceInvokeSmokeTest {
             invokeRequest.setUserRequestParams("");
 
             MvcResult invokeResult = mockMvc.perform(post("/interfaceInfo/invoke")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(invokeRequest))
                             .session(userSession))
@@ -263,6 +268,7 @@ class InterfaceInvokeSmokeTest {
             // ======== Step4: 下线接口，验证 ONLINE -> OFFLINE ========
             String offlineJson = "{\"id\":" + interfaceInfoId + "}";
             mockMvc.perform(post("/interfaceInfo/offline")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(offlineJson)
                             .session(adminSession))
@@ -277,6 +283,7 @@ class InterfaceInvokeSmokeTest {
 
             // ======== Step5: 已下线接口不可再次调用 ========
             mockMvc.perform(post("/interfaceInfo/invoke")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(invokeRequest))
                             .session(userSession))
@@ -321,6 +328,7 @@ class InterfaceInvokeSmokeTest {
             addRequest.setMethod("GET");
 
             MvcResult createResult = mockMvc.perform(post("/interfaceInfo/add")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(addRequest))
                             .session(adminSession))
@@ -340,6 +348,7 @@ class InterfaceInvokeSmokeTest {
             // 网关不可用，发布验证会失败，但应验证状态机正确转换和回滚
             String onlineJson = "{\"id\":" + interfaceInfoId + "}";
             MvcResult onlineResult = mockMvc.perform(post("/interfaceInfo/online")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(onlineJson)
                             .session(adminSession))
@@ -365,6 +374,7 @@ class InterfaceInvokeSmokeTest {
             invokeRequest.setUserRequestParams("");
 
             mockMvc.perform(post("/interfaceInfo/invoke")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(invokeRequest))
                             .session(userSession))
@@ -397,6 +407,7 @@ class InterfaceInvokeSmokeTest {
             // 普通用户（非创建者）尝试删除接口应失败
             String deleteJson = "{\"id\":" + interfaceInfoId + "}";
             mockMvc.perform(post("/interfaceInfo/delete")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(deleteJson)
                             .session(otherSession))
@@ -405,6 +416,7 @@ class InterfaceInvokeSmokeTest {
 
             // 普通用户（创建者）尝试删除接口也应失败（需要管理员权限）
             mockMvc.perform(post("/interfaceInfo/delete")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(deleteJson)
                             .session(ownerSession))
@@ -458,6 +470,7 @@ class InterfaceInvokeSmokeTest {
 
             String onlineJson = "{\"id\":" + interfaceInfoId + "}";
             mockMvc.perform(post("/interfaceInfo/online")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(onlineJson)
                             .session(adminSession))
@@ -470,6 +483,7 @@ class InterfaceInvokeSmokeTest {
             invokeRequest.setUserRequestParams("");
 
             mockMvc.perform(post("/interfaceInfo/invoke")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(invokeRequest)))
                     .andExpect(status().isOk())

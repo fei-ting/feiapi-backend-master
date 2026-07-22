@@ -4,11 +4,12 @@ spring:
     url: jdbc:mysql://${FEIAPI_DB_HOST}:${FEIAPI_DB_PORT:3306}/${FEIAPI_DB_NAME}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: ${FEIAPI_DB_USERNAME}
     password: ${FEIAPI_DB_PASSWORD}
-  redis:
-    host: ${FEIAPI_REDIS_HOST}
-    port: ${FEIAPI_REDIS_PORT:6379}
-    database: ${FEIAPI_REDIS_DATABASE:0}
-    password: ${FEIAPI_REDIS_PASSWORD}
+  data:
+    redis:
+      host: ${FEIAPI_REDIS_HOST}
+      port: ${FEIAPI_REDIS_PORT:6379}
+      database: ${FEIAPI_REDIS_DATABASE:0}
+      password: ${FEIAPI_REDIS_PASSWORD}
 
 server:
   port: 9527
@@ -16,7 +17,6 @@ server:
     context-path: /api
     session:
       cookie:
-        domain: ${FEIAPI_COOKIE_DOMAIN}
         same-site: ${FEIAPI_COOKIE_SAME_SITE:Lax}
         secure: ${FEIAPI_COOKIE_SECURE:true}
 

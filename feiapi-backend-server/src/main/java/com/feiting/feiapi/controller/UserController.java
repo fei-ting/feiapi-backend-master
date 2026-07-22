@@ -107,7 +107,7 @@ public class UserController {
         }
         User sessionUser = userSessionManager.getLoginUser(request);
         boolean result = userService.userLogout(sessionUser);
-        userSessionManager.removeLoginUser(request);
+        userSessionManager.invalidateSession(request);
         return ResultUtils.success(result);
     }
 

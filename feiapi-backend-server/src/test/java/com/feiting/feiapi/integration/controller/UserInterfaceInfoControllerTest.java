@@ -28,6 +28,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -77,6 +78,7 @@ class UserInterfaceInfoControllerTest {
         loginRequest.setUserPassword("password123");
         MockHttpSession session = new MockHttpSession();
         mockMvc.perform(post("/user/login")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(loginRequest))
                         .session(session))
@@ -143,6 +145,7 @@ class UserInterfaceInfoControllerTest {
                     + ",\"totalNum\":0,\"leftNum\":100,\"status\":0}";
 
             mockMvc.perform(post("/userInterfaceInfo/add")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(json)
                             .session(session))
@@ -169,6 +172,7 @@ class UserInterfaceInfoControllerTest {
                     + ",\"totalNum\":999,\"leftNum\":888,\"status\":1}";
 
             MvcResult result = mockMvc.perform(post("/userInterfaceInfo/add")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(json)
                             .session(session))
@@ -196,6 +200,7 @@ class UserInterfaceInfoControllerTest {
             MockHttpSession session = loginAsUser("uba02");
 
             mockMvc.perform(post("/userInterfaceInfo/add")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .session(session))
                     .andExpect(status().isOk())
@@ -299,6 +304,7 @@ class UserInterfaceInfoControllerTest {
             // 删除
             String deleteJson = "{\"id\":" + id + "}";
             mockMvc.perform(post("/userInterfaceInfo/delete")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(deleteJson)
                             .session(session))
@@ -319,6 +325,7 @@ class UserInterfaceInfoControllerTest {
 
             String deleteJson = "{\"id\":" + id + "}";
             mockMvc.perform(post("/userInterfaceInfo/delete")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(deleteJson)
                             .session(adminSession))
@@ -336,6 +343,7 @@ class UserInterfaceInfoControllerTest {
             String json = "{\"id\":0}";
 
             mockMvc.perform(post("/userInterfaceInfo/delete")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(json)
                             .session(session))
@@ -350,6 +358,7 @@ class UserInterfaceInfoControllerTest {
             String json = "{\"id\":99999}";
 
             mockMvc.perform(post("/userInterfaceInfo/delete")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(json)
                             .session(session))
@@ -370,6 +379,7 @@ class UserInterfaceInfoControllerTest {
             MockHttpSession session2 = loginAsUser("udr01");
             String deleteJson = "{\"id\":" + id + "}";
             mockMvc.perform(post("/userInterfaceInfo/delete")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(deleteJson)
                             .session(session2))
@@ -395,6 +405,7 @@ class UserInterfaceInfoControllerTest {
 
             String updateJson = "{\"id\":" + id + ",\"leftNum\":50,\"totalNum\":99,\"status\":1}";
             mockMvc.perform(post("/userInterfaceInfo/update")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(updateJson)
                             .session(session))
@@ -421,6 +432,7 @@ class UserInterfaceInfoControllerTest {
                     + ",\"interfaceInfoId\":" + newInterfaceInfoId
                     + ",\"leftNum\":50,\"totalNum\":99,\"status\":1}";
             mockMvc.perform(post("/userInterfaceInfo/update")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(updateJson)
                             .session(adminSession))
@@ -441,6 +453,7 @@ class UserInterfaceInfoControllerTest {
             String json = "{\"id\":0}";
 
             mockMvc.perform(post("/userInterfaceInfo/update")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(json)
                             .session(session))
@@ -455,6 +468,7 @@ class UserInterfaceInfoControllerTest {
             String json = "{\"id\":99999,\"leftNum\":50}";
 
             mockMvc.perform(post("/userInterfaceInfo/update")
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(json)
                             .session(session))

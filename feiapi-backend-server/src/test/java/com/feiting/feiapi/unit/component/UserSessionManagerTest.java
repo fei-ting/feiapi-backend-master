@@ -6,6 +6,7 @@ import com.feiting.feiapicommon.model.entity.User;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpSession;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -21,18 +22,36 @@ class UserSessionManagerTest {
     private final UserSessionManager userSessionManager = new UserSessionManager();
 
     @Test
-    @DisplayName("保存登录用户后可从 Session 读取")
-    void shouldSaveAndGetLoginUser() {
+    @DisplayName("没有 Session 时保存登录用户会创建新 Session")
+    void shouldCreateSessionWhenSavingLoginUserWithoutExistingSession() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         User user = new User();
         user.setId(1L);
         user.setUserAccount("sessionUser");
 
+        assertThat(request.getSession(false)).isNull();
+
         userSessionManager.saveLoginUser(request, user);
 
         User sessionUser = userSessionManager.getLoginUser(request);
+        assertThat(request.getSession(false)).isNotNull();
         assertThat(sessionUser).isSameAs(user);
         assertThat(request.getSession().getAttribute(UserConstant.USER_LOGIN_STATE)).isSameAs(user);
+    }
+
+    @Test
+    @DisplayName("已有 Session 时保存登录用户会轮换 Session ID")
+    void shouldRotateSessionIdWhenSavingLoginUserWithExistingSession() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        MockHttpSession session = (MockHttpSession) request.getSession();
+        String originalSessionId = session.getId();
+        User user = new User();
+        user.setId(1L);
+
+        userSessionManager.saveLoginUser(request, user);
+
+        assertThat(session.getId()).isNotEqualTo(originalSessionId);
+        assertThat(userSessionManager.getLoginUser(request)).isSameAs(user);
     }
 
     @Test
@@ -46,16 +65,29 @@ class UserSessionManagerTest {
     }
 
     @Test
-    @DisplayName("清除登录用户后 Session 中不再保留用户")
-    void shouldRemoveLoginUser() {
+    @DisplayName("销毁 Session 后原会话失效且不能读取登录用户")
+    void shouldInvalidateSessionAndRemoveLoginUser() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         User user = new User();
         user.setId(1L);
         userSessionManager.saveLoginUser(request, user);
+        MockHttpSession session = (MockHttpSession) request.getSession(false);
 
-        userSessionManager.removeLoginUser(request);
+        userSessionManager.invalidateSession(request);
 
+        assertThat(session).isNotNull();
+        assertThat(session.isInvalid()).isTrue();
+        assertThat(request.getSession(false)).isNull();
         assertThat(userSessionManager.getLoginUser(request)).isNull();
-        assertThat(request.getSession().getAttribute(UserConstant.USER_LOGIN_STATE)).isNull();
+    }
+
+    @Test
+    @DisplayName("不存在 Session 时销毁操作不会创建新 Session")
+    void shouldNotCreateSessionWhenInvalidatingWithoutExistingSession() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+
+        userSessionManager.invalidateSession(request);
+
+        assertThat(request.getSession(false)).isNull();
     }
 }

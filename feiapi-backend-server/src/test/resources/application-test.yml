@@ -29,6 +29,9 @@ server:
   port: 0
   servlet:
     context-path: /
+    session:
+      cookie:
+        secure: false
 
 mybatis-plus:
   configuration:
