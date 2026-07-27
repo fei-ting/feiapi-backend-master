@@ -70,8 +70,9 @@ doc_status varchar(16) default 'DRAFT' not null comment '文档状态 DRAFT-草�
 
 `InterfaceDocDetailVO` 增加顶层 `docStatus`：
 
-- 文档主记录存在时返回持久化状态。
 - 文档主记录不存在时返回 `DRAFT`，不得返回空状态。
+- 文档主记录存在时，持久化状态必须为 `DRAFT` 或 `READY`。
+- 已有主记录的状态为空或非法时，按数据一致性异常处理：记录不包含文档正文或敏感内容的错误日志，聚合查询失败并交由统一异常处理，不得静默降级为 `DRAFT`，也不得对外返回空状态或非法值。
 - 不通过参数记录或错误码记录推断状态。
 - `structuredDocMissing == true` 时强制返回 `DRAFT`。
 - `structuredDocMissing == false` 时可以返回 `DRAFT` 或 `READY`。
@@ -201,6 +202,7 @@ doc_status varchar(16) default 'DRAFT' not null comment '文档状态 DRAFT-草�
 - 非管理员仍不能保存接口文档或发布接口。
 - `ONLINE`、`PUBLISHING` 接口仍不能保存文档。
 - 非法文档状态拒绝保存，不进行默认纠正。
+- 已有文档主记录的持久化状态为空或非法时视为数据一致性异常，聚合查询失败，发布入口直接拒绝；不得通过查询默认值掩盖异常数据。
 - `DRAFT` 不能绕过敏感数据、脚本、内部实现信息、JSON 64 层深度和长度限制。
 - 前端提交的 `docStatus` 不能绕过后端完整性校验。
 - `DRAFT` 和 `READY` 都不能通过虚假的参数或错误码占位记录规避列表允许为空的业务规则。
@@ -216,7 +218,7 @@ doc_status varchar(16) default 'DRAFT' not null comment '文档状态 DRAFT-草�
 - DTO：`docStatus` 缺失、空白时校验失败。
 - 状态枚举：只接受 `DRAFT`、`READY`。
 - 新增接口：自动创建 `DRAFT` 文档。
-- 聚合查询：主记录缺失返回 `DRAFT` 且 `structuredDocMissing` 为真；`READY` 文档的缺失标记为假。
+- 聚合查询：主记录缺失返回 `DRAFT` 且 `structuredDocMissing` 为真；`READY` 文档的缺失标记为假；已有主记录的状态为空或非法时查询失败且不会静默降级。
 - 草稿保存：允许缺少说明、响应字段、示例和错误码；非法 JSON 或不安全内容仍被拒绝。
 - 完成维护：拒绝缺少请求参数说明、系统占位说明、缺少响应说明以及 JSON 响应缺少成功示例。
 - 完成维护：允许无参数、无响应字段、JSON 标量响应、无响应体和无错误码；允许非 JSON 响应没有成功示例。
