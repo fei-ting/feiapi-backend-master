@@ -16,10 +16,12 @@
 
 本次不增加文档废弃状态、并发编辑控制、审计变更表、Java SDK 示例或导出能力，也不修改网关、SDK 和接口提供方的主调用链路。
 
+本设计的业务规则、边界条件和验收口径以项目根目录 `doc/Feiapi平台接口文档能力落地计划.md` 的 2.2、2.3 为唯一基准；涉及请求参数所有权时沿用该计划 2.5 的既有边界。本设计只把计划映射为当前代码结构下的实现方案，不新增或放宽业务规则。若两份文档出现表述差异，以落地计划为准。
+
 ## 2. 验收条件
 
 1. 新增接口时同步创建的文档主记录状态为 `DRAFT`。
-2. 历史文档迁移后统一为 `DRAFT`，历史在线接口不自动下线。
+2. 开发环境按更新后的完整建表脚本初始化，文档状态默认统一为 `DRAFT`；构造为 `DRAFT` 的在线接口不自动下线。
 3. 聚合详情和后台接口列表始终返回非空的 `docStatus`；文档主记录缺失时返回 `DRAFT`。
 4. `structuredDocMissing == true` 时 `docStatus` 必须为 `DRAFT`；`docStatus == READY` 时 `structuredDocMissing` 必须为 `false`。
 5. 保存草稿执行现有权限、状态、枚举、数量、长度、重复项、父子关系、运行时参数所有权、JSON 语法和内容安全校验，但允许内容暂不完整。
@@ -39,7 +41,7 @@
 
 后端把客户端提交的状态视为维护意图，而不是无条件赋值：状态必须属于枚举；`READY` 必须额外通过完整性校验；`DRAFT` 也不能绕过现有结构和安全校验。
 
-## 4. 数据模型与迁移
+## 4. 数据模型
 
 ### 4.1 表结构
 
@@ -49,9 +51,9 @@
 doc_status varchar(16) default 'DRAFT' not null comment '文档状态 DRAFT-草稿 READY-已完成'
 ```
 
-`sql/interface_doc.sql` 更新为最新的完整建表定义。另新增一次性迁移脚本 `sql/interface_doc_status_migration.sql`，用于已有环境增加字段并显式将历史记录统一为 `DRAFT`。
+`sql/interface_doc.sql` 更新为最新的完整建表定义。项目仍处于开发阶段，本次通过重建或重新初始化开发数据库应用完整建表脚本，不新增数据库迁移脚本，也不提供兼容旧表结构的 `ALTER TABLE` 或历史数据更新脚本。
 
-迁移脚本不修改 `interface_info.status`，因此历史在线接口保持在线。部署时必须先执行数据库迁移，再发布读取 `doc_status` 的后端版本。
+文档字段默认值保证新初始化的数据状态为 `DRAFT`。接口生命周期与文档状态彼此独立：即使测试或开发数据中的在线接口文档为 `DRAFT`，也不得触发自动下线。
 
 ### 4.2 状态枚举
 
@@ -69,8 +71,11 @@ doc_status varchar(16) default 'DRAFT' not null comment '文档状态 DRAFT-草�
 `InterfaceDocDetailVO` 增加顶层 `docStatus`：
 
 - 文档主记录存在时返回持久化状态。
-- 文档主记录不存在、状态为空或状态非法时，安全降级为 `DRAFT`。
+- 文档主记录不存在时返回 `DRAFT`，不得返回空状态。
 - 不通过参数记录或错误码记录推断状态。
+- `structuredDocMissing == true` 时强制返回 `DRAFT`。
+- `structuredDocMissing == false` 时可以返回 `DRAFT` 或 `READY`。
+- `READY` 只能来自已存在的文档主记录，因此必须满足 `structuredDocMissing == false`。
 
 `InterfaceInfoVO` 增加 `docStatus`，供后台接口列表显示。列表查询取得当前页接口后，由文档服务按接口 ID 集合批量查询状态并补齐，避免逐行查询。按调用总数排序的自定义分页结果也复用同一批量补齐流程，不修改分页和排序语义。
 
@@ -87,28 +92,46 @@ doc_status varchar(16) default 'DRAFT' not null comment '文档状态 DRAFT-草�
 
 以上步骤继续由 `InterfaceDocService.saveDoc` 的事务统一控制，任一步骤失败均回滚。
 
-### 5.3 完整性校验
+### 5.3 草稿与完成维护校验
 
-进入 `READY` 时增加以下规则：
+`DRAFT` 与 `READY` 共同执行以下校验：
 
-- 运行时模板存在请求参数时，保存请求中的请求参数必须与最新模板完整对应；该规则已经由现有运行时参数所有权校验保证。
+- 权限、接口生命周期状态、枚举、数量、长度、重复项、父子关系和内容类型校验。
+- 运行时模板存在请求参数时，保存请求中的请求参数必须与最新模板完整对应；运行时模板为空时，请求参数列表允许为空。
+- 成功或失败示例任一非空时，必须通过 JSON 语法、长度、64 层深度、敏感数据和内容安全校验。
+- 错误码记录存在时，`errorCode`、`errorMessage` 必填，错误说明和解决建议可选。
+- 禁止用“无”“暂无”等占位记录填充参数或错误码列表。实现至少拒绝计划明确列出的“无”和“暂无”关键标识，不自行扩大模糊匹配范围，避免误伤合法公开说明。
+
+`DRAFT` 只放宽完整性要求，允许参数说明、成功或失败示例、响应字段和错误码暂未填写。非法或不安全的数据不能以草稿名义保存。
+
+进入 `READY` 时，在共同校验基础上增加以下完整性规则：
+
 - 所有已经存在的请求参数必须填写非空公开说明。
 - 请求参数说明不能等于系统占位文案“由接口运行时参数模板自动生成”。比较前去除首尾空白。
 - 所有已经存在的响应字段必须填写非空公开说明。
-- 响应内容类型为 `application/json` 时，成功响应示例必须非空；其 JSON 语法、深度、敏感数据和内容安全继续由现有校验器负责。
-- 非 JSON 响应允许成功响应示例为空。
-- 失败响应示例始终可选；非空时仍必须通过现有校验。
+- 不要求至少存在一个请求参数或响应参数；无参数接口、纯文本响应、二进制响应、JSON 标量响应和无响应体接口均属于合法场景。
+- 响应内容类型为 `application/json` 时，成功响应示例必须非空。
+- 非 JSON 响应允许成功响应示例为空，失败响应示例始终可选。
 - 请求参数、响应字段和接口错误码列表均允许为空。
-- 错误码存在时继续要求 `errorCode` 和 `errorMessage`，说明与解决建议可选。
-- 默认值和单字段示例值不作为完成维护的强制条件。
+- 平台鉴权、签名、配额和网关通用错误码由平台统一维护，不要求每个接口重复录入。
+- 参数默认值和单字段示例值不作为强制条件。
 
-草稿保存不执行上述完整性要求，但仍执行所有结构和安全校验。
+### 5.4 请求参数所有权边界
 
-### 5.4 新增接口
+状态能力不改变落地计划 2.5 已确定的请求参数所有权：
+
+- `interface_info.request_params` 仍是请求参数名称、位置、类型和必填性的唯一权威来源。
+- 文档保存不能新增、删除、改名请求参数，也不能修改其位置、类型和必填性。
+- 请求参数必须按名称完全一致且区分大小写与最新运行时模板对应。
+- 文档页只允许维护默认值、示例值、说明、校验规则和排序，这些字段不得反向影响真实调用校验。
+- 当前模板生成的请求参数仍全部为必填参数，本次不扩展可选参数协议。
+- 聚合保存继续拒绝 `paramScene=HEADER`；协议 Header 仍根据文档主记录动态生成，不写入参数表。
+
+### 5.5 新增接口
 
 `syncRequestDocFromInterfaceInfo` 当前会确保文档主记录存在。新建主记录时显式写入 `DRAFT`，随后同步运行时请求参数文档。接口信息新增、文档创建和参数同步继续位于 `InterfaceInfoLifecycleService.addInterfaceInfoWithDoc` 的同一事务。
 
-### 5.5 配置变更降级
+### 5.6 配置变更降级
 
 `InterfaceInfoLifecycleService.updateInterfaceInfoWithDoc` 在条件更新成功后读取最新数据库记录，并比较更新前后的以下受控字段：
 
@@ -129,7 +152,9 @@ doc_status varchar(16) default 'DRAFT' not null comment '文档状态 DRAFT-草�
 
 接口更新、参数同步和状态降级共享现有事务。调用次数、更新时间和发布状态等非管理员维护字段不参与比较。文档已经是 `DRAFT` 时允许幂等更新，不额外创建记录。
 
-### 5.6 发布门禁
+有效修改导致文档降为 `DRAFT` 后，即使文档正文不需要调整，管理员也必须重新执行“完成维护”，明确确认接口配置、文档内容和调用示例仍然一致。
+
+### 5.7 发布门禁
 
 在接口由 `OFFLINE` 转为 `PUBLISHING` 之前调用文档服务进行发布资格校验：
 
@@ -138,7 +163,7 @@ doc_status varchar(16) default 'DRAFT' not null comment '文档状态 DRAFT-草�
 
 不满足条件时抛出统一业务异常，提示“接口文档待完善，请先完成文档维护”。校验发生在任何发布状态更新和探测调用之前，因此失败请求不会进入 `PUBLISHING`。
 
-已处于 `ONLINE` 的历史接口不会主动经过该门禁，也不会因迁移为 `DRAFT` 自动下线。其后若先下线，再次发布时必须满足 `READY`。
+已处于 `ONLINE` 且文档为 `DRAFT` 的接口不会主动经过该门禁，也不会自动下线。其后若先下线，再次发布时必须满足 `READY`。接口下线和发布失败恢复为 `OFFLINE` 均不改变文档状态。
 
 ## 6. 前端设计
 
@@ -176,8 +201,9 @@ doc_status varchar(16) default 'DRAFT' not null comment '文档状态 DRAFT-草�
 - 非管理员仍不能保存接口文档或发布接口。
 - `ONLINE`、`PUBLISHING` 接口仍不能保存文档。
 - 非法文档状态拒绝保存，不进行默认纠正。
-- `DRAFT` 不能绕过敏感数据、脚本、内部实现信息、JSON 深度和长度限制。
+- `DRAFT` 不能绕过敏感数据、脚本、内部实现信息、JSON 64 层深度和长度限制。
 - 前端提交的 `docStatus` 不能绕过后端完整性校验。
+- `DRAFT` 和 `READY` 都不能通过虚假的参数或错误码占位记录规避列表允许为空的业务规则。
 - 批量状态查询只返回请求接口 ID 对应的数据，不暴露额外文档内容。
 - 本次不在日志中记录文档正文、密钥或示例中的敏感内容。
 
@@ -193,9 +219,12 @@ doc_status varchar(16) default 'DRAFT' not null comment '文档状态 DRAFT-草�
 - 聚合查询：主记录缺失返回 `DRAFT` 且 `structuredDocMissing` 为真；`READY` 文档的缺失标记为假。
 - 草稿保存：允许缺少说明、响应字段、示例和错误码；非法 JSON 或不安全内容仍被拒绝。
 - 完成维护：拒绝缺少请求参数说明、系统占位说明、缺少响应说明以及 JSON 响应缺少成功示例。
-- 完成维护：允许无参数、无响应字段、无错误码；允许非 JSON 响应没有成功示例。
+- 完成维护：允许无参数、无响应字段、JSON 标量响应、无响应体和无错误码；允许非 JSON 响应没有成功示例。
+- 占位记录：`DRAFT` 和 `READY` 都拒绝以“无”“暂无”作为关键标识的虚假参数或错误码记录。
+- JSON 示例：两种状态下的非空示例都执行长度、64 层深度、敏感数据和内容安全校验。
+- 请求参数所有权：两种状态均拒绝缺失、额外、改名、位置变化、类型变化或必填性变化的请求参数。
 - 发布门禁：缺少文档、`DRAFT` 均拒绝，`READY` 才进入现有发布探测流程。
-- 历史在线接口：`DRAFT` 状态不导致自动下线。
+- 在线兼容：构造为 `DRAFT` 的在线接口不导致自动下线。
 - 配置降级：九类受控字段任一有效变化后状态变为 `DRAFT`。
 - 无效变化：标准化后相同的提交保持 `READY`。
 - 事务：请求参数同步或状态降级失败时，接口信息更新整体回滚。
@@ -217,7 +246,6 @@ doc_status varchar(16) default 'DRAFT' not null comment '文档状态 DRAFT-草�
 后端：
 
 - `sql/interface_doc.sql`
-- `sql/interface_doc_status_migration.sql`（新增）
 - `feiapi-backend-server/src/main/java/com/feiting/feiapi/model/entity/InterfaceDoc.java`
 - `feiapi-backend-server/src/main/java/com/feiting/feiapi/model/enums/InterfaceDocStatusEnum.java`（新增）
 - `feiapi-backend-server/src/main/java/com/feiting/feiapi/model/dto/interfaceDoc/InterfaceDocSaveRequest.java`
