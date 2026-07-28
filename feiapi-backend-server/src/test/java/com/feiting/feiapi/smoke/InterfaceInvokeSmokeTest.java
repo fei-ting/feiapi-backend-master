@@ -16,6 +16,7 @@ import com.feiting.feiapicommon.model.entity.User;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
 import jakarta.annotation.Resource;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -78,6 +79,14 @@ class InterfaceInvokeSmokeTest {
      */
     @MockBean
     private SdkMethodRegistry sdkMethodRegistry;
+
+    /**
+     * 配置烟雾测试使用的 SDK 方法注册能力。
+     */
+    @BeforeEach
+    void setUpSdkMethodRegistry() {
+        Mockito.when(sdkMethodRegistry.supports("getLoveWords")).thenReturn(true);
+    }
 
     /**
      * 配置 mock 返回成功响应。

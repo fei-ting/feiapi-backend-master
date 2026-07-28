@@ -47,6 +47,14 @@ class SdkMethodRegistryTest {
         }
 
         @Test
+        @DisplayName("支持性判断只接受已注册方法")
+        void shouldReportWhetherMethodIsSupported() {
+            assertTrue(registry.supports("getLoveWords"));
+            assertFalse(registry.supports("nonExistentMethod"));
+            assertFalse(registry.supports(null));
+        }
+
+        @Test
         @DisplayName("不注册没有 @SdkInvoke 注解的方法")
         void shouldNotRegisterUnannotatedMethods() {
             Map<String, Method> methodMap = registry.getMethodMap();

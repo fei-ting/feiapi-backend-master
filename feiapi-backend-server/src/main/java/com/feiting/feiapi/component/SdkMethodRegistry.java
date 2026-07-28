@@ -21,8 +21,14 @@ import java.util.Map;
 @Component
 public class SdkMethodRegistry {
 
+    /**
+     * SDK 方法名与反射方法的映射。
+     */
     private final Map<String, Method> methodMap = new HashMap<>();
 
+    /**
+     * 初始化允许调用的 SDK 方法映射。
+     */
     @PostConstruct
     public void init() {
         for (Method method : FeiApiClient.class.getDeclaredMethods()) {
@@ -35,6 +41,14 @@ public class SdkMethodRegistry {
         }
     }
 
+    /**
+     * 调用已注册的 SDK 方法。
+     *
+     * @param client        SDK 客户端
+     * @param methodName    SDK 方法名
+     * @param requestParams 请求参数
+     * @return SDK 方法调用结果
+     */
     public Object invoke(FeiApiClient client, String methodName, String requestParams) {
         Method method = methodMap.get(methodName);
         if (method == null) {
@@ -62,6 +76,21 @@ public class SdkMethodRegistry {
         }
     }
 
+    /**
+     * 判断 SDK 方法是否已注册。
+     *
+     * @param methodName SDK 方法名
+     * @return 是否支持该方法
+     */
+    public boolean supports(String methodName) {
+        return methodMap.containsKey(methodName);
+    }
+
+    /**
+     * 获取不可修改的 SDK 方法映射。
+     *
+     * @return SDK 方法映射
+     */
     public Map<String, Method> getMethodMap() {
         return Collections.unmodifiableMap(methodMap);
     }

@@ -30,4 +30,26 @@ public interface InterfaceInfoLifecycleService {
      * @return 是否删除成功
      */
     Boolean deleteOfflineInterfaceInfo(Long interfaceInfoId);
+
+    /**
+     * 校验发布条件并将下线接口切换为发布中状态。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     * @return 发布中的接口快照
+     */
+    InterfaceInfo startPublishing(Long interfaceInfoId);
+
+    /**
+     * 将发布中的接口切换为上线状态。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     */
+    void completePublishing(Long interfaceInfoId);
+
+    /**
+     * 将发布中的接口恢复为下线状态。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     */
+    void rollbackPublishing(Long interfaceInfoId);
 }

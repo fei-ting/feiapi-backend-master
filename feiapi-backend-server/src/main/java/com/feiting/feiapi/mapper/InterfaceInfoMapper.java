@@ -6,6 +6,7 @@ import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoQueryRequest;
 import com.feiting.feiapi.model.vo.InterfaceInfoVO;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 /**
 * @author asus
@@ -14,6 +15,15 @@ import org.apache.ibatis.annotations.Param;
 * @Entity generator.domain.InterfaceInfo
 */
 public interface InterfaceInfoMapper extends BaseMapper<InterfaceInfo> {
+
+    /**
+     * 按主键查询并锁定未删除的接口信息。
+     *
+     * @param id 接口信息 ID
+     * @return 已锁定的接口信息，不存在时返回空
+     */
+    @Select("SELECT * FROM interface_info WHERE id = #{id} AND is_delete = 0 FOR UPDATE")
+    InterfaceInfo selectByIdForUpdate(@Param("id") Long id);
 
     /**
      * 按接口调用总数分页查询接口视图。
