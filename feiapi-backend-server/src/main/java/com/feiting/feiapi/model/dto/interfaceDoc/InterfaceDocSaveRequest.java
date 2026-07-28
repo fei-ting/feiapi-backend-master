@@ -3,6 +3,7 @@ package com.feiting.feiapi.model.dto.interfaceDoc;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -23,6 +24,7 @@ public class InterfaceDocSaveRequest implements Serializable {
 
     /** 文档目标状态，只允许 DRAFT 或 READY。 */
     @NotBlank(message = "文档状态不能为空")
+    @Pattern(regexp = "DRAFT|READY", message = "文档状态只允许 DRAFT 或 READY")
     private String docStatus;
 
     /** 文档版本号。 */

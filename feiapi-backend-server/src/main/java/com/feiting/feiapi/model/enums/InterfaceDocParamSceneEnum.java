@@ -68,9 +68,8 @@ public enum InterfaceDocParamSceneEnum {
         if (value == null) {
             return null;
         }
-        String normalizedValue = value.trim();
         return Arrays.stream(values())
-                .filter(item -> item.value.equals(normalizedValue))
+                .filter(item -> item.value.equals(value))
                 .findFirst()
                 .orElse(null);
     }
