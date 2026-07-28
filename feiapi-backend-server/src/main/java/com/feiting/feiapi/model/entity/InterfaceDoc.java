@@ -35,6 +35,11 @@ public class InterfaceDoc implements Serializable {
     private Long interfaceInfoId;
 
     /**
+     * 文档维护状态，取值为 DRAFT 或 READY。
+     */
+    private String docStatus;
+
+    /**
      * 文档版本号。
      */
     private String docVersion;

@@ -5,6 +5,7 @@ create table if not exists feiapi.`interface_doc`
 (
     `id` bigint not null auto_increment comment '主键' primary key,
     `interface_info_id` bigint not null comment '接口信息 ID',
+    `doc_status` varchar(16) default 'DRAFT' not null comment '文档状态 DRAFT-草稿 READY-已完成',
     `doc_version` varchar(64) default 'v1' not null comment '文档版本号',
     `request_content_type` varchar(128) default 'application/json' not null comment '请求内容类型',
     `response_content_type` varchar(128) default 'application/json' not null comment '响应内容类型',

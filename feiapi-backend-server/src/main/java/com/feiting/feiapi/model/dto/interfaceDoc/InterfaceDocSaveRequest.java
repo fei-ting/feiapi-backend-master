@@ -21,6 +21,10 @@ public class InterfaceDocSaveRequest implements Serializable {
     @Positive(message = "接口 ID 必须大于 0")
     private Long interfaceInfoId;
 
+    /** 文档目标状态，只允许 DRAFT 或 READY。 */
+    @NotBlank(message = "文档状态不能为空")
+    private String docStatus;
+
     /** 文档版本号。 */
     @NotBlank(message = "文档版本号不能为空")
     @Size(max = 64, message = "文档版本号长度不能超过 64")
