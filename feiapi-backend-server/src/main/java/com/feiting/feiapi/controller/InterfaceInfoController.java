@@ -18,6 +18,7 @@ import com.feiting.feiapi.constant.CommonConstant;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
+import com.feiting.feiapi.service.InterfaceDocService;
 import com.feiting.feiapi.service.InterfaceQuotaConfigService;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapi.component.SdkMethodRegistry;
@@ -42,6 +43,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -70,6 +72,12 @@ public class InterfaceInfoController {
 
     @Resource
     private InterfaceInfoLifecycleService interfaceInfoLifecycleService;
+
+    /**
+     * 接口文档服务。
+     */
+    @Resource
+    private InterfaceDocService interfaceDocService;
 
     @Resource
     private InterfaceQuotaConfigService interfaceQuotaConfigService;
@@ -112,7 +120,7 @@ public class InterfaceInfoController {
         }
         InterfaceInfo interfaceInfo = new InterfaceInfo();
         BeanUtils.copyProperties(interfaceInfoAddRequest, interfaceInfo);
-        normalizeInterfaceInfo(interfaceInfo);
+        normalizeInterfaceInfo(interfaceInfo, true);
         // 校验
         interfaceInfoService.validInterfaceInfo(interfaceInfo, true);
         User loginUser = getCurrentLoginUser(request);
@@ -164,7 +172,7 @@ public class InterfaceInfoController {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
         completeUpdateDisplayUrl(interfaceInfo, oldInterfaceInfo);
-        normalizeInterfaceInfo(interfaceInfo);
+        normalizeInterfaceInfo(interfaceInfo, false);
         boolean result = interfaceInfoLifecycleService.updateInterfaceInfoWithDoc(interfaceInfo);
         return ResultUtils.success(result);
     }
@@ -184,7 +192,9 @@ public class InterfaceInfoController {
         if (interfaceInfo == null || !isVisibleToCurrentUser(interfaceInfo, request)) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
-        return ResultUtils.success(toInterfaceInfoVO(interfaceInfo));
+        InterfaceInfoVO interfaceInfoVO = toInterfaceInfoVO(interfaceInfo);
+        completeDocStatus(Collections.singletonList(interfaceInfoVO));
+        return ResultUtils.success(interfaceInfoVO);
     }
 
     /**
@@ -245,6 +255,7 @@ public class InterfaceInfoController {
         interfaceInfoVOPage.setRecords(interfaceInfoPage.getRecords().stream()
                 .map(interfaceInfo -> toInterfaceInfoVO(interfaceInfo, totalNumMap))
                 .collect(Collectors.toList()));
+        completeDocStatus(interfaceInfoVOPage.getRecords());
         return ResultUtils.success(interfaceInfoVOPage);
     }
 
@@ -283,6 +294,7 @@ public class InterfaceInfoController {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口仅支持从下线状态发布");
         }
         String sdkMethodName = getRequiredSdkMethodName(oldInterfaceInfo);
+        interfaceDocService.validateReadyForPublish(id);
 
         // 条件更新：只在当前状态为 OFFLINE 时才更新为 PUBLISHING
         updateInterfaceStatus(id,
@@ -428,7 +440,29 @@ public class InterfaceInfoController {
         interfaceInfoVOPage.setRecords(interfaceInfoVOPage.getRecords().stream()
                 .map(this::completeQuotaInfo)
                 .collect(Collectors.toList()));
+        completeDocStatus(interfaceInfoVOPage.getRecords());
         return interfaceInfoVOPage;
+    }
+
+    /**
+     * 批量补齐接口视图中的文档状态。
+     *
+     * @param records 当前页接口视图列表
+     */
+    private void completeDocStatus(List<InterfaceInfoVO> records) {
+        List<Long> interfaceInfoIds = Optional.ofNullable(records)
+                .orElse(Collections.emptyList())
+                .stream()
+                .filter(Objects::nonNull)
+                .map(InterfaceInfoVO::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        Map<Long, String> docStatusMap = interfaceDocService.listDocStatusByInterfaceInfoIds(interfaceInfoIds);
+        Optional.ofNullable(records)
+                .orElse(Collections.emptyList())
+                .stream()
+                .filter(Objects::nonNull)
+                .forEach(record -> record.setDocStatus(docStatusMap.get(record.getId())));
     }
 
     /**
@@ -457,9 +491,10 @@ public class InterfaceInfoController {
      *
      * <p>请求方法统一转为大写；当接口展示地址为空且接口路径、真实后端服务地址存在时，自动组装展示地址。</p>
      *
-     * @param interfaceInfo 接口信息
+     * @param interfaceInfo  接口信息
+     * @param applyDefaults 是否应用新增接口默认值
      */
-    private void normalizeInterfaceInfo(InterfaceInfo interfaceInfo) {
+    private void normalizeInterfaceInfo(InterfaceInfo interfaceInfo, boolean applyDefaults) {
         if (interfaceInfo == null) {
             return;
         }
@@ -469,9 +504,9 @@ public class InterfaceInfoController {
         if (StringUtils.isNotBlank(interfaceInfo.getSdkMethodName())) {
             interfaceInfo.setSdkMethodName(interfaceInfo.getSdkMethodName().trim());
         }
-        if (StringUtils.isBlank(interfaceInfo.getQuotaType())) {
+        if (applyDefaults && StringUtils.isBlank(interfaceInfo.getQuotaType())) {
             interfaceInfo.setQuotaType(InterfaceQuotaTypeEnum.BASIC_QUOTA.getValue());
-        } else {
+        } else if (StringUtils.isNotBlank(interfaceInfo.getQuotaType())) {
             interfaceInfo.setQuotaType(interfaceInfo.getQuotaType().trim());
         }
         if (StringUtils.isBlank(interfaceInfo.getUrl())

@@ -133,6 +133,7 @@ class InterfaceDocControllerTest {
 
         assertThat(data.has("legacyFallback")).isFalse();
         assertThat(data.get("structuredDocMissing").asBoolean()).isTrue();
+        assertThat(data.get("docStatus").asText()).isEqualTo("DRAFT");
         // 简化断言：只检查 gatewayUrl 包含正确的路径前缀
         assertThat(data.get("gatewayUrl").asText()).contains("/api/legacy_doc_" + pathSuffix);
         assertThat(data.get("interfaceInfo").has("url")).isFalse();
@@ -240,6 +241,166 @@ class InterfaceDocControllerTest {
     }
 
     /**
+     * 测试聚合保存请求必须显式提交文档状态。
+     */
+    @Test
+    @DisplayName("聚合保存接口拒绝缺失文档状态")
+    void shouldRejectMissingDocStatus() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idstatus" + suffix(), "admin");
+        long id = createInterfaceInfo("missingDocStatusApi", "/api/missing_doc_status_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", null);
+        ObjectNode payload = objectMapper.valueToTree(baseSaveRequest(id));
+        payload.remove("docStatus");
+
+        JsonNode response = postSaveJson(adminSession, payload.toString());
+
+        assertThat(response.get("code").asInt()).isEqualTo(40000);
+    }
+
+    /**
+     * 测试完成维护必须满足请求参数说明和 JSON 成功示例完整性。
+     */
+    @Test
+    @DisplayName("完成维护拒绝缺少公开说明和 JSON 成功示例")
+    void shouldRejectIncompleteReadyDoc() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idready" + suffix(), "admin");
+        long id = createInterfaceInfo("incompleteReadyApi", "/api/incomplete_ready_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.getParams().get(0).setDescription("由接口运行时参数模板自动生成");
+        request.setSuccessExample(null);
+        ObjectNode payload = objectMapper.valueToTree(request);
+        payload.put("docStatus", "READY");
+
+        JsonNode response = postSaveJson(adminSession, payload.toString());
+
+        assertThat(response.get("code").asInt()).isEqualTo(40000);
+    }
+
+    /**
+     * 测试草稿只放宽完整性，不要求说明和 JSON 成功示例。
+     */
+    @Test
+    @DisplayName("保存草稿允许内容暂不完整")
+    void shouldAllowIncompleteDraftDoc() throws Exception {
+        MockHttpSession adminSession = loginWithRole("iddraft" + suffix(), "admin");
+        long id = createInterfaceInfo("incompleteDraftApi", "/api/incomplete_draft_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.getParams().get(0).setDescription("");
+        request.setSuccessExample(null);
+
+        saveDocByAdmin(adminSession, request);
+
+        JsonNode data = requestDoc(id, adminSession).get("data");
+        assertThat(data.get("docStatus").asText()).isEqualTo("DRAFT");
+    }
+
+    /**
+     * 测试非 JSON 响应在无参数、无响应字段、无示例和无错误码时也可以完成维护。
+     */
+    @Test
+    @DisplayName("非 JSON 无参数接口允许完成维护")
+    void shouldAllowReadyForEmptyNonJsonDoc() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idnonjson" + suffix(), "admin");
+        long id = createInterfaceInfo("emptyNonJsonApi", "/api/empty_non_json_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "GET", null);
+        InterfaceDocSaveRequest request = baseSaveRequest(id);
+        request.setDocStatus("READY");
+        request.setResponseContentType("text/plain");
+        request.setSuccessExample(null);
+        request.setFailExample(null);
+
+        saveDocByAdmin(adminSession, request);
+
+        assertThat(requestDoc(id, adminSession).get("data").get("docStatus").asText()).isEqualTo("READY");
+    }
+
+    /**
+     * 测试 JSON 标量可作为完成维护的成功响应示例。
+     */
+    @Test
+    @DisplayName("JSON 标量响应允许完成维护")
+    void shouldAllowReadyWithJsonScalarExample() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idscalar" + suffix(), "admin");
+        long id = createInterfaceInfo("jsonScalarApi", "/api/json_scalar_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "GET", null);
+        InterfaceDocSaveRequest request = baseSaveRequest(id);
+        request.setDocStatus("READY");
+        request.setSuccessExample("true");
+
+        saveDocByAdmin(adminSession, request);
+
+        assertThat(requestDoc(id, adminSession).get("data").get("docStatus").asText()).isEqualTo("READY");
+    }
+
+    /**
+     * 测试完成维护拒绝缺少公开说明的响应字段。
+     */
+    @Test
+    @DisplayName("完成维护拒绝缺少说明的响应字段")
+    void shouldRejectReadyWhenResponseDescriptionMissing() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idrespdesc" + suffix(), "admin");
+        long id = createInterfaceInfo("responseDescriptionApi", "/api/response_description_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "GET", null);
+        InterfaceDocSaveRequest request = baseSaveRequest(id);
+        request.setDocStatus("READY");
+        InterfaceDocParamSaveRequest responseParam = param(
+                "responseData", null, "RESPONSE", "data", "string", false, true, 1);
+        responseParam.setDescription(" ");
+        request.setParams(List.of(responseParam));
+
+        assertSaveFailed(adminSession, request, 40000);
+    }
+
+    /**
+     * 测试草稿和完成维护都拒绝虚假的参数或错误码占位记录。
+     */
+    @Test
+    @DisplayName("草稿和完成维护均拒绝无与暂无占位记录")
+    void shouldRejectPlaceholderRecordsForEveryStatus() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idplaceholder" + suffix(), "admin");
+        long paramInterfaceId = createInterfaceInfo("placeholderParamApi", "/api/placeholder_param_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"无\":\"string\"}");
+        InterfaceDocSaveRequest draftRequest = baseSaveRequest(paramInterfaceId);
+        draftRequest.setParams(List.of(param("none", null, "BODY", "无", "string", true, false, 1)));
+
+        assertSaveFailed(adminSession, draftRequest, 40000);
+
+        long errorInterfaceId = createInterfaceInfo("placeholderErrorApi", "/api/placeholder_error_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "GET", null);
+        InterfaceDocSaveRequest readyRequest = baseSaveRequest(errorInterfaceId);
+        readyRequest.setDocStatus("READY");
+        readyRequest.getErrorCodes().add(errorCode("暂无", "没有错误", 1));
+
+        assertSaveFailed(adminSession, readyRequest, 40000);
+    }
+
+    /**
+     * 测试已有主记录的非法状态不会被静默降级为草稿。
+     */
+    @Test
+    @DisplayName("聚合查询拒绝非法持久化文档状态")
+    void shouldRejectIllegalPersistedDocStatus() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idillegal" + suffix(), "admin");
+        long id = createInterfaceInfo("illegalDocStatusApi", "/api/illegal_doc_status_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "GET", null);
+        InterfaceDoc doc = buildDoc(id, "v1");
+        doc.setDocStatus("BROKEN");
+        assertThat(interfaceDocService.save(doc)).isTrue();
+
+        String response = mockMvc.perform(get("/interfaceDoc/get")
+                        .param("interfaceInfoId", String.valueOf(id))
+                        .session(adminSession))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(objectMapper.readTree(response).get("code").asInt()).isEqualTo(50000);
+    }
+
+    /**
      * 测试聚合保存请求显式传入 null 时被拒绝且不会清空已有数据。
      */
     @Test
@@ -333,6 +494,62 @@ class InterfaceDocControllerTest {
         assertThat(requestHeaders.get(0).get("name").asText()).isEqualTo("Content-Type");
         assertThat(requestHeaders.get(0).get("exampleValue").asText()).isEqualTo("application/json");
         assertThat(requestHeaders.findValuesAsText("name")).doesNotContain("X-Legacy");
+    }
+
+    /**
+     * 测试 Service 直接调用时拒绝带首尾空白的响应参数场景，防止绕过完成维护说明校验。
+     */
+    @Test
+    @DisplayName("Service 直调拒绝带空白的响应参数场景")
+    void shouldRejectWhitespaceResponseSceneWhenServiceCalledDirectly() {
+        long id = createInterfaceInfo("whitespaceResponseApi", "/api/whitespace_response_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "GET", null);
+        InterfaceDocSaveRequest request = baseSaveRequest(id);
+        request.setDocStatus("READY");
+        InterfaceDocParamSaveRequest responseParam = param(
+                "responseData", null, " RESPONSE ", "data", "string", false, true, 1);
+        responseParam.setDescription(" ");
+        request.setParams(List.of(responseParam));
+
+        assertThatThrownBy(() -> interfaceDocService.saveDoc(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("参数场景不支持");
+    }
+
+    /**
+     * 测试 Service 直接调用时拒绝带首尾空白的请求参数场景，防止绕过运行时模板所有权校验。
+     */
+    @Test
+    @DisplayName("Service 直调拒绝带空白的请求参数场景以防绕过所有权校验")
+    void shouldRejectWhitespaceRequestSceneWhenServiceCalledDirectly() {
+        long id = createInterfaceInfo("whitespaceRequestApi", "/api/whitespace_request_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "GET", null);
+        InterfaceDocSaveRequest request = baseSaveRequest(id);
+        request.setParams(List.of(param(
+                "bodyExtra", null, " BODY ", "extra", "string", true, false, 1)));
+
+        assertThatThrownBy(() -> interfaceDocService.saveDoc(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("参数场景不支持");
+    }
+
+    /**
+     * 测试 Service 直接调用时拒绝带首尾空白的批量请求参数场景，防止绕过请求参数数量上限。
+     */
+    @Test
+    @DisplayName("Service 直调拒绝带空白的批量请求参数场景以防绕过数量上限")
+    void shouldRejectWhitespaceRequestScenesWhenServiceCalledDirectly() {
+        long id = createInterfaceInfo("whitespaceRequestCountApi", "/api/whitespace_request_count_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "GET", null);
+        InterfaceDocSaveRequest request = baseSaveRequest(id);
+        request.setParams(IntStream.rangeClosed(1, 101)
+                .mapToObj(index -> param("body" + index, null, " BODY ", "field" + index,
+                        "string", true, false, index))
+                .collect(Collectors.toList()));
+
+        assertThatThrownBy(() -> interfaceDocService.saveDoc(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("参数场景不支持");
     }
 
     /**
@@ -970,6 +1187,7 @@ class InterfaceDocControllerTest {
     private InterfaceDocSaveRequest baseSaveRequest(long interfaceInfoId) {
         InterfaceDocSaveRequest request = new InterfaceDocSaveRequest();
         request.setInterfaceInfoId(interfaceInfoId);
+        request.setDocStatus("DRAFT");
         request.setDocVersion("v1");
         request.setRequestContentType("application/json");
         request.setResponseContentType("application/json");
@@ -1102,6 +1320,7 @@ class InterfaceDocControllerTest {
     private InterfaceDoc buildDoc(long interfaceInfoId, String version) {
         InterfaceDoc doc = new InterfaceDoc();
         doc.setInterfaceInfoId(interfaceInfoId);
+        doc.setDocStatus("DRAFT");
         doc.setDocVersion(version);
         doc.setRequestContentType("application/json");
         doc.setResponseContentType("application/json");
