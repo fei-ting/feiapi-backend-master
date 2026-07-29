@@ -9,7 +9,6 @@ create table if not exists feiapi.`interface_doc`
     `doc_version` varchar(64) default 'v1' not null comment '文档版本号',
     `request_content_type` varchar(128) default 'application/json' not null comment '请求内容类型',
     `response_content_type` varchar(128) default 'application/json' not null comment '响应内容类型',
-    `auth_description` varchar(512) null comment '鉴权说明',
     `success_example` text null comment '成功响应 JSON 示例',
     `fail_example` text null comment '失败响应 JSON 示例',
     `remark` varchar(512) null comment '文档备注',

@@ -201,9 +201,11 @@ class InterfaceDocControllerTest {
         JsonNode requestHeaders = data.get("requestHeaders");
         JsonNode requestParams = data.get("requestParams");
         JsonNode responseParams = data.get("responseParams");
+        String javaSdkExample = data.get("javaSdkExample").asText();
         String curlExample = data.get("curlExample").asText();
 
         assertThat(data.get("structuredDocMissing").asBoolean()).isFalse();
+        assertThat(data.get("doc").has("authDescription")).isFalse();
         assertThat(data.get("doc").get("successExample").asText()).contains("\"ok\":true");
         assertThat(requestHeaders).hasSize(1);
         assertThat(requestHeaders.get(0).get("name").asText()).isEqualTo("Content-Type");
@@ -215,6 +217,11 @@ class InterfaceDocControllerTest {
         assertThat(responseParams.get(0).get("nullable").asBoolean()).isFalse();
         assertThat(responseParams.get(1).get("required").asBoolean()).isFalse();
         assertThat(responseParams.get(1).get("nullable").asBoolean()).isTrue();
+        assertThat(javaSdkExample)
+                .contains("System.getenv(\"FEIAPI_ACCESS_KEY\")")
+                .contains("System.getenv(\"FEIAPI_SECRET_KEY\")")
+                .contains("client.getUsernameByPost(requestParam)")
+                .doesNotContain("abcd1234");
         assertThat(curlExample)
                 .contains("ACCESS_KEY", "SECRET_KEY", "openssl dgst -sha256 -hmac",
                         "accessKey", "nonce", "timestamp", "sign", "printf 'feiting\\n%s\\n%s\\n%s\\n%s\\n%s'")
@@ -692,7 +699,7 @@ class InterfaceDocControllerTest {
                 InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
 
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
-        request.setAuthDescription("token: Bearer eyJhbGciOiJIUzI1NiJ9");
+        request.setRemark("token: Bearer eyJhbGciOiJIUzI1NiJ9");
         assertSaveFailed(adminSession, request, 40000);
     }
 
@@ -804,8 +811,7 @@ class InterfaceDocControllerTest {
         long id = createInterfaceInfo("maskDocApi", "/api/mask_doc_" + suffix(),
                 InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
-        request.setAuthDescription("Authorization: Bearer <TOKEN>");
-        request.setRemark("password: <PASSWORD>");
+        request.setRemark("Authorization: Bearer <TOKEN>\npassword: <PASSWORD>");
         request.setSuccessExample("{\"token\":\"${TOKEN}\",\"access_key\":\"<ACCESS_KEY>\",\"password\":\"***\"}");
         request.setFailExample("{\"secret-key\":\"${SECRET_KEY}\",\"authorization\":\"Basic <MASKED>\"}");
 
@@ -1269,7 +1275,6 @@ class InterfaceDocControllerTest {
         request.setDocVersion("v1");
         request.setRequestContentType("application/json");
         request.setResponseContentType("application/json");
-        request.setAuthDescription("通过平台签名鉴权");
         request.setSuccessExample("{\"ok\":true}");
         request.setFailExample("{\"ok\":false}");
         request.setRemark("公开文档");
@@ -1402,7 +1407,6 @@ class InterfaceDocControllerTest {
         doc.setDocVersion(version);
         doc.setRequestContentType("application/json");
         doc.setResponseContentType("application/json");
-        doc.setAuthDescription("签名鉴权");
         return doc;
     }
 

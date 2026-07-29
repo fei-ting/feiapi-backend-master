@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.component.InterfaceDocContentSecurityValidator;
 import com.feiting.feiapi.component.InterfaceDocCurlExampleGenerator;
+import com.feiting.feiapi.component.InterfaceDocJavaSdkExampleGenerator;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.mapper.InterfaceDocMapper;
 import com.feiting.feiapi.mapper.InterfaceInfoMapper;
@@ -173,6 +174,11 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
     private final InterfaceDocCurlExampleGenerator curlExampleGenerator;
 
     /**
+     * 接口文档 Java SDK 示例生成器。
+     */
+    private final InterfaceDocJavaSdkExampleGenerator javaSdkExampleGenerator;
+
+    /**
      * 创建接口文档主信息服务。
      *
      * @param interfaceInfoService          接口信息服务
@@ -183,6 +189,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * @param userInterfaceInfoService      用户接口调用关系服务
      * @param contentSecurityValidator      内容安全校验器
      * @param curlExampleGenerator          curl 示例生成器
+     * @param javaSdkExampleGenerator       Java SDK 示例生成器
      */
     public InterfaceDocServiceImpl(InterfaceInfoService interfaceInfoService,
                                    InterfaceInfoMapper interfaceInfoMapper,
@@ -191,7 +198,8 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
                                    InterfaceQuotaConfigService interfaceQuotaConfigService,
                                    UserInterfaceInfoService userInterfaceInfoService,
                                    InterfaceDocContentSecurityValidator contentSecurityValidator,
-                                   InterfaceDocCurlExampleGenerator curlExampleGenerator) {
+                                   InterfaceDocCurlExampleGenerator curlExampleGenerator,
+                                   InterfaceDocJavaSdkExampleGenerator javaSdkExampleGenerator) {
         this.interfaceInfoService = interfaceInfoService;
         this.interfaceInfoMapper = interfaceInfoMapper;
         this.interfaceDocParamService = interfaceDocParamService;
@@ -200,6 +208,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         this.userInterfaceInfoService = userInterfaceInfoService;
         this.contentSecurityValidator = contentSecurityValidator;
         this.curlExampleGenerator = curlExampleGenerator;
+        this.javaSdkExampleGenerator = javaSdkExampleGenerator;
     }
 
     /**
@@ -236,11 +245,19 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
                 ? InterfaceDocStatusEnum.DRAFT.getValue()
                 : resolvePersistedDocStatus(doc));
         detailVO.setRequestHeaders(buildSystemRequestHeaders(docVO));
-        detailVO.setRequestParams(resolveRequestParams(docParams));
+        List<InterfaceDocParamVO> requestParams = resolveRequestParams(docParams);
+        detailVO.setRequestParams(requestParams);
         detailVO.setResponseParams(resolveParams(docParams, InterfaceDocParamSceneEnum.RESPONSE));
         detailVO.setErrorCodes(errorCodes.stream()
                 .map(this::toErrorCodeVO)
                 .collect(Collectors.toList()));
+        try {
+            detailVO.setJavaSdkExample(javaSdkExampleGenerator.generate(interfaceInfo, requestParams));
+        } catch (BusinessException exception) {
+            log.warn("生成 Java SDK 示例失败，继续返回文档详情，interfaceInfoId={}, sdkMethodName={}, reason={}",
+                    interfaceInfoId, interfaceInfo.getSdkMethodName(), exception.getMessage());
+            detailVO.setJavaSdkExample("");
+        }
         detailVO.setCurlExample(curlExampleGenerator.generate(interfaceInfo, detailVO));
         return detailVO;
     }
@@ -445,7 +462,6 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         newDoc.setDocVersion("v1");
         newDoc.setRequestContentType(DEFAULT_REQUEST_CONTENT_TYPE);
         newDoc.setResponseContentType(DEFAULT_RESPONSE_CONTENT_TYPE);
-        newDoc.setAuthDescription("通过平台 AccessKey/SecretKey 签名鉴权，由网关统一校验。");
         boolean result = save(newDoc);
         if (!result) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口文档主信息保存失败");
@@ -706,8 +722,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
                 saveRequest.getSuccessExample(), "成功响应示例必须是合法 JSON");
         contentSecurityValidator.validateJsonExample(
                 saveRequest.getFailExample(), "失败响应示例必须是合法 JSON");
-        Stream.of(saveRequest.getAuthDescription(), saveRequest.getRemark())
-                .forEach(contentSecurityValidator::validateText);
+        contentSecurityValidator.validateText(saveRequest.getRemark());
     }
 
     /**
@@ -1041,7 +1056,6 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         doc.setDocStatus(targetStatus.getValue());
         doc.setRequestContentType(trimToEmpty(saveRequest.getRequestContentType()).toLowerCase(Locale.ROOT));
         doc.setResponseContentType(trimToEmpty(saveRequest.getResponseContentType()).toLowerCase(Locale.ROOT));
-        doc.setAuthDescription(trimToNull(saveRequest.getAuthDescription()));
         doc.setSuccessExample(trimToNull(saveRequest.getSuccessExample()));
         doc.setFailExample(trimToNull(saveRequest.getFailExample()));
         doc.setRemark(trimToNull(saveRequest.getRemark()));
@@ -1187,7 +1201,6 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
             docVO.setDocVersion(doc.getDocVersion());
             docVO.setRequestContentType(firstText(doc.getRequestContentType(), DEFAULT_REQUEST_CONTENT_TYPE));
             docVO.setResponseContentType(firstText(doc.getResponseContentType(), DEFAULT_RESPONSE_CONTENT_TYPE));
-            docVO.setAuthDescription(doc.getAuthDescription());
             docVO.setSuccessExample(doc.getSuccessExample());
             docVO.setFailExample(doc.getFailExample());
             docVO.setRemark(doc.getRemark());
@@ -1199,7 +1212,6 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         docVO.setDocVersion("v1");
         docVO.setRequestContentType(DEFAULT_REQUEST_CONTENT_TYPE);
         docVO.setResponseContentType(DEFAULT_RESPONSE_CONTENT_TYPE);
-        docVO.setAuthDescription("通过平台 AccessKey/SecretKey 签名鉴权，由网关统一校验。");
         return docVO;
     }
 
