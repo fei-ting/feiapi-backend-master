@@ -1,19 +1,23 @@
 package com.feiting.feiapi.unit.service;
 
 import com.feiting.feiapi.config.InterfaceTargetHostProperties;
+import com.feiting.feiapi.component.RuntimeRequestParamTemplateValidator;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.service.impl.InterfaceInfoServiceImpl;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("InterfaceInfoServiceImpl.validInterfaceInfo 校验逻辑测试")
 class InterfaceInfoServiceImplValidTest {
 
-    private final InterfaceInfoServiceImpl service = new InterfaceInfoServiceImpl(new InterfaceTargetHostProperties());
+    private final InterfaceInfoServiceImpl service = new InterfaceInfoServiceImpl(
+            new InterfaceTargetHostProperties(), new RuntimeRequestParamTemplateValidator());
 
     @Nested
     @DisplayName("通用校验")
@@ -23,6 +27,19 @@ class InterfaceInfoServiceImplValidTest {
         @DisplayName("interfaceInfo 为 null 时抛出 PARAMS_ERROR")
         void shouldThrowWhenNull() {
             assertThrows(BusinessException.class, () -> service.validInterfaceInfo(null, true));
+        }
+
+        /**
+         * 校验运行时模板中的请求参数名不能依赖裁剪变为合法名称。
+         */
+        @ParameterizedTest
+        @ValueSource(booleans = {true, false})
+        @DisplayName("新增和更新时运行时模板参数名带首尾空白均抛出异常")
+        void shouldRejectRuntimeParamNameWithSurroundingWhitespace(boolean add) {
+            InterfaceInfo info = buildMinimalInterfaceInfo();
+            info.setRequestParams("{\" userId \":1}");
+
+            assertThrows(BusinessException.class, () -> service.validInterfaceInfo(info, add));
         }
     }
 
