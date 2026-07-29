@@ -42,10 +42,10 @@ CREATE TABLE IF NOT EXISTS `interface_info` (
 CREATE TABLE IF NOT EXISTS `interface_doc` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
     `interface_info_id` BIGINT NOT NULL,
+    `doc_status` VARCHAR(16) NOT NULL DEFAULT 'DRAFT',
     `doc_version` VARCHAR(64) NOT NULL DEFAULT 'v1',
     `request_content_type` VARCHAR(128) NOT NULL DEFAULT 'application/json',
     `response_content_type` VARCHAR(128) NOT NULL DEFAULT 'application/json',
-    `auth_description` VARCHAR(512) DEFAULT NULL,
     `success_example` TEXT DEFAULT NULL,
     `fail_example` TEXT DEFAULT NULL,
     `remark` VARCHAR(512) DEFAULT NULL,

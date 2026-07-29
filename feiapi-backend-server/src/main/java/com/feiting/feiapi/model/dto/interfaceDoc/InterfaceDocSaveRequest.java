@@ -3,6 +3,7 @@ package com.feiting.feiapi.model.dto.interfaceDoc;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -21,6 +22,11 @@ public class InterfaceDocSaveRequest implements Serializable {
     @Positive(message = "接口 ID 必须大于 0")
     private Long interfaceInfoId;
 
+    /** 文档目标状态，只允许 DRAFT 或 READY。 */
+    @NotBlank(message = "文档状态不能为空")
+    @Pattern(regexp = "DRAFT|READY", message = "文档状态只允许 DRAFT 或 READY")
+    private String docStatus;
+
     /** 文档版本号。 */
     @NotBlank(message = "文档版本号不能为空")
     @Size(max = 64, message = "文档版本号长度不能超过 64")
@@ -35,10 +41,6 @@ public class InterfaceDocSaveRequest implements Serializable {
     @NotBlank(message = "响应内容类型不能为空")
     @Size(max = 128, message = "响应内容类型长度不能超过 128")
     private String responseContentType;
-
-    /** 鉴权说明。 */
-    @Size(max = 512, message = "鉴权说明长度不能超过 512")
-    private String authDescription;
 
     /** 成功响应 JSON 示例。 */
     @Size(max = 65535, message = "成功响应示例长度不能超过 65535")

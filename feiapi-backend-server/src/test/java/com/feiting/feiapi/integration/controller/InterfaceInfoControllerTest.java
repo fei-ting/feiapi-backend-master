@@ -10,6 +10,11 @@ import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoQueryRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoUpdateRequest;
 import com.feiting.feiapi.model.vo.InterfaceInfoVO;
 import com.feiting.feiapi.model.dto.user.UserLoginRequest;
+import com.feiting.feiapi.model.entity.InterfaceDoc;
+import com.feiting.feiapi.model.entity.InterfaceDocParam;
+import com.feiting.feiapi.service.InterfaceDocService;
+import com.feiting.feiapi.service.InterfaceDocParamService;
+import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapi.service.UserService;
@@ -21,6 +26,9 @@ import jakarta.annotation.Resource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
@@ -31,10 +39,14 @@ import org.springframework.test.util.AopTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -67,6 +79,24 @@ class InterfaceInfoControllerTest {
 
     @Resource
     private InterfaceInfoService interfaceInfoService;
+
+    /**
+     * 接口文档服务。
+     */
+    @Resource
+    private InterfaceDocService interfaceDocService;
+
+    /**
+     * 接口文档参数服务。
+     */
+    @Resource
+    private InterfaceDocParamService interfaceDocParamService;
+
+    /**
+     * 接口信息生命周期服务。
+     */
+    @Resource
+    private InterfaceInfoLifecycleService interfaceInfoLifecycleService;
 
     @Resource
     private UserInterfaceInfoService userInterfaceInfoService;
@@ -163,6 +193,65 @@ class InterfaceInfoControllerTest {
         assertTrue(userInterfaceInfoService.save(userInterfaceInfo), "测试调用关系应创建成功");
     }
 
+    /**
+     * 为测试接口创建指定维护状态的文档主记录。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     * @param docStatus       文档状态
+     */
+    private void createDocWithStatus(long interfaceInfoId, String docStatus) {
+        InterfaceDoc doc = new InterfaceDoc();
+        doc.setInterfaceInfoId(interfaceInfoId);
+        doc.setDocStatus(docStatus);
+        doc.setDocVersion("v1");
+        doc.setRequestContentType("application/json");
+        doc.setResponseContentType("application/json");
+        assertTrue(interfaceDocService.save(doc), "测试文档主记录应创建成功");
+    }
+
+    /**
+     * 创建用于受控配置变更测试的下线接口。
+     *
+     * @param name 接口名称
+     * @return 接口 ID
+     */
+    private long createControlledConfigInterface(String name) {
+        InterfaceInfo interfaceInfo = new InterfaceInfo();
+        interfaceInfo.setName(name);
+        interfaceInfo.setSdkMethodName("getControlledConfig");
+        interfaceInfo.setDescription("初始公开描述");
+        interfaceInfo.setPath("/api/controlled_" + name);
+        interfaceInfo.setTargetHost(TEST_TARGET_HOST);
+        interfaceInfo.setUrl(TEST_TARGET_HOST + "/api/controlled_" + name);
+        interfaceInfo.setRequestParams("{\"original\":\"string\"}");
+        interfaceInfo.setRequestHeader("{\"Content-Type\":\"application/json\"}");
+        interfaceInfo.setResponseHeader("{\"Content-Type\":\"application/json\"}");
+        interfaceInfo.setStatus(InterfaceInfoStatusEnum.OFFLINE.getValue());
+        interfaceInfo.setMethod("POST");
+        interfaceInfo.setQuotaType("BASIC_QUOTA");
+        interfaceInfo.setUserId(1L);
+        assertTrue(interfaceInfoService.save(interfaceInfo), "受控配置测试接口应创建成功");
+        return interfaceInfo.getId();
+    }
+
+    /**
+     * 提供九类受控配置的单字段有效变更。
+     *
+     * @return 用例名称、字段修改操作及是否应同步请求参数文档
+     */
+    private static Stream<Arguments> controlledConfigChanges() {
+        return Stream.of(
+                Arguments.of("名称", (Consumer<InterfaceInfo>) item -> item.setName("变更后的接口名称"), false),
+                Arguments.of("描述", (Consumer<InterfaceInfo>) item -> item.setDescription("变更后的公开描述"), false),
+                Arguments.of("请求方法", (Consumer<InterfaceInfo>) item -> item.setMethod("GET"), true),
+                Arguments.of("网关路径", (Consumer<InterfaceInfo>) item -> item.setPath("/api/controlled_changed_path"), false),
+                Arguments.of("真实后端地址", (Consumer<InterfaceInfo>) item -> item.setTargetHost("http://changed-service:8123"), false),
+                Arguments.of("展示地址", (Consumer<InterfaceInfo>) item -> item.setUrl("http://changed-service:8123/public"), false),
+                Arguments.of("配额类型", (Consumer<InterfaceInfo>) item -> item.setQuotaType("ADVANCED_TRIAL"), false),
+                Arguments.of("SDK 方法名", (Consumer<InterfaceInfo>) item -> item.setSdkMethodName("getChangedControlledConfig"), false),
+                Arguments.of("运行时请求参数模板", (Consumer<InterfaceInfo>) item -> item.setRequestParams("{\"changed\":\"number\"}"), true));
+    }
+
     @Nested
     @DisplayName("POST /interfaceInfo/add 创建接口")
     class AddTests {
@@ -193,6 +282,11 @@ class InterfaceInfoControllerTest {
         assertEquals("/api/add_test", saved.getPath());
         assertEquals(TEST_TARGET_HOST + "/api/add_test", saved.getUrl());
         assertEquals(InterfaceInfoStatusEnum.OFFLINE.getValue(), saved.getStatus());
+        InterfaceDoc doc = interfaceDocService.lambdaQuery()
+                .eq(InterfaceDoc::getInterfaceInfoId, id)
+                .one();
+        assertNotNull(doc);
+        assertEquals("DRAFT", doc.getDocStatus());
         }
 
         @Test
@@ -454,6 +548,202 @@ class InterfaceInfoControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(50001));
         }
+
+        /**
+         * 受控配置发生有效变化后，已完成文档应降为草稿。
+         */
+        @Test
+        @DisplayName("受控配置有效变化后文档降为草稿")
+        void shouldDowngradeReadyDocWhenControlledConfigChanges() throws Exception {
+            MockHttpSession session = loginAsAdmin();
+            long id = createInterfaceInfo("downgradeApi", "/api/downgrade", "GET",
+                    InterfaceInfoStatusEnum.OFFLINE.getValue());
+            createDocWithStatus(id, "READY");
+            InterfaceInfoUpdateRequest request = new InterfaceInfoUpdateRequest();
+            request.setId(id);
+            request.setDescription("更新后的公开描述");
+
+            mockMvc.perform(post("/interfaceInfo/update")
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request))
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0));
+
+            InterfaceDoc doc = interfaceDocService.lambdaQuery()
+                    .eq(InterfaceDoc::getInterfaceInfoId, id)
+                    .one();
+            assertEquals("DRAFT", doc.getDocStatus());
+        }
+
+        /**
+         * 测试九类受控配置任一发生有效变化时，已完成文档均降为草稿；
+         * 请求方法和运行时请求参数模板变化还必须同步请求参数文档。
+         *
+         * @param fieldName             发生变化的受控字段名称
+         * @param mutation              单字段修改操作
+         * @param shouldSyncRequestDoc 是否应同步请求参数文档
+         */
+        @ParameterizedTest(name = "{0} 变化后文档降为草稿")
+        @MethodSource("com.feiting.feiapi.integration.controller.InterfaceInfoControllerTest#controlledConfigChanges")
+        @DisplayName("九类受控配置有效变化后文档降为草稿")
+        void shouldDowngradeReadyDocForEveryControlledConfigChange(String fieldName,
+                                                                     Consumer<InterfaceInfo> mutation,
+                                                                     boolean shouldSyncRequestDoc) {
+            long id = createControlledConfigInterface("controlled" + System.nanoTime());
+            createDocWithStatus(id, "READY");
+            InterfaceInfo updateRequest = new InterfaceInfo();
+            updateRequest.setId(id);
+            mutation.accept(updateRequest);
+
+            assertTrue(interfaceInfoLifecycleService.updateInterfaceInfoWithDoc(updateRequest),
+                    fieldName + "有效变化应更新成功");
+
+            InterfaceDoc doc = interfaceDocService.lambdaQuery()
+                    .eq(InterfaceDoc::getInterfaceInfoId, id)
+                    .one();
+            assertNotNull(doc);
+            assertEquals("DRAFT", doc.getDocStatus());
+            if (shouldSyncRequestDoc) {
+                InterfaceInfo latestInterfaceInfo = interfaceInfoService.getById(id);
+                List<InterfaceDocParam> requestParams = interfaceDocParamService.lambdaQuery()
+                        .eq(InterfaceDocParam::getInterfaceInfoId, id)
+                        .list();
+                assertEquals(1, requestParams.size());
+                assertEquals(latestInterfaceInfo.getMethod().equals("GET") ? "QUERY" : "BODY",
+                        requestParams.get(0).getParamScene());
+                assertEquals(latestInterfaceInfo.getRequestParams().contains("changed") ? "changed" : "original",
+                        requestParams.get(0).getName());
+            }
+        }
+
+        /**
+         * 标准化后的数据库最终值未变化时，已完成状态应保持不变。
+         */
+        @Test
+        @DisplayName("受控配置同值更新保持已完成状态")
+        void shouldKeepReadyDocWhenControlledConfigUnchanged() throws Exception {
+            MockHttpSession session = loginAsAdmin();
+            long id = createInterfaceInfo("unchangedApi", "/api/unchanged", "GET",
+                    InterfaceInfoStatusEnum.OFFLINE.getValue());
+            createDocWithStatus(id, "READY");
+            InterfaceInfoUpdateRequest request = new InterfaceInfoUpdateRequest();
+            request.setId(id);
+            request.setName("unchangedApi");
+
+            mockMvc.perform(post("/interfaceInfo/update")
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request))
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0));
+
+            InterfaceDoc doc = interfaceDocService.lambdaQuery()
+                    .eq(InterfaceDoc::getInterfaceInfoId, id)
+                    .one();
+            assertEquals("READY", doc.getDocStatus());
+        }
+
+        /**
+         * 只修改非受控旧字段时，不得因更新默认值补齐而误降级文档。
+         */
+        @Test
+        @DisplayName("只修改非受控字段保持已完成状态")
+        void shouldKeepReadyDocWhenOnlyUncontrolledFieldChanges() throws Exception {
+            MockHttpSession session = loginAsAdmin();
+            long id = createInterfaceInfo("uncontrolledApi", "/api/uncontrolled", "GET",
+                    InterfaceInfoStatusEnum.OFFLINE.getValue());
+            InterfaceInfo interfaceInfo = new InterfaceInfo();
+            interfaceInfo.setId(id);
+            interfaceInfo.setQuotaType("FREE_UNLIMITED");
+            assertTrue(interfaceInfoService.updateById(interfaceInfo));
+            createDocWithStatus(id, "READY");
+            InterfaceInfoUpdateRequest request = new InterfaceInfoUpdateRequest();
+            request.setId(id);
+            request.setRequestHeader("旧字段仅用于兼容");
+
+            mockMvc.perform(post("/interfaceInfo/update")
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request))
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0));
+
+            InterfaceDoc doc = interfaceDocService.lambdaQuery()
+                    .eq(InterfaceDoc::getInterfaceInfoId, id)
+                    .one();
+            assertEquals("FREE_UNLIMITED", interfaceInfoService.getById(id).getQuotaType());
+            assertEquals("READY", doc.getDocStatus());
+        }
+
+        /**
+         * 参数同步超过数量上限时，接口更新、同步和状态变化必须整体回滚。
+         */
+        @Test
+        @Transactional(propagation = Propagation.NOT_SUPPORTED)
+        @DisplayName("参数同步超限时接口更新和文档状态整体回滚")
+        void shouldRollbackUpdateAndDocStatusWhenRequestSyncExceedsLimit() throws Exception {
+            MockHttpSession session = loginAsAdmin();
+            long id = createInterfaceInfo("rollbackApi", "/api/rollback", "POST",
+                    InterfaceInfoStatusEnum.OFFLINE.getValue(), "{\"original\":\"string\"}");
+            createDocWithStatus(id, "READY");
+            String oversizedTemplate = IntStream.rangeClosed(1, 101)
+                    .mapToObj(index -> "\"field" + index + "\":\"string\"")
+                    .collect(Collectors.joining(",", "{", "}"));
+            InterfaceInfoUpdateRequest request = new InterfaceInfoUpdateRequest();
+            request.setId(id);
+            request.setName("shouldRollback");
+            request.setRequestParams(oversizedTemplate);
+
+            mockMvc.perform(post("/interfaceInfo/update")
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request))
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000));
+
+            InterfaceInfo interfaceInfo = interfaceInfoService.getById(id);
+            InterfaceDoc doc = interfaceDocService.lambdaQuery()
+                    .eq(InterfaceDoc::getInterfaceInfoId, id)
+                    .one();
+            assertEquals("rollbackApi", interfaceInfo.getName());
+            assertEquals("{\"original\":\"string\"}", interfaceInfo.getRequestParams());
+            assertEquals("READY", doc.getDocStatus());
+        }
+
+        /**
+         * 非法文档状态属于一致性异常，受控配置更新不得借机静默修复状态。
+         */
+        @Test
+        @Transactional(propagation = Propagation.NOT_SUPPORTED)
+        @DisplayName("非法文档状态下受控配置更新整体回滚")
+        void shouldRollbackControlledUpdateWhenPersistedDocStatusIllegal() throws Exception {
+            MockHttpSession session = loginAsAdmin();
+            long id = createInterfaceInfo("illegalRollbackApi", "/api/illegal_rollback", "GET",
+                    InterfaceInfoStatusEnum.OFFLINE.getValue());
+            createDocWithStatus(id, "BROKEN");
+            InterfaceInfoUpdateRequest request = new InterfaceInfoUpdateRequest();
+            request.setId(id);
+            request.setDescription("不应保存的描述");
+
+            mockMvc.perform(post("/interfaceInfo/update")
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request))
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(50000));
+
+            assertEquals("desc_illegalRollbackApi", interfaceInfoService.getById(id).getDescription());
+            InterfaceDoc doc = interfaceDocService.lambdaQuery()
+                    .eq(InterfaceDoc::getInterfaceInfoId, id)
+                    .one();
+            assertEquals("BROKEN", doc.getDocStatus());
+        }
     }
 
     @Nested
@@ -554,6 +844,8 @@ class InterfaceInfoControllerTest {
             assertNotNull(data.get("records"), "应包含 records 字段");
             assertNotNull(data.get("total"), "应包含 total 字段");
             assertNotNull(data.get("current"), "应包含 current 字段");
+            assertTrue(StreamSupport.stream(data.get("records").spliterator(), false)
+                    .allMatch(record -> record.hasNonNull("docStatus")), "普通分页应返回非空文档状态");
         }
 
         @Test
@@ -608,6 +900,23 @@ class InterfaceInfoControllerTest {
 
             assertEquals(Arrays.asList(highInterfaceId, midInterfaceId, lowInterfaceId), descendIds, "调用总数降序排序应正确");
             assertEquals(Arrays.asList(lowInterfaceId, midInterfaceId, highInterfaceId), ascendIds, "调用总数升序排序应正确");
+
+            MvcResult result = mockMvc.perform(get("/interfaceInfo/list/page")
+                            .param("current", "1")
+                            .param("pageSize", "10")
+                            .param("description", "sortTotal")
+                            .param("sortField", "totalNum")
+                            .param("sortOrder", "descend")
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andReturn();
+            com.fasterxml.jackson.databind.JsonNode records = objectMapper
+                    .readTree(result.getResponse().getContentAsString())
+                    .get("data")
+                    .get("records");
+            assertTrue(StreamSupport.stream(records.spliterator(), false)
+                    .allMatch(record -> "DRAFT".equals(record.get("docStatus").asText())),
+                    "调用总数排序分页缺少文档主记录时应返回 DRAFT");
         }
 
         /**
@@ -714,6 +1023,7 @@ class InterfaceInfoControllerTest {
         void shouldStartPublishingFromOffline() throws Exception {
             MockHttpSession adminSession = loginAsAdmin();
             long id = createInterfaceInfo("onlineApi", "/api/online_test", "GET", InterfaceInfoStatusEnum.OFFLINE.getValue());
+            createDocWithStatus(id, "READY");
 
             // 发布（会因网关不可用而失败，但应验证状态机转换）
             String onlineJson = "{\"id\":" + id + "}";
@@ -728,6 +1038,41 @@ class InterfaceInfoControllerTest {
             InterfaceInfo after = interfaceInfoService.getById(id);
             assertEquals(InterfaceInfoStatusEnum.OFFLINE.getValue(), after.getStatus(),
                     "发布验证失败后应回滚到 OFFLINE");
+        }
+
+        @Test
+        @DisplayName("管理员不能发布文档待完善的下线接口")
+        void shouldRejectPublishingDraftInterface() throws Exception {
+            MockHttpSession adminSession = loginAsAdmin();
+            long id = createInterfaceInfo("draftOnlineApi", "/api/draft_online_test", "GET",
+                    InterfaceInfoStatusEnum.OFFLINE.getValue());
+
+            mockMvc.perform(post("/interfaceInfo/online")
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"id\":" + id + "}")
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(50001))
+                    .andExpect(jsonPath("$.message").value("接口文档待完善，请先完成文档维护"));
+        }
+
+        @Test
+        @DisplayName("管理员不能发布持久化状态非法的接口")
+        void shouldRejectPublishingIllegalDocStatus() throws Exception {
+            MockHttpSession adminSession = loginAsAdmin();
+            long id = createInterfaceInfo("illegalStatusOnlineApi", "/api/illegal_status_online", "GET",
+                    InterfaceInfoStatusEnum.OFFLINE.getValue());
+            createDocWithStatus(id, "BROKEN");
+
+            mockMvc.perform(post("/interfaceInfo/online")
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"id\":" + id + "}")
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(50000))
+                    .andExpect(jsonPath("$.message").value("接口文档状态数据异常"));
         }
 
         @Test

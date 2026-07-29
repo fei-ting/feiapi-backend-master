@@ -35,6 +35,11 @@ public class InterfaceDoc implements Serializable {
     private Long interfaceInfoId;
 
     /**
+     * 文档维护状态，取值为 DRAFT 或 READY。
+     */
+    private String docStatus;
+
+    /**
      * 文档版本号。
      */
     private String docVersion;
@@ -48,11 +53,6 @@ public class InterfaceDoc implements Serializable {
      * 响应内容类型。
      */
     private String responseContentType;
-
-    /**
-     * 鉴权说明。
-     */
-    private String authDescription;
 
     /**
      * 成功响应 JSON 示例。

@@ -107,6 +107,11 @@ public class InterfaceInfoVO implements Serializable {
     private Integer totalNum;
 
     /**
+     * 文档维护状态。
+     */
+    private String docStatus;
+
+    /**
      * 序列化版本号
      */
     private static final long serialVersionUID = 1L;

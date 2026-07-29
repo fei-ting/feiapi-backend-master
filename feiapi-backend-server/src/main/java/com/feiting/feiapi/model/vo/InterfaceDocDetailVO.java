@@ -34,6 +34,11 @@ public class InterfaceDocDetailVO implements Serializable {
     private Boolean structuredDocMissing;
 
     /**
+     * 文档维护状态。
+     */
+    private String docStatus;
+
+    /**
      * 系统动态生成的请求协议 Header 列表。
      */
     private List<InterfaceDocParamVO> requestHeaders;
@@ -52,6 +57,11 @@ public class InterfaceDocDetailVO implements Serializable {
      * 错误码列表。
      */
     private List<InterfaceDocErrorCodeVO> errorCodes;
+
+    /**
+     * Java SDK 调用示例。
+     */
+    private String javaSdkExample;
 
     /**
      * curl 调用示例。

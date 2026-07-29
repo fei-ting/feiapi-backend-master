@@ -5,10 +5,10 @@ create table if not exists feiapi.`interface_doc`
 (
     `id` bigint not null auto_increment comment '主键' primary key,
     `interface_info_id` bigint not null comment '接口信息 ID',
+    `doc_status` varchar(16) default 'DRAFT' not null comment '文档状态 DRAFT-草稿 READY-已完成',
     `doc_version` varchar(64) default 'v1' not null comment '文档版本号',
     `request_content_type` varchar(128) default 'application/json' not null comment '请求内容类型',
     `response_content_type` varchar(128) default 'application/json' not null comment '响应内容类型',
-    `auth_description` varchar(512) null comment '鉴权说明',
     `success_example` text null comment '成功响应 JSON 示例',
     `fail_example` text null comment '失败响应 JSON 示例',
     `remark` varchar(512) null comment '文档备注',
@@ -39,12 +39,6 @@ create table if not exists feiapi.`interface_doc_param`
     `is_delete` bigint default 0 not null comment '逻辑删除标识 0-未删除 其他值-已删除记录 ID',
     key `idx_interface_doc_param_info_scene` (`interface_info_id`, `param_scene`, `is_delete`, `sort_order`)
 ) comment '接口文档参数';
-
--- 阶段 2 不再开放自定义业务 Header，统一逻辑删除阶段 1 遗留记录
-update feiapi.`interface_doc_param`
-set `is_delete` = `id`
-where `param_scene` = 'HEADER'
-  and `is_delete` = 0;
 
 -- 接口文档错误码
 create table if not exists feiapi.`interface_doc_error_code`

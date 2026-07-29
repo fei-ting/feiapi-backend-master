@@ -6,6 +6,8 @@ import com.feiting.feiapi.component.SdkMethodRegistry;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
 import com.feiting.feiapi.model.dto.user.UserLoginRequest;
+import com.feiting.feiapi.model.entity.InterfaceDoc;
+import com.feiting.feiapi.service.InterfaceDocService;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapiclientsdk.client.FeiApiClient;
@@ -14,6 +16,7 @@ import com.feiting.feiapicommon.model.entity.User;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
 import jakarta.annotation.Resource;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -65,6 +68,10 @@ class InterfaceInvokeSmokeTest {
     @Resource
     private InterfaceInfoService interfaceInfoService;
 
+    /** 接口文档服务。 */
+    @Resource
+    private InterfaceDocService interfaceDocService;
+
     /**
      * 用 @MockBean 替换容器中的 SdkMethodRegistry，使成功调用路径不依赖网关。
      * 测试中可通过 Mockito.when() 定制行为。
@@ -72,6 +79,14 @@ class InterfaceInvokeSmokeTest {
      */
     @MockBean
     private SdkMethodRegistry sdkMethodRegistry;
+
+    /**
+     * 配置烟雾测试使用的 SDK 方法注册能力。
+     */
+    @BeforeEach
+    void setUpSdkMethodRegistry() {
+        Mockito.when(sdkMethodRegistry.supports("getLoveWords")).thenReturn(true);
+    }
 
     /**
      * 配置 mock 返回成功响应。
@@ -150,6 +165,26 @@ class InterfaceInvokeSmokeTest {
     }
 
     /**
+     * 将测试接口文档设置为已完成，使烟测可以进入发布探测流程。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     */
+    private void markDocReady(long interfaceInfoId) {
+        InterfaceDoc doc = interfaceDocService.lambdaQuery()
+                .eq(InterfaceDoc::getInterfaceInfoId, interfaceInfoId)
+                .one();
+        if (doc == null) {
+            doc = new InterfaceDoc();
+            doc.setInterfaceInfoId(interfaceInfoId);
+            doc.setDocVersion("v1");
+            doc.setRequestContentType("application/json");
+            doc.setResponseContentType("application/json");
+        }
+        doc.setDocStatus("READY");
+        assertThat(interfaceDocService.saveOrUpdate(doc)).isTrue();
+    }
+
+    /**
      * 清理测试数据。
      *
      * @param interfaceInfoId 接口 ID
@@ -161,6 +196,9 @@ class InterfaceInvokeSmokeTest {
     private void cleanupTestData(long interfaceInfoId, long adminId, String adminAccount,
                                  long userId, String userAccount) {
         if (interfaceInfoId > 0) {
+            interfaceDocService.lambdaUpdate()
+                    .eq(InterfaceDoc::getInterfaceInfoId, interfaceInfoId)
+                    .remove();
             interfaceInfoService.removeById(interfaceInfoId);
         }
         if (adminId > 0) {
@@ -227,6 +265,7 @@ class InterfaceInvokeSmokeTest {
             // 验证初始状态为 OFFLINE
             InterfaceInfo created = interfaceInfoService.getById(interfaceInfoId);
             assertThat(created.getStatus()).isEqualTo(InterfaceInfoStatusEnum.OFFLINE.getValue());
+            markDocReady(interfaceInfoId);
 
             // ======== Step2: 发布接口（mock 成功，状态变为 ONLINE） ========
             String onlineJson = "{\"id\":" + interfaceInfoId + "}";
@@ -343,6 +382,7 @@ class InterfaceInvokeSmokeTest {
             assertThat(created.getStatus())
                     .as("新创建的接口状态应为 OFFLINE")
                     .isEqualTo(InterfaceInfoStatusEnum.OFFLINE.getValue());
+            markDocReady(interfaceInfoId);
 
             // ======== Step2: 发布接口（走真实 /online 链路） ========
             // 网关不可用，发布验证会失败，但应验证状态机正确转换和回滚
@@ -467,6 +507,7 @@ class InterfaceInvokeSmokeTest {
             // 创建并上线接口
             interfaceInfoId = createInterfaceInfo("testInvokeApi", "/api/test_invoke_" + adminAccount, "GET", adminId);
             mockInvokeSuccess("getLoveWords", "{\"content\":\"test\"}");
+            markDocReady(interfaceInfoId);
 
             String onlineJson = "{\"id\":" + interfaceInfoId + "}";
             mockMvc.perform(post("/interfaceInfo/online")

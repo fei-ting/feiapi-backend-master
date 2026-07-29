@@ -1,13 +1,18 @@
 package com.feiting.feiapi.service.impl;
 
 import com.feiting.feiapi.common.ErrorCode;
+import com.feiting.feiapi.component.SdkMethodRegistry;
 import com.feiting.feiapi.exception.BusinessException;
+import com.feiting.feiapi.mapper.InterfaceInfoMapper;
 import com.feiting.feiapi.service.InterfaceDocService;
 import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
+import java.util.Date;
 import java.util.Objects;
+import java.util.stream.Stream;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,19 +23,46 @@ import org.springframework.transaction.annotation.Transactional;
 public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycleService {
 
     /**
+     * 发布中状态的最大保留时间。
+     */
+    private static final long PUBLISHING_TIMEOUT_MILLIS = 10 * 60 * 1000L;
+
+    /**
      * 接口信息服务。
      */
     private final InterfaceInfoService interfaceInfoService;
+
+    /**
+     * 接口信息数据访问对象。
+     */
+    private final InterfaceInfoMapper interfaceInfoMapper;
 
     /**
      * 接口文档服务。
      */
     private final InterfaceDocService interfaceDocService;
 
+    /**
+     * SDK 方法注册器。
+     */
+    private final SdkMethodRegistry sdkMethodRegistry;
+
+    /**
+     * 创建接口信息生命周期服务。
+     *
+     * @param interfaceInfoService 接口信息服务
+     * @param interfaceInfoMapper  接口信息数据访问对象
+     * @param interfaceDocService  接口文档服务
+     * @param sdkMethodRegistry    SDK 方法注册器
+     */
     public InterfaceInfoLifecycleServiceImpl(InterfaceInfoService interfaceInfoService,
-                                             InterfaceDocService interfaceDocService) {
+                                             InterfaceInfoMapper interfaceInfoMapper,
+                                             InterfaceDocService interfaceDocService,
+                                             SdkMethodRegistry sdkMethodRegistry) {
         this.interfaceInfoService = interfaceInfoService;
+        this.interfaceInfoMapper = interfaceInfoMapper;
         this.interfaceDocService = interfaceDocService;
+        this.sdkMethodRegistry = sdkMethodRegistry;
     }
 
     /**
@@ -59,7 +91,11 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Boolean updateInterfaceInfoWithDoc(InterfaceInfo interfaceInfo) {
-        InterfaceInfo oldInterfaceInfo = interfaceInfoService.getById(interfaceInfo.getId());
+        if (interfaceInfo == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        validateInterfaceInfoId(interfaceInfo.getId());
+        InterfaceInfo oldInterfaceInfo = interfaceInfoMapper.selectByIdForUpdate(interfaceInfo.getId());
         if (oldInterfaceInfo == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
@@ -75,8 +111,12 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
         if (latestInterfaceInfo == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
+        boolean controlledConfigChanged = controlledConfigChanged(oldInterfaceInfo, latestInterfaceInfo);
         if (requestDocTemplateChanged(oldInterfaceInfo, latestInterfaceInfo)) {
             interfaceDocService.syncRequestDocFromInterfaceInfo(latestInterfaceInfo);
+        }
+        if (controlledConfigChanged) {
+            interfaceDocService.downgradeToDraft(latestInterfaceInfo.getId());
         }
         return true;
     }
@@ -90,7 +130,8 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Boolean deleteOfflineInterfaceInfo(Long interfaceInfoId) {
-        InterfaceInfo interfaceInfo = interfaceInfoService.getById(interfaceInfoId);
+        validateInterfaceInfoId(interfaceInfoId);
+        InterfaceInfo interfaceInfo = interfaceInfoMapper.selectByIdForUpdate(interfaceInfoId);
         if (interfaceInfo == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
@@ -103,6 +144,129 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口状态已变化，请刷新后重试");
         }
         return true;
+    }
+
+    /**
+     * 校验发布条件并将下线接口切换为发布中状态。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     * @return 发布中的接口快照
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public InterfaceInfo startPublishing(Long interfaceInfoId) {
+        validateInterfaceInfoId(interfaceInfoId);
+        InterfaceInfo interfaceInfo = interfaceInfoMapper.selectByIdForUpdate(interfaceInfoId);
+        if (interfaceInfo == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+        }
+        recoverExpiredPublishingStatus(interfaceInfo);
+        if (!Objects.equals(interfaceInfo.getStatus(), InterfaceInfoStatusEnum.OFFLINE.getValue())) {
+            if (Objects.equals(interfaceInfo.getStatus(), InterfaceInfoStatusEnum.PUBLISHING.getValue())) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口正在发布验证中，请稍后重试");
+            }
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口仅支持从下线状态发布");
+        }
+
+        String sdkMethodName = StringUtils.trimToNull(interfaceInfo.getSdkMethodName());
+        if (sdkMethodName == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "接口未配置 SDK 方法名");
+        }
+        if (!sdkMethodRegistry.supports(sdkMethodName)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的接口方法：" + sdkMethodName);
+        }
+        interfaceDocService.validateReadyForPublish(interfaceInfoId);
+        updatePublishingStatus(interfaceInfoId,
+                InterfaceInfoStatusEnum.OFFLINE.getValue(),
+                InterfaceInfoStatusEnum.PUBLISHING.getValue(),
+                "接口发布状态更新失败，请刷新后重试");
+        interfaceInfo.setSdkMethodName(sdkMethodName);
+        interfaceInfo.setStatus(InterfaceInfoStatusEnum.PUBLISHING.getValue());
+        return interfaceInfo;
+    }
+
+    /**
+     * 将发布中的接口切换为上线状态。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void completePublishing(Long interfaceInfoId) {
+        validateInterfaceInfoId(interfaceInfoId);
+        updatePublishingStatus(interfaceInfoId,
+                InterfaceInfoStatusEnum.PUBLISHING.getValue(),
+                InterfaceInfoStatusEnum.ONLINE.getValue(),
+                "接口发布状态已变化，请刷新后重试");
+    }
+
+    /**
+     * 将发布中的接口恢复为下线状态。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void rollbackPublishing(Long interfaceInfoId) {
+        validateInterfaceInfoId(interfaceInfoId);
+        updatePublishingStatus(interfaceInfoId,
+                InterfaceInfoStatusEnum.PUBLISHING.getValue(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(),
+                "接口发布验证失败后回滚状态失败");
+    }
+
+    /**
+     * 条件更新接口发布状态和更新时间。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     * @param expectedStatus  期望状态
+     * @param targetStatus    目标状态
+     * @param errorMessage    更新失败提示
+     */
+    private void updatePublishingStatus(Long interfaceInfoId,
+                                        int expectedStatus,
+                                        int targetStatus,
+                                        String errorMessage) {
+        boolean result = interfaceInfoService.lambdaUpdate()
+                .eq(InterfaceInfo::getId, interfaceInfoId)
+                .eq(InterfaceInfo::getStatus, expectedStatus)
+                .set(InterfaceInfo::getStatus, targetStatus)
+                .set(InterfaceInfo::getUpdateTime, new Date())
+                .update();
+        if (!result) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, errorMessage);
+        }
+    }
+
+    /**
+     * 在持有接口行锁时恢复超时的发布中状态。
+     *
+     * @param interfaceInfo 接口信息
+     */
+    private void recoverExpiredPublishingStatus(InterfaceInfo interfaceInfo) {
+        if (!Objects.equals(interfaceInfo.getStatus(), InterfaceInfoStatusEnum.PUBLISHING.getValue())) {
+            return;
+        }
+        Date updateTime = interfaceInfo.getUpdateTime();
+        if (updateTime == null || System.currentTimeMillis() - updateTime.getTime() <= PUBLISHING_TIMEOUT_MILLIS) {
+            return;
+        }
+        updatePublishingStatus(interfaceInfo.getId(),
+                InterfaceInfoStatusEnum.PUBLISHING.getValue(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(),
+                "接口发布验证状态恢复失败，请刷新后重试");
+        interfaceInfo.setStatus(InterfaceInfoStatusEnum.OFFLINE.getValue());
+    }
+
+    /**
+     * 校验接口信息 ID。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     */
+    private void validateInterfaceInfoId(Long interfaceInfoId) {
+        if (interfaceInfoId == null || interfaceInfoId <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
     }
 
     /**
@@ -119,6 +283,7 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
 
     /**
      * 判断运行时请求参数模板是否变化。
+     * 方法和请求参数变化在此处负责触发请求文档对账同步，同时也属于受控配置变化并触发文档降级。
      *
      * @param oldInterfaceInfo    更新前接口信息
      * @param latestInterfaceInfo 更新后接口信息
@@ -127,5 +292,28 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
     private boolean requestDocTemplateChanged(InterfaceInfo oldInterfaceInfo, InterfaceInfo latestInterfaceInfo) {
         return !Objects.equals(oldInterfaceInfo.getRequestParams(), latestInterfaceInfo.getRequestParams())
                 || !Objects.equals(oldInterfaceInfo.getMethod(), latestInterfaceInfo.getMethod());
+    }
+
+    /**
+     * 判断管理员维护的受控接口配置是否发生有效变化。
+     * 方法和请求参数与模板变化判断有意重叠，此处只负责决定是否将已维护文档降为草稿。
+     *
+     * @param oldInterfaceInfo    更新前接口信息
+     * @param latestInterfaceInfo 更新后的数据库最终值
+     * @return 是否发生有效变化
+     */
+    private boolean controlledConfigChanged(InterfaceInfo oldInterfaceInfo,
+                                            InterfaceInfo latestInterfaceInfo) {
+        return Stream.of(
+                        !Objects.equals(oldInterfaceInfo.getName(), latestInterfaceInfo.getName()),
+                        !Objects.equals(oldInterfaceInfo.getDescription(), latestInterfaceInfo.getDescription()),
+                        !Objects.equals(oldInterfaceInfo.getMethod(), latestInterfaceInfo.getMethod()),
+                        !Objects.equals(oldInterfaceInfo.getPath(), latestInterfaceInfo.getPath()),
+                        !Objects.equals(oldInterfaceInfo.getTargetHost(), latestInterfaceInfo.getTargetHost()),
+                        !Objects.equals(oldInterfaceInfo.getUrl(), latestInterfaceInfo.getUrl()),
+                        !Objects.equals(oldInterfaceInfo.getQuotaType(), latestInterfaceInfo.getQuotaType()),
+                        !Objects.equals(oldInterfaceInfo.getSdkMethodName(), latestInterfaceInfo.getSdkMethodName()),
+                        !Objects.equals(oldInterfaceInfo.getRequestParams(), latestInterfaceInfo.getRequestParams()))
+                .anyMatch(Boolean.TRUE::equals);
     }
 }

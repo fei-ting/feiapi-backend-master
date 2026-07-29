@@ -18,6 +18,8 @@ import com.feiting.feiapi.constant.CommonConstant;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
+import com.feiting.feiapi.service.InterfaceInfoPublishingService;
+import com.feiting.feiapi.service.InterfaceDocService;
 import com.feiting.feiapi.service.InterfaceQuotaConfigService;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapi.component.SdkMethodRegistry;
@@ -28,7 +30,6 @@ import com.feiting.feiapicommon.model.entity.User;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoMethodEnum;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
 import com.feiting.feiapicommon.model.enums.InterfaceQuotaTypeEnum;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Value;
@@ -38,10 +39,10 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -51,7 +52,6 @@ import java.util.stream.Collectors;
  */
 @RestController
 @RequestMapping("/interfaceInfo")
-@Slf4j
 public class InterfaceInfoController {
 
     /** 调用总数字段名，用于触发聚合排序查询 */
@@ -62,14 +62,23 @@ public class InterfaceInfoController {
             "responseHeader", "status", "method", "quotaType", "userId", "createTime", "updateTime"
     );
 
-    /** 发布验证超时时间（毫秒），超过此时间的 PUBLISHING 状态将被视为超时并自动恢复为 OFFLINE */
-    private static final long PUBLISHING_TIMEOUT_MILLIS = 10 * 60 * 1000L;
-
     @Resource
     private InterfaceInfoService interfaceInfoService;
 
     @Resource
     private InterfaceInfoLifecycleService interfaceInfoLifecycleService;
+
+    /**
+     * 接口发布编排服务。
+     */
+    @Resource
+    private InterfaceInfoPublishingService interfaceInfoPublishingService;
+
+    /**
+     * 接口文档服务。
+     */
+    @Resource
+    private InterfaceDocService interfaceDocService;
 
     @Resource
     private InterfaceQuotaConfigService interfaceQuotaConfigService;
@@ -112,7 +121,7 @@ public class InterfaceInfoController {
         }
         InterfaceInfo interfaceInfo = new InterfaceInfo();
         BeanUtils.copyProperties(interfaceInfoAddRequest, interfaceInfo);
-        normalizeInterfaceInfo(interfaceInfo);
+        normalizeInterfaceInfo(interfaceInfo, true);
         // 校验
         interfaceInfoService.validInterfaceInfo(interfaceInfo, true);
         User loginUser = getCurrentLoginUser(request);
@@ -164,7 +173,7 @@ public class InterfaceInfoController {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
         completeUpdateDisplayUrl(interfaceInfo, oldInterfaceInfo);
-        normalizeInterfaceInfo(interfaceInfo);
+        normalizeInterfaceInfo(interfaceInfo, false);
         boolean result = interfaceInfoLifecycleService.updateInterfaceInfoWithDoc(interfaceInfo);
         return ResultUtils.success(result);
     }
@@ -184,7 +193,9 @@ public class InterfaceInfoController {
         if (interfaceInfo == null || !isVisibleToCurrentUser(interfaceInfo, request)) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
-        return ResultUtils.success(toInterfaceInfoVO(interfaceInfo));
+        InterfaceInfoVO interfaceInfoVO = toInterfaceInfoVO(interfaceInfo);
+        completeDocStatus(Collections.singletonList(interfaceInfoVO));
+        return ResultUtils.success(interfaceInfoVO);
     }
 
     /**
@@ -245,6 +256,7 @@ public class InterfaceInfoController {
         interfaceInfoVOPage.setRecords(interfaceInfoPage.getRecords().stream()
                 .map(interfaceInfo -> toInterfaceInfoVO(interfaceInfo, totalNumMap))
                 .collect(Collectors.toList()));
+        completeDocStatus(interfaceInfoVOPage.getRecords());
         return ResultUtils.success(interfaceInfoVOPage);
     }
 
@@ -264,54 +276,7 @@ public class InterfaceInfoController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
 
-        long id = idRequest.getId();
-
-        //检查接口是否存在
-        InterfaceInfo oldInterfaceInfo = interfaceInfoService.getById(id);
-        if (oldInterfaceInfo == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
-        }
-
-        // 懒恢复：如果接口处于 PUBLISHING 状态且已超时，先恢复为 OFFLINE，避免残留状态阻塞发布。
-        recoverExpiredPublishingStatus(oldInterfaceInfo);
-
-        // 前置检查：只允许 OFFLINE -> PUBLISHING
-        if (oldInterfaceInfo.getStatus() != InterfaceInfoStatusEnum.OFFLINE.getValue()) {
-            if (oldInterfaceInfo.getStatus() == InterfaceInfoStatusEnum.PUBLISHING.getValue()) {
-                throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口正在发布验证中，请稍后重试");
-            }
-            throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口仅支持从下线状态发布");
-        }
-        String sdkMethodName = getRequiredSdkMethodName(oldInterfaceInfo);
-
-        // 条件更新：只在当前状态为 OFFLINE 时才更新为 PUBLISHING
-        updateInterfaceStatus(id,
-                InterfaceInfoStatusEnum.OFFLINE.getValue(),
-                InterfaceInfoStatusEnum.PUBLISHING.getValue(),
-                "接口发布状态更新失败，请刷新后重试");
-
-        try {
-            feiApiClient.enableProbeMode();
-            Object invoke = sdkMethodRegistry.invoke(feiApiClient, sdkMethodName, oldInterfaceInfo.getRequestParams());
-            if(invoke == null){
-                throw new BusinessException(ErrorCode.SYSTEM_ERROR,"接口验证失败");
-            }
-            // 成功后：只在当前状态为 PUBLISHING 时才更新为 ONLINE
-            updateInterfaceStatus(id,
-                    InterfaceInfoStatusEnum.PUBLISHING.getValue(),
-                    InterfaceInfoStatusEnum.ONLINE.getValue(),
-                    "接口发布状态已变化，请刷新后重试");
-            return ResultUtils.success(true);
-        } catch (Exception e) {
-            // 回滚时：只在当前状态为 PUBLISHING 时才回滚为 OFFLINE
-            rollbackPublishingStatus(id);
-            if (e instanceof BusinessException) {
-                throw (BusinessException) e;
-            }
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "接口验证失败：" + e.getMessage());
-        } finally {
-            feiApiClient.disableProbeMode();
-        }
+        return ResultUtils.success(interfaceInfoPublishingService.publish(idRequest.getId()));
     }
 
 
@@ -428,7 +393,29 @@ public class InterfaceInfoController {
         interfaceInfoVOPage.setRecords(interfaceInfoVOPage.getRecords().stream()
                 .map(this::completeQuotaInfo)
                 .collect(Collectors.toList()));
+        completeDocStatus(interfaceInfoVOPage.getRecords());
         return interfaceInfoVOPage;
+    }
+
+    /**
+     * 批量补齐接口视图中的文档状态。
+     *
+     * @param records 当前页接口视图列表
+     */
+    private void completeDocStatus(List<InterfaceInfoVO> records) {
+        List<Long> interfaceInfoIds = Optional.ofNullable(records)
+                .orElse(Collections.emptyList())
+                .stream()
+                .filter(Objects::nonNull)
+                .map(InterfaceInfoVO::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        Map<Long, String> docStatusMap = interfaceDocService.listDocStatusByInterfaceInfoIds(interfaceInfoIds);
+        Optional.ofNullable(records)
+                .orElse(Collections.emptyList())
+                .stream()
+                .filter(Objects::nonNull)
+                .forEach(record -> record.setDocStatus(docStatusMap.get(record.getId())));
     }
 
     /**
@@ -457,9 +444,10 @@ public class InterfaceInfoController {
      *
      * <p>请求方法统一转为大写；当接口展示地址为空且接口路径、真实后端服务地址存在时，自动组装展示地址。</p>
      *
-     * @param interfaceInfo 接口信息
+     * @param interfaceInfo  接口信息
+     * @param applyDefaults 是否应用新增接口默认值
      */
-    private void normalizeInterfaceInfo(InterfaceInfo interfaceInfo) {
+    private void normalizeInterfaceInfo(InterfaceInfo interfaceInfo, boolean applyDefaults) {
         if (interfaceInfo == null) {
             return;
         }
@@ -469,9 +457,9 @@ public class InterfaceInfoController {
         if (StringUtils.isNotBlank(interfaceInfo.getSdkMethodName())) {
             interfaceInfo.setSdkMethodName(interfaceInfo.getSdkMethodName().trim());
         }
-        if (StringUtils.isBlank(interfaceInfo.getQuotaType())) {
+        if (applyDefaults && StringUtils.isBlank(interfaceInfo.getQuotaType())) {
             interfaceInfo.setQuotaType(InterfaceQuotaTypeEnum.BASIC_QUOTA.getValue());
-        } else {
+        } else if (StringUtils.isNotBlank(interfaceInfo.getQuotaType())) {
             interfaceInfo.setQuotaType(interfaceInfo.getQuotaType().trim());
         }
         if (StringUtils.isBlank(interfaceInfo.getUrl())
@@ -608,14 +596,12 @@ public class InterfaceInfoController {
     }
 
     /**
-     * 条件更新接口状态。
-     *
-     * <p>只在当前状态等于 expectedStatus 时才更新为 targetStatus，防止并发操作导致状态错乱。</p>
+     * 按期望状态条件更新接口状态。
      *
      * @param id             接口 ID
-     * @param expectedStatus 期望的当前状态
+     * @param expectedStatus 期望状态
      * @param targetStatus   目标状态
-     * @param errorMessage   更新失败时的错误提示
+     * @param errorMessage   更新失败提示
      */
     private void updateInterfaceStatus(long id, int expectedStatus, int targetStatus, String errorMessage) {
         InterfaceInfo interfaceInfo = new InterfaceInfo();
@@ -630,46 +616,4 @@ public class InterfaceInfoController {
         }
     }
 
-    /**
-     * 回滚发布验证中的接口状态为 OFFLINE。
-     *
-     * <p>只在当前状态仍为 PUBLISHING 时才回滚，避免覆盖其他并发操作的结果。</p>
-     * <p>回滚失败时仅记录日志，不抛出异常，避免掩盖原始错误。</p>
-     *
-     * @param id 接口 ID
-     */
-    private void rollbackPublishingStatus(long id) {
-        try {
-            updateInterfaceStatus(id,
-                    InterfaceInfoStatusEnum.PUBLISHING.getValue(),
-                    InterfaceInfoStatusEnum.OFFLINE.getValue(),
-                    "接口发布验证失败后回滚状态失败");
-        } catch (Exception e) {
-            log.error("接口发布验证失败后回滚状态失败，interfaceInfoId={}", id, e);
-        }
-    }
-
-    /**
-     * 懒恢复超时的 PUBLISHING 状态为 OFFLINE。
-     *
-     * <p>如果接口处于 PUBLISHING 状态且距离上次更新已超过 10 分钟，说明发布流程可能因进程崩溃等原因中断，
-     * 此时将状态恢复为 OFFLINE，允许管理员重新发布。</p>
-     *
-     * @param interfaceInfo 接口信息
-     */
-    private void recoverExpiredPublishingStatus(InterfaceInfo interfaceInfo) {
-        if (interfaceInfo == null || interfaceInfo.getStatus() != InterfaceInfoStatusEnum.PUBLISHING.getValue()) {
-            return;
-        }
-        Date updateTime = interfaceInfo.getUpdateTime();
-        if (updateTime == null || System.currentTimeMillis() - updateTime.getTime() <= PUBLISHING_TIMEOUT_MILLIS) {
-            return;
-        }
-
-        updateInterfaceStatus(interfaceInfo.getId(),
-                InterfaceInfoStatusEnum.PUBLISHING.getValue(),
-                InterfaceInfoStatusEnum.OFFLINE.getValue(),
-                "接口发布验证状态恢复失败，请刷新后重试");
-        interfaceInfo.setStatus(InterfaceInfoStatusEnum.OFFLINE.getValue());
-    }
 }

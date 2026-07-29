@@ -18,6 +18,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Collections;
 import java.util.Set;
@@ -233,6 +235,7 @@ class DtoValidationTest {
     void shouldRequireInterfaceDocCollections() {
         InterfaceDocSaveRequest request = new InterfaceDocSaveRequest();
         request.setInterfaceInfoId(1L);
+        request.setDocStatus("DRAFT");
         request.setDocVersion("v1");
         request.setRequestContentType("application/json");
         request.setResponseContentType("application/json");
@@ -244,6 +247,27 @@ class DtoValidationTest {
         request.setErrorCodes(Collections.emptyList());
 
         assertThat(violationMessages(request)).isEmpty();
+    }
+
+    /**
+     * 接口文档状态必须使用未经裁剪的标准枚举值。
+     *
+     * @param docStatus 非法文档状态
+     */
+    @ParameterizedTest(name = "拒绝非法文档状态：{0}")
+    @ValueSource(strings = {" READY ", "DRAFT ", " ready", "PUBLISHED"})
+    @DisplayName("接口文档保存请求拒绝非精确状态值")
+    void shouldRejectNonExactInterfaceDocStatus(String docStatus) {
+        InterfaceDocSaveRequest request = new InterfaceDocSaveRequest();
+        request.setInterfaceInfoId(1L);
+        request.setDocStatus(docStatus);
+        request.setDocVersion("v1");
+        request.setRequestContentType("application/json");
+        request.setResponseContentType("application/json");
+        request.setParams(Collections.emptyList());
+        request.setErrorCodes(Collections.emptyList());
+
+        assertThat(violationMessages(request)).contains("文档状态只允许 DRAFT 或 READY");
     }
 
     /**

@@ -4,8 +4,11 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.component.InterfaceDocContentSecurityValidator;
 import com.feiting.feiapi.component.InterfaceDocCurlExampleGenerator;
+import com.feiting.feiapi.component.InterfaceDocJavaSdkExampleGenerator;
+import com.feiting.feiapi.component.RuntimeRequestParamTemplateValidator;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.mapper.InterfaceDocMapper;
+import com.feiting.feiapi.mapper.InterfaceInfoMapper;
 import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocErrorCodeSaveRequest;
 import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocParamSaveRequest;
 import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocSaveRequest;
@@ -13,6 +16,7 @@ import com.feiting.feiapi.model.entity.InterfaceDoc;
 import com.feiting.feiapi.model.entity.InterfaceDocErrorCode;
 import com.feiting.feiapi.model.entity.InterfaceDocParam;
 import com.feiting.feiapi.model.enums.InterfaceDocParamSceneEnum;
+import com.feiting.feiapi.model.enums.InterfaceDocStatusEnum;
 import com.feiting.feiapi.model.vo.InterfaceDocDetailVO;
 import com.feiting.feiapi.model.vo.InterfaceDocErrorCodeVO;
 import com.feiting.feiapi.model.vo.InterfaceDocInterfaceInfoVO;
@@ -37,6 +41,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -61,6 +66,7 @@ import java.util.stream.Stream;
  * 接口文档主信息服务实现。
  */
 @Service
+@Slf4j
 public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, InterfaceDoc>
         implements InterfaceDocService {
 
@@ -78,6 +84,11 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * 参数数量上限。
      */
     private static final int MAX_PARAM_COUNT = 200;
+
+    /**
+     * 请求参数数量上限。
+     */
+    private static final int MAX_REQUEST_PARAM_COUNT = 100;
 
     /**
      * 响应参数最大嵌套深度。
@@ -108,6 +119,16 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
     private static final Pattern DOC_VERSION_PATTERN = Pattern.compile("^[A-Za-z0-9._-]{1,64}$");
 
     /**
+     * 自动同步请求参数使用的待完善说明。
+     */
+    private static final String GENERATED_PARAM_DESCRIPTION = "由接口运行时参数模板自动生成";
+
+    /**
+     * 禁止用于伪造参数或错误码记录的关键标识。
+     */
+    private static final Set<String> EMPTY_PLACEHOLDER_IDENTIFIERS = Set.of("无", "暂无");
+
+    /**
      * 当前网关调用地址前缀。
      */
     @Value("${feiapi.client.gateway-host}")
@@ -117,6 +138,11 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * 接口信息服务。
      */
     private final InterfaceInfoService interfaceInfoService;
+
+    /**
+     * 接口信息数据访问对象。
+     */
+    private final InterfaceInfoMapper interfaceInfoMapper;
 
     /**
      * 文档参数服务。
@@ -149,30 +175,49 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
     private final InterfaceDocCurlExampleGenerator curlExampleGenerator;
 
     /**
+     * 接口文档 Java SDK 示例生成器。
+     */
+    private final InterfaceDocJavaSdkExampleGenerator javaSdkExampleGenerator;
+
+    /**
+     * 运行时请求参数模板校验器。
+     */
+    private final RuntimeRequestParamTemplateValidator runtimeRequestParamTemplateValidator;
+
+    /**
      * 创建接口文档主信息服务。
      *
      * @param interfaceInfoService          接口信息服务
+     * @param interfaceInfoMapper           接口信息数据访问对象
      * @param interfaceDocParamService      文档参数服务
      * @param interfaceDocErrorCodeService  文档错误码服务
      * @param interfaceQuotaConfigService   接口配额配置服务
      * @param userInterfaceInfoService      用户接口调用关系服务
      * @param contentSecurityValidator      内容安全校验器
      * @param curlExampleGenerator          curl 示例生成器
+     * @param javaSdkExampleGenerator       Java SDK 示例生成器
+     * @param runtimeRequestParamTemplateValidator 运行时请求参数模板校验器
      */
     public InterfaceDocServiceImpl(InterfaceInfoService interfaceInfoService,
+                                   InterfaceInfoMapper interfaceInfoMapper,
                                    InterfaceDocParamService interfaceDocParamService,
                                    InterfaceDocErrorCodeService interfaceDocErrorCodeService,
                                    InterfaceQuotaConfigService interfaceQuotaConfigService,
                                    UserInterfaceInfoService userInterfaceInfoService,
                                    InterfaceDocContentSecurityValidator contentSecurityValidator,
-                                   InterfaceDocCurlExampleGenerator curlExampleGenerator) {
+                                   InterfaceDocCurlExampleGenerator curlExampleGenerator,
+                                   InterfaceDocJavaSdkExampleGenerator javaSdkExampleGenerator,
+                                   RuntimeRequestParamTemplateValidator runtimeRequestParamTemplateValidator) {
         this.interfaceInfoService = interfaceInfoService;
+        this.interfaceInfoMapper = interfaceInfoMapper;
         this.interfaceDocParamService = interfaceDocParamService;
         this.interfaceDocErrorCodeService = interfaceDocErrorCodeService;
         this.interfaceQuotaConfigService = interfaceQuotaConfigService;
         this.userInterfaceInfoService = userInterfaceInfoService;
         this.contentSecurityValidator = contentSecurityValidator;
         this.curlExampleGenerator = curlExampleGenerator;
+        this.javaSdkExampleGenerator = javaSdkExampleGenerator;
+        this.runtimeRequestParamTemplateValidator = runtimeRequestParamTemplateValidator;
     }
 
     /**
@@ -205,12 +250,23 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         detailVO.setDoc(docVO);
         detailVO.setGatewayUrl(buildGatewayUrl(interfaceInfo));
         detailVO.setStructuredDocMissing(structuredDocMissing);
+        detailVO.setDocStatus(doc == null
+                ? InterfaceDocStatusEnum.DRAFT.getValue()
+                : resolvePersistedDocStatus(doc));
         detailVO.setRequestHeaders(buildSystemRequestHeaders(docVO));
-        detailVO.setRequestParams(resolveRequestParams(docParams));
+        List<InterfaceDocParamVO> requestParams = resolveRequestParams(docParams);
+        detailVO.setRequestParams(requestParams);
         detailVO.setResponseParams(resolveParams(docParams, InterfaceDocParamSceneEnum.RESPONSE));
         detailVO.setErrorCodes(errorCodes.stream()
                 .map(this::toErrorCodeVO)
                 .collect(Collectors.toList()));
+        try {
+            detailVO.setJavaSdkExample(javaSdkExampleGenerator.generate(interfaceInfo, requestParams));
+        } catch (BusinessException exception) {
+            log.warn("生成 Java SDK 示例失败，继续返回文档详情，interfaceInfoId={}, sdkMethodName={}, reason={}",
+                    interfaceInfoId, interfaceInfo.getSdkMethodName(), exception.getMessage());
+            detailVO.setJavaSdkExample("");
+        }
         detailVO.setCurlExample(curlExampleGenerator.generate(interfaceInfo, detailVO));
         return detailVO;
     }
@@ -226,8 +282,17 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         if (interfaceInfo == null || interfaceInfo.getId() == null || interfaceInfo.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        ensureInterfaceDoc(interfaceInfo);
         List<RuntimeRequestParam> runtimeParams = buildRuntimeRequestParams(interfaceInfo);
+        ensureInterfaceDoc(interfaceInfo);
+        if (runtimeParams.size() > MAX_REQUEST_PARAM_COUNT) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数数量不能超过 100");
+        }
+        long responseParamCount = listDocParams(interfaceInfo.getId()).stream()
+                .filter(param -> InterfaceDocParamSceneEnum.RESPONSE.getValue().equals(param.getParamScene()))
+                .count();
+        if (runtimeParams.size() + responseParamCount > MAX_PARAM_COUNT) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "文档参数数量不能超过 200");
+        }
         List<InterfaceDocParam> existingParams = listRequestDocParams(interfaceInfo.getId());
         reconcileRequestDocParams(interfaceInfo.getId(), runtimeParams, existingParams);
     }
@@ -244,7 +309,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         if (saveRequest == null || saveRequest.getInterfaceInfoId() == null || saveRequest.getInterfaceInfoId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        InterfaceInfo interfaceInfo = interfaceInfoService.getById(saveRequest.getInterfaceInfoId());
+        InterfaceInfo interfaceInfo = interfaceInfoMapper.selectByIdForUpdate(saveRequest.getInterfaceInfoId());
         if (interfaceInfo == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
@@ -257,11 +322,22 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         if (saveRequest.getErrorCodes() == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "错误码必须显式提供");
         }
+        String rawDocStatus = saveRequest.getDocStatus();
+        InterfaceDocStatusEnum targetStatus = InterfaceDocStatusEnum.getEnumByValue(rawDocStatus);
+        if (targetStatus == null || !targetStatus.getValue().equals(rawDocStatus)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "文档状态只允许 DRAFT 或 READY");
+        }
         validateDocMain(saveRequest);
         List<InterfaceDocParamSaveRequest> paramRequests = saveRequest.getParams();
         List<InterfaceDocErrorCodeSaveRequest> errorCodeRequests = saveRequest.getErrorCodes();
         if (paramRequests.size() > MAX_PARAM_COUNT) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "文档参数数量不能超过 200");
+        }
+        long requestParamCount = paramRequests.stream()
+                .filter(this::isRequestParam)
+                .count();
+        if (requestParamCount > MAX_REQUEST_PARAM_COUNT) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数数量不能超过 100");
         }
         if (errorCodeRequests.size() > MAX_ERROR_CODE_COUNT) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "错误码数量不能超过 100");
@@ -269,10 +345,112 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
 
         List<ParamSaveNode> paramNodes = validateAndBuildParamNodes(interfaceInfo, paramRequests);
         List<InterfaceDocErrorCode> errorCodes = buildErrorCodes(interfaceInfo.getId(), errorCodeRequests);
-        saveOrUpdateDoc(saveRequest);
+        if (InterfaceDocStatusEnum.READY.equals(targetStatus)) {
+            validateReadyCompleteness(saveRequest, paramRequests);
+        }
+        saveOrUpdateDoc(saveRequest, targetStatus);
         replaceAllParams(interfaceInfo.getId(), paramNodes);
         replaceAllErrorCodes(interfaceInfo.getId(), errorCodes);
         return true;
+    }
+
+    /**
+     * 批量查询接口文档状态，缺少主记录的接口按草稿返回。
+     *
+     * @param interfaceInfoIds 接口信息 ID 列表
+     * @return 接口信息 ID 与文档状态映射
+     */
+    @Override
+    public Map<Long, String> listDocStatusByInterfaceInfoIds(List<Long> interfaceInfoIds) {
+        List<Long> validIds = Optional.ofNullable(interfaceInfoIds)
+                .orElse(Collections.emptyList())
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(id -> id > 0)
+                .distinct()
+                .collect(Collectors.toList());
+        if (validIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<Long, String> statusMap = validIds.stream()
+                .collect(Collectors.toMap(
+                        Function.identity(),
+                        id -> InterfaceDocStatusEnum.DRAFT.getValue(),
+                        (first, second) -> first,
+                        LinkedHashMap::new));
+        lambdaQuery()
+                .in(InterfaceDoc::getInterfaceInfoId, validIds)
+                .list()
+                .forEach(doc -> statusMap.put(doc.getInterfaceInfoId(), resolvePersistedDocStatus(doc)));
+        return statusMap;
+    }
+
+    /**
+     * 将已有接口文档降为草稿，主记录缺失时不额外创建记录。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void downgradeToDraft(Long interfaceInfoId) {
+        if (interfaceInfoId == null || interfaceInfoId <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        InterfaceDoc doc = lambdaQuery()
+                .eq(InterfaceDoc::getInterfaceInfoId, interfaceInfoId)
+                .one();
+        if (doc == null) {
+            return;
+        }
+        String currentStatus = resolvePersistedDocStatus(doc);
+        if (InterfaceDocStatusEnum.DRAFT.getValue().equals(currentStatus)) {
+            return;
+        }
+        doc.setDocStatus(InterfaceDocStatusEnum.DRAFT.getValue());
+        boolean result = updateById(doc);
+        if (!result) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口文档状态降级失败");
+        }
+    }
+
+    /**
+     * 校验接口文档是否满足发布条件。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     */
+    @Override
+    public void validateReadyForPublish(Long interfaceInfoId) {
+        if (interfaceInfoId == null || interfaceInfoId <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        InterfaceDoc doc = lambdaQuery()
+                .eq(InterfaceDoc::getInterfaceInfoId, interfaceInfoId)
+                .one();
+        if (doc == null) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口文档待完善，请先完成文档维护");
+        }
+        String status = resolvePersistedDocStatus(doc);
+        if (!InterfaceDocStatusEnum.READY.getValue().equals(status)) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口文档待完善，请先完成文档维护");
+        }
+    }
+
+    /**
+     * 解析已有文档主记录的持久化状态。
+     *
+     * @param doc 文档主记录
+     * @return 合法文档状态
+     */
+    private String resolvePersistedDocStatus(InterfaceDoc doc) {
+        InterfaceDocStatusEnum status = doc == null
+                ? null
+                : InterfaceDocStatusEnum.getEnumByValue(doc.getDocStatus());
+        if (status == null) {
+            Long interfaceInfoId = doc == null ? null : doc.getInterfaceInfoId();
+            log.error("接口文档状态数据不一致，interfaceInfoId={}", interfaceInfoId);
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "接口文档状态数据异常");
+        }
+        return status.getValue();
     }
 
     /**
@@ -289,10 +467,10 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         }
         InterfaceDoc newDoc = new InterfaceDoc();
         newDoc.setInterfaceInfoId(interfaceInfo.getId());
+        newDoc.setDocStatus(InterfaceDocStatusEnum.DRAFT.getValue());
         newDoc.setDocVersion("v1");
         newDoc.setRequestContentType(DEFAULT_REQUEST_CONTENT_TYPE);
         newDoc.setResponseContentType(DEFAULT_RESPONSE_CONTENT_TYPE);
-        newDoc.setAuthDescription("通过平台 AccessKey/SecretKey 签名鉴权，由网关统一校验。");
         boolean result = save(newDoc);
         if (!result) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口文档主信息保存失败");
@@ -312,7 +490,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         Map<String, InterfaceDocParam> existingParamMap = existingParams.stream()
                 .filter(param -> StringUtils.isNotBlank(param.getName()))
                 .collect(Collectors.toMap(
-                        param -> param.getName().trim(),
+                        InterfaceDocParam::getName,
                         Function.identity(),
                         (first, second) -> first,
                         LinkedHashMap::new));
@@ -320,7 +498,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
                 .map(RuntimeRequestParam::getName)
                 .collect(Collectors.toSet());
         List<Long> removedIds = existingParams.stream()
-                .filter(param -> StringUtils.isBlank(param.getName()) || !runtimeNames.contains(param.getName().trim()))
+                .filter(param -> StringUtils.isBlank(param.getName()) || !runtimeNames.contains(param.getName()))
                 .map(InterfaceDocParam::getId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
@@ -334,6 +512,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         // 分离新增和更新的参数，使用批量操作减少数据库往返
         List<InterfaceDocParam> paramsToSave = new ArrayList<>();
         List<InterfaceDocParam> paramsToUpdate = new ArrayList<>();
+        List<Long> typeChangedParamIds = new ArrayList<>();
 
         runtimeParams.forEach(runtimeParam -> {
             InterfaceDocParam existingParam = existingParamMap.get(runtimeParam.getName());
@@ -341,11 +520,19 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
                 paramsToSave.add(buildRequestDocParam(interfaceInfoId, runtimeParam));
                 return;
             }
+            boolean typeChanged = !Objects.equals(existingParam.getType(), runtimeParam.getType());
             existingParam.setParamScene(runtimeParam.getParamScene());
             existingParam.setParentId(null);
             existingParam.setType(runtimeParam.getType());
             existingParam.setRequired(runtimeParam.getRequired());
             existingParam.setNullable(0);
+            if (typeChanged) {
+                // 参数类型变化后，旧默认值和校验规则可能失效，示例值必须重新采用运行时模板。
+                existingParam.setDefaultValue(null);
+                existingParam.setValidationRule(null);
+                existingParam.setExampleValue(runtimeParam.getExampleValue());
+                typeChangedParamIds.add(existingParam.getId());
+            }
             paramsToUpdate.add(existingParam);
         });
 
@@ -359,6 +546,17 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
 
         // 批量更新
         if (!paramsToUpdate.isEmpty()) {
+            if (!typeChangedParamIds.isEmpty()) {
+                // MyBatis 默认跳过 null 字段，先显式清空类型变化参数的失效配置。
+                boolean clearResult = interfaceDocParamService.lambdaUpdate()
+                        .in(InterfaceDocParam::getId, typeChangedParamIds)
+                        .set(InterfaceDocParam::getDefaultValue, null)
+                        .set(InterfaceDocParam::getValidationRule, null)
+                        .update();
+                if (!clearResult) {
+                    throw new BusinessException(ErrorCode.OPERATION_ERROR, "请求参数失效配置清理失败");
+                }
+            }
             boolean updateResult = interfaceDocParamService.updateBatchById(paramsToUpdate);
             if (!updateResult) {
                 throw new BusinessException(ErrorCode.OPERATION_ERROR, "更新请求参数文档失败");
@@ -391,6 +589,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      */
     private List<RuntimeRequestParam> buildRuntimeRequestParams(InterfaceInfo interfaceInfo) {
         String requestParams = interfaceInfo.getRequestParams();
+        runtimeRequestParamTemplateValidator.validate(requestParams);
         if (StringUtils.isBlank(requestParams)) {
             return Collections.emptyList();
         }
@@ -425,7 +624,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         param.setNullable(0);
         param.setDefaultValue("");
         param.setExampleValue(runtimeParam.getExampleValue());
-        param.setDescription("由接口运行时参数模板自动生成");
+        param.setDescription(GENERATED_PARAM_DESCRIPTION);
         param.setValidationRule("");
         param.setSortOrder(runtimeParam.getSortOrder());
         return param;
@@ -533,8 +732,51 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
                 saveRequest.getSuccessExample(), "成功响应示例必须是合法 JSON");
         contentSecurityValidator.validateJsonExample(
                 saveRequest.getFailExample(), "失败响应示例必须是合法 JSON");
-        Stream.of(saveRequest.getAuthDescription(), saveRequest.getRemark())
-                .forEach(contentSecurityValidator::validateText);
+        contentSecurityValidator.validateText(saveRequest.getRemark());
+    }
+
+    /**
+     * 校验完成维护所需的公开文档完整性。
+     *
+     * @param saveRequest   聚合保存请求
+     * @param paramRequests 全量参数请求
+     */
+    private void validateReadyCompleteness(InterfaceDocSaveRequest saveRequest,
+                                           List<InterfaceDocParamSaveRequest> paramRequests) {
+        paramRequests.stream()
+                .filter(this::isRequestParam)
+                .forEach(request -> {
+                    String description = trimToEmpty(request.getDescription());
+                    if (StringUtils.isBlank(description)
+                            || GENERATED_PARAM_DESCRIPTION.equals(description)) {
+                        throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数必须填写有效的公开说明");
+                    }
+                });
+        paramRequests.stream()
+                .filter(request -> InterfaceDocParamSceneEnum.RESPONSE.getValue().equals(request.getParamScene()))
+                .filter(request -> StringUtils.isBlank(request.getDescription()))
+                .findFirst()
+                .ifPresent(request -> {
+                    throw new BusinessException(ErrorCode.PARAMS_ERROR,
+                            "响应字段 " + trimToEmpty(request.getName()) + " 必须填写有效的公开说明");
+                });
+        String responseContentType = trimToEmpty(saveRequest.getResponseContentType()).toLowerCase(Locale.ROOT);
+        if (DEFAULT_RESPONSE_CONTENT_TYPE.equals(responseContentType)
+                && StringUtils.isBlank(saveRequest.getSuccessExample())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "JSON 响应必须填写成功响应示例");
+        }
+    }
+
+    /**
+     * 判断参数是否属于运行时请求参数。
+     *
+     * @param request 参数保存请求
+     * @return 是否为请求参数
+     */
+    private boolean isRequestParam(InterfaceDocParamSaveRequest request) {
+        return request != null
+                && (InterfaceDocParamSceneEnum.QUERY.getValue().equals(request.getParamScene())
+                || InterfaceDocParamSceneEnum.BODY.getValue().equals(request.getParamScene()));
     }
 
     /**
@@ -601,14 +843,22 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         if (request == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "文档参数不能为空");
         }
-        String scene = trimToEmpty(request.getParamScene());
+        // Service 直调同样遵循 DTO 的严格枚举契约，不能静默裁剪参数场景后继续处理。
+        String scene = request.getParamScene();
         InterfaceDocParamSceneEnum sceneEnum = InterfaceDocParamSceneEnum.getEnumByValue(scene);
-        if (sceneEnum == null) {
+        if (sceneEnum == null || !sceneEnum.getValue().equals(scene)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数场景不支持");
         }
         String type = trimToEmpty(request.getType()).toLowerCase(Locale.ROOT);
         if (!SUPPORTED_TYPE_MARKERS.contains(type)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数类型不支持");
+        }
+        String name = isRequestParam(request) ? request.getName() : trimToEmpty(request.getName());
+        if (StringUtils.isBlank(name)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数名称不能为空");
+        }
+        if (EMPTY_PLACEHOLDER_IDENTIFIERS.contains(name)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "禁止使用无或暂无作为参数记录");
         }
         if (InterfaceDocParamSceneEnum.RESPONSE.equals(sceneEnum)) {
             if (request.getRequired() == null || request.getNullable() == null) {
@@ -635,7 +885,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         InterfaceDocParam param = new InterfaceDocParam();
         param.setInterfaceInfoId(interfaceInfoId);
         param.setParamScene(trimToEmpty(request.getParamScene()));
-        param.setName(trimToEmpty(request.getName()));
+        param.setName(isRequestParam(request) ? request.getName() : trimToEmpty(request.getName()));
         param.setType(trimToEmpty(request.getType()).toLowerCase(Locale.ROOT));
         param.setRequired(Boolean.TRUE.equals(request.getRequired()) ? 1 : 0);
         param.setNullable(Boolean.TRUE.equals(request.getNullable()) ? 1 : 0);
@@ -683,7 +933,10 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
             String parentKey = Optional.ofNullable(node.getParent())
                     .map(parent -> parent.getRequest().getParamKey().trim())
                     .orElse("");
-            String duplicateKey = node.getRequest().getParamScene() + ":" + parentKey + ":" + node.getRequest().getName().trim();
+            String paramName = isRequestParam(node.getRequest())
+                    ? node.getRequest().getName()
+                    : node.getRequest().getName().trim();
+            String duplicateKey = node.getRequest().getParamScene() + ":" + parentKey + ":" + paramName;
             if (!siblingNameSet.add(duplicateKey)) {
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "同级参数名称不能重复");
             }
@@ -728,7 +981,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
                 .collect(Collectors.toMap(RuntimeRequestParam::getName, Function.identity(), (first, second) -> first));
         Map<String, InterfaceDocParamSaveRequest> requestParamMap = requestParams.stream()
                 .collect(Collectors.toMap(
-                        request -> request.getName().trim(),
+                        InterfaceDocParamSaveRequest::getName,
                         Function.identity(),
                         (first, second) -> {
                             throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数名称不能重复");
@@ -738,10 +991,11 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         }
         runtimeParamMap.values().forEach(runtimeParam -> {
             InterfaceDocParamSaveRequest request = requestParamMap.get(runtimeParam.getName());
+            boolean runtimeRequired = Objects.equals(runtimeParam.getRequired(), 1);
             if (request == null
                     || !runtimeParam.getParamScene().equals(request.getParamScene())
                     || !runtimeParam.getType().equals(request.getType())
-                    || !Objects.equals(Boolean.TRUE, request.getRequired())) {
+                    || !Objects.equals(runtimeRequired, request.getRequired())) {
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数名称、位置、类型和必填属性必须与运行时模板一致");
             }
         });
@@ -757,23 +1011,23 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
     private List<InterfaceDocErrorCode> buildErrorCodes(Long interfaceInfoId,
                                                         List<InterfaceDocErrorCodeSaveRequest> errorCodeRequests) {
         Set<String> errorCodeSet = new HashSet<>();
-        return errorCodeRequests.stream()
-                .peek(this::validateErrorCode)
-                .map(request -> {
-                    String errorCodeValue = trimToEmpty(request.getErrorCode());
-                    if (!errorCodeSet.add(errorCodeValue)) {
-                        throw new BusinessException(ErrorCode.PARAMS_ERROR, "同一接口的错误码不能重复");
-                    }
-                    InterfaceDocErrorCode errorCode = new InterfaceDocErrorCode();
-                    errorCode.setInterfaceInfoId(interfaceInfoId);
-                    errorCode.setErrorCode(errorCodeValue);
-                    errorCode.setErrorMessage(trimToEmpty(request.getErrorMessage()));
-                    errorCode.setDescription(trimToNull(request.getDescription()));
-                    errorCode.setSolution(trimToNull(request.getSolution()));
-                    errorCode.setSortOrder(request.getSortOrder());
-                    return errorCode;
-                })
-                .collect(Collectors.toList());
+        List<InterfaceDocErrorCode> errorCodes = new ArrayList<>();
+        for (InterfaceDocErrorCodeSaveRequest request : errorCodeRequests) {
+            validateErrorCode(request);
+            String errorCodeValue = trimToEmpty(request.getErrorCode());
+            if (!errorCodeSet.add(errorCodeValue)) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "同一接口的错误码不能重复");
+            }
+            InterfaceDocErrorCode errorCode = new InterfaceDocErrorCode();
+            errorCode.setInterfaceInfoId(interfaceInfoId);
+            errorCode.setErrorCode(errorCodeValue);
+            errorCode.setErrorMessage(trimToEmpty(request.getErrorMessage()));
+            errorCode.setDescription(trimToNull(request.getDescription()));
+            errorCode.setSolution(trimToNull(request.getSolution()));
+            errorCode.setSortOrder(request.getSortOrder());
+            errorCodes.add(errorCode);
+        }
+        return errorCodes;
     }
 
     /**
@@ -785,6 +1039,13 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         if (request == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "错误码不能为空");
         }
+        String errorCode = trimToEmpty(request.getErrorCode());
+        if (StringUtils.isBlank(errorCode) || StringUtils.isBlank(request.getErrorMessage())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "错误码和错误信息不能为空");
+        }
+        if (EMPTY_PLACEHOLDER_IDENTIFIERS.contains(errorCode)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "禁止使用无或暂无作为错误码记录");
+        }
         Stream.of(request.getErrorCode(), request.getErrorMessage(), request.getDescription())
                 .forEach(contentSecurityValidator::validateText);
         contentSecurityValidator.validateSolution(request.getSolution());
@@ -793,9 +1054,11 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
     /**
      * 保存或更新文档主信息。
      *
-     * @param saveRequest 保存请求
+     * @param saveRequest  保存请求
+     * @param targetStatus 已校验的目标状态
      */
-    private void saveOrUpdateDoc(InterfaceDocSaveRequest saveRequest) {
+    private void saveOrUpdateDoc(InterfaceDocSaveRequest saveRequest,
+                                 InterfaceDocStatusEnum targetStatus) {
         InterfaceDoc doc = lambdaQuery()
                 .eq(InterfaceDoc::getInterfaceInfoId, saveRequest.getInterfaceInfoId())
                 .one();
@@ -804,9 +1067,9 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
             doc.setInterfaceInfoId(saveRequest.getInterfaceInfoId());
         }
         doc.setDocVersion(trimToEmpty(saveRequest.getDocVersion()));
+        doc.setDocStatus(targetStatus.getValue());
         doc.setRequestContentType(trimToEmpty(saveRequest.getRequestContentType()).toLowerCase(Locale.ROOT));
         doc.setResponseContentType(trimToEmpty(saveRequest.getResponseContentType()).toLowerCase(Locale.ROOT));
-        doc.setAuthDescription(trimToNull(saveRequest.getAuthDescription()));
         doc.setSuccessExample(trimToNull(saveRequest.getSuccessExample()));
         doc.setFailExample(trimToNull(saveRequest.getFailExample()));
         doc.setRemark(trimToNull(saveRequest.getRemark()));
@@ -871,7 +1134,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * @return 是否可以查看
      */
     private boolean canView(InterfaceInfo interfaceInfo, boolean admin) {
-        return admin || interfaceInfo.getStatus() == InterfaceInfoStatusEnum.ONLINE.getValue();
+        return admin || Objects.equals(interfaceInfo.getStatus(), InterfaceInfoStatusEnum.ONLINE.getValue());
     }
 
     /**
@@ -952,7 +1215,6 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
             docVO.setDocVersion(doc.getDocVersion());
             docVO.setRequestContentType(firstText(doc.getRequestContentType(), DEFAULT_REQUEST_CONTENT_TYPE));
             docVO.setResponseContentType(firstText(doc.getResponseContentType(), DEFAULT_RESPONSE_CONTENT_TYPE));
-            docVO.setAuthDescription(doc.getAuthDescription());
             docVO.setSuccessExample(doc.getSuccessExample());
             docVO.setFailExample(doc.getFailExample());
             docVO.setRemark(doc.getRemark());
@@ -964,7 +1226,6 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         docVO.setDocVersion("v1");
         docVO.setRequestContentType(DEFAULT_REQUEST_CONTENT_TYPE);
         docVO.setResponseContentType(DEFAULT_RESPONSE_CONTENT_TYPE);
-        docVO.setAuthDescription("通过平台 AccessKey/SecretKey 签名鉴权，由网关统一校验。");
         return docVO;
     }
 
