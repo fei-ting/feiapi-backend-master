@@ -5,6 +5,7 @@ import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.component.InterfaceDocContentSecurityValidator;
 import com.feiting.feiapi.component.InterfaceDocCurlExampleGenerator;
 import com.feiting.feiapi.component.InterfaceDocJavaSdkExampleGenerator;
+import com.feiting.feiapi.component.RuntimeRequestParamTemplateValidator;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.mapper.InterfaceDocMapper;
 import com.feiting.feiapi.mapper.InterfaceInfoMapper;
@@ -179,6 +180,11 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
     private final InterfaceDocJavaSdkExampleGenerator javaSdkExampleGenerator;
 
     /**
+     * 运行时请求参数模板校验器。
+     */
+    private final RuntimeRequestParamTemplateValidator runtimeRequestParamTemplateValidator;
+
+    /**
      * 创建接口文档主信息服务。
      *
      * @param interfaceInfoService          接口信息服务
@@ -190,6 +196,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * @param contentSecurityValidator      内容安全校验器
      * @param curlExampleGenerator          curl 示例生成器
      * @param javaSdkExampleGenerator       Java SDK 示例生成器
+     * @param runtimeRequestParamTemplateValidator 运行时请求参数模板校验器
      */
     public InterfaceDocServiceImpl(InterfaceInfoService interfaceInfoService,
                                    InterfaceInfoMapper interfaceInfoMapper,
@@ -199,7 +206,8 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
                                    UserInterfaceInfoService userInterfaceInfoService,
                                    InterfaceDocContentSecurityValidator contentSecurityValidator,
                                    InterfaceDocCurlExampleGenerator curlExampleGenerator,
-                                   InterfaceDocJavaSdkExampleGenerator javaSdkExampleGenerator) {
+                                   InterfaceDocJavaSdkExampleGenerator javaSdkExampleGenerator,
+                                   RuntimeRequestParamTemplateValidator runtimeRequestParamTemplateValidator) {
         this.interfaceInfoService = interfaceInfoService;
         this.interfaceInfoMapper = interfaceInfoMapper;
         this.interfaceDocParamService = interfaceDocParamService;
@@ -209,6 +217,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         this.contentSecurityValidator = contentSecurityValidator;
         this.curlExampleGenerator = curlExampleGenerator;
         this.javaSdkExampleGenerator = javaSdkExampleGenerator;
+        this.runtimeRequestParamTemplateValidator = runtimeRequestParamTemplateValidator;
     }
 
     /**
@@ -273,8 +282,8 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         if (interfaceInfo == null || interfaceInfo.getId() == null || interfaceInfo.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        ensureInterfaceDoc(interfaceInfo);
         List<RuntimeRequestParam> runtimeParams = buildRuntimeRequestParams(interfaceInfo);
+        ensureInterfaceDoc(interfaceInfo);
         if (runtimeParams.size() > MAX_REQUEST_PARAM_COUNT) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数数量不能超过 100");
         }
@@ -481,7 +490,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         Map<String, InterfaceDocParam> existingParamMap = existingParams.stream()
                 .filter(param -> StringUtils.isNotBlank(param.getName()))
                 .collect(Collectors.toMap(
-                        param -> param.getName().trim(),
+                        InterfaceDocParam::getName,
                         Function.identity(),
                         (first, second) -> first,
                         LinkedHashMap::new));
@@ -489,7 +498,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
                 .map(RuntimeRequestParam::getName)
                 .collect(Collectors.toSet());
         List<Long> removedIds = existingParams.stream()
-                .filter(param -> StringUtils.isBlank(param.getName()) || !runtimeNames.contains(param.getName().trim()))
+                .filter(param -> StringUtils.isBlank(param.getName()) || !runtimeNames.contains(param.getName()))
                 .map(InterfaceDocParam::getId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
@@ -580,6 +589,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      */
     private List<RuntimeRequestParam> buildRuntimeRequestParams(InterfaceInfo interfaceInfo) {
         String requestParams = interfaceInfo.getRequestParams();
+        runtimeRequestParamTemplateValidator.validate(requestParams);
         if (StringUtils.isBlank(requestParams)) {
             return Collections.emptyList();
         }
@@ -843,7 +853,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         if (!SUPPORTED_TYPE_MARKERS.contains(type)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数类型不支持");
         }
-        String name = trimToEmpty(request.getName());
+        String name = isRequestParam(request) ? request.getName() : trimToEmpty(request.getName());
         if (StringUtils.isBlank(name)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数名称不能为空");
         }
@@ -875,7 +885,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         InterfaceDocParam param = new InterfaceDocParam();
         param.setInterfaceInfoId(interfaceInfoId);
         param.setParamScene(trimToEmpty(request.getParamScene()));
-        param.setName(trimToEmpty(request.getName()));
+        param.setName(isRequestParam(request) ? request.getName() : trimToEmpty(request.getName()));
         param.setType(trimToEmpty(request.getType()).toLowerCase(Locale.ROOT));
         param.setRequired(Boolean.TRUE.equals(request.getRequired()) ? 1 : 0);
         param.setNullable(Boolean.TRUE.equals(request.getNullable()) ? 1 : 0);
@@ -923,7 +933,10 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
             String parentKey = Optional.ofNullable(node.getParent())
                     .map(parent -> parent.getRequest().getParamKey().trim())
                     .orElse("");
-            String duplicateKey = node.getRequest().getParamScene() + ":" + parentKey + ":" + node.getRequest().getName().trim();
+            String paramName = isRequestParam(node.getRequest())
+                    ? node.getRequest().getName()
+                    : node.getRequest().getName().trim();
+            String duplicateKey = node.getRequest().getParamScene() + ":" + parentKey + ":" + paramName;
             if (!siblingNameSet.add(duplicateKey)) {
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "同级参数名称不能重复");
             }
@@ -968,7 +981,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
                 .collect(Collectors.toMap(RuntimeRequestParam::getName, Function.identity(), (first, second) -> first));
         Map<String, InterfaceDocParamSaveRequest> requestParamMap = requestParams.stream()
                 .collect(Collectors.toMap(
-                        request -> request.getName().trim(),
+                        InterfaceDocParamSaveRequest::getName,
                         Function.identity(),
                         (first, second) -> {
                             throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数名称不能重复");
@@ -978,10 +991,11 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         }
         runtimeParamMap.values().forEach(runtimeParam -> {
             InterfaceDocParamSaveRequest request = requestParamMap.get(runtimeParam.getName());
+            boolean runtimeRequired = Objects.equals(runtimeParam.getRequired(), 1);
             if (request == null
                     || !runtimeParam.getParamScene().equals(request.getParamScene())
                     || !runtimeParam.getType().equals(request.getType())
-                    || !Objects.equals(Boolean.TRUE, request.getRequired())) {
+                    || !Objects.equals(runtimeRequired, request.getRequired())) {
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数名称、位置、类型和必填属性必须与运行时模板一致");
             }
         });

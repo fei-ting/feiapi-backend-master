@@ -1044,6 +1044,145 @@ class InterfaceDocControllerTest {
     }
 
     /**
+     * 测试聚合保存不得裁剪请求参数名后再匹配运行时模板。
+     */
+    @Test
+    @DisplayName("文档保存拒绝带首尾空白的请求参数名")
+    void shouldRejectTrimmedRequestParamNameWhenSavingDoc() {
+        long id = createInterfaceInfo("exactNameApi", "/api/exact_name_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"userId\":1}");
+        InterfaceDocSaveRequest request = baseSaveRequest(id);
+        request.getParams().add(param("bodyUserId", null, "BODY", " userId ", "number", true, false, 1));
+
+        assertThatThrownBy(() -> interfaceDocService.saveDoc(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("请求参数");
+    }
+
+    /**
+     * 测试同步对账不会把带空白的历史脏名称裁剪后继承说明。
+     */
+    @Test
+    @DisplayName("同步对账按原始名称替换带空白的历史请求参数")
+    void shouldReplaceLegacyWhitespaceRequestParamWithoutMigratingDescription() {
+        long id = createInterfaceInfo("legacyWhitespaceApi", "/api/legacy_whitespace_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"userId\":1}");
+        InterfaceDocParam legacyParam = new InterfaceDocParam();
+        legacyParam.setInterfaceInfoId(id);
+        legacyParam.setParamScene("BODY");
+        legacyParam.setName(" userId");
+        legacyParam.setType("number");
+        legacyParam.setRequired(1);
+        legacyParam.setNullable(0);
+        legacyParam.setDescription("历史参数说明");
+        legacyParam.setSortOrder(9);
+        assertThat(interfaceDocParamService.save(legacyParam)).isTrue();
+
+        interfaceDocService.syncRequestDocFromInterfaceInfo(interfaceInfoService.getById(id));
+
+        List<InterfaceDocParam> requestParams = interfaceDocParamService.lambdaQuery()
+                .eq(InterfaceDocParam::getInterfaceInfoId, id)
+                .orderByAsc(InterfaceDocParam::getId)
+                .list();
+        assertThat(requestParams).hasSize(1);
+        assertThat(requestParams.get(0).getId()).isNotEqualTo(legacyParam.getId());
+        assertThat(requestParams.get(0).getName()).isEqualTo("userId");
+        assertThat(requestParams.get(0).getDescription()).isEqualTo("由接口运行时参数模板自动生成");
+        assertThat(requestParams.get(0).getSortOrder()).isEqualTo(1);
+    }
+
+    /**
+     * 测试同步入口在创建文档主记录前完成模板名称校验。
+     */
+    @Test
+    @DisplayName("非法运行时模板同步失败且不会创建文档记录")
+    void shouldValidateRuntimeTemplateBeforeCreatingDoc() {
+        long id = createInterfaceInfo("invalidTemplateApi", "/api/invalid_template_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\" userId\":1}");
+
+        assertThatThrownBy(() -> interfaceDocService.syncRequestDocFromInterfaceInfo(interfaceInfoService.getById(id)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("请求参数名称不能包含首尾空白");
+        assertThat(interfaceDocService.lambdaQuery()
+                .eq(InterfaceDoc::getInterfaceInfoId, id)
+                .count()).isZero();
+        assertThat(interfaceDocParamService.lambdaQuery()
+                .eq(InterfaceDocParam::getInterfaceInfoId, id)
+                .count()).isZero();
+    }
+
+    /**
+     * 测试参数大小写变化按删除旧参数并新增新参数处理，不迁移说明性字段。
+     */
+    @Test
+    @DisplayName("请求参数名称大小写变化时不迁移旧说明")
+    void shouldTreatCaseChangedRequestParamNameAsDeleteAndAdd() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idcasechange" + suffix(), "admin");
+        long id = createInterfaceInfo("caseChangeApi", "/api/case_change_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"userId\":1}");
+        InterfaceInfo interfaceInfo = interfaceInfoService.getById(id);
+        interfaceDocService.syncRequestDocFromInterfaceInfo(interfaceInfo);
+
+        InterfaceDocParam oldParam = interfaceDocParamService.lambdaQuery()
+                .eq(InterfaceDocParam::getInterfaceInfoId, id)
+                .eq(InterfaceDocParam::getName, "userId")
+                .one();
+        oldParam.setDescription("旧参数说明");
+        oldParam.setSortOrder(9);
+        assertThat(interfaceDocParamService.updateById(oldParam)).isTrue();
+
+        InterfaceInfoUpdateRequest updateRequest = new InterfaceInfoUpdateRequest();
+        updateRequest.setId(id);
+        updateRequest.setRequestParams("{\"UserId\":1}");
+        updateInterfaceInfo(adminSession, updateRequest);
+
+        List<InterfaceDocParam> requestParams = interfaceDocParamService.lambdaQuery()
+                .eq(InterfaceDocParam::getInterfaceInfoId, id)
+                .orderByAsc(InterfaceDocParam::getId)
+                .list();
+        assertThat(requestParams).extracting(InterfaceDocParam::getName).containsExactly("UserId");
+        assertThat(requestParams.get(0).getDescription()).isEqualTo("由接口运行时参数模板自动生成");
+        assertThat(requestParams.get(0).getSortOrder()).isEqualTo(1);
+    }
+
+    /**
+     * 测试请求方法变化只更新参数位置并保留说明性字段。
+     */
+    @Test
+    @DisplayName("请求方法变化时更新参数位置并保留说明性字段")
+    void shouldUpdateRequestParamSceneAndPreserveManualFieldsWhenMethodChanges() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idmethodchange" + suffix(), "admin");
+        long id = createInterfaceInfo("methodChangeApi", "/api/method_change_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"userId\":1}");
+        InterfaceInfo interfaceInfo = interfaceInfoService.getById(id);
+        interfaceDocService.syncRequestDocFromInterfaceInfo(interfaceInfo);
+
+        InterfaceDocParam requestParam = interfaceDocParamService.lambdaQuery()
+                .eq(InterfaceDocParam::getInterfaceInfoId, id)
+                .eq(InterfaceDocParam::getName, "userId")
+                .one();
+        requestParam.setDescription("用户标识说明");
+        requestParam.setDefaultValue("1");
+        requestParam.setExampleValue("1001");
+        requestParam.setValidationRule("大于零");
+        requestParam.setSortOrder(7);
+        assertThat(interfaceDocParamService.updateById(requestParam)).isTrue();
+
+        InterfaceInfoUpdateRequest updateRequest = new InterfaceInfoUpdateRequest();
+        updateRequest.setId(id);
+        updateRequest.setMethod("GET");
+        updateInterfaceInfo(adminSession, updateRequest);
+
+        InterfaceDocParam migratedParam = interfaceDocParamService.getById(requestParam.getId());
+        assertThat(migratedParam.getParamScene()).isEqualTo("QUERY");
+        assertThat(migratedParam.getDescription()).isEqualTo("用户标识说明");
+        assertThat(migratedParam.getDefaultValue()).isEqualTo("1");
+        assertThat(migratedParam.getExampleValue()).isEqualTo("1001");
+        assertThat(migratedParam.getValidationRule()).isEqualTo("大于零");
+        assertThat(migratedParam.getSortOrder()).isEqualTo(7);
+    }
+
+    /**
      * 测试新增接口时自动生成结构化请求参数。
      */
     @Test

@@ -40,12 +40,6 @@ create table if not exists feiapi.`interface_doc_param`
     key `idx_interface_doc_param_info_scene` (`interface_info_id`, `param_scene`, `is_delete`, `sort_order`)
 ) comment '接口文档参数';
 
--- 阶段 2 不再开放自定义业务 Header，统一逻辑删除阶段 1 遗留记录
-update feiapi.`interface_doc_param`
-set `is_delete` = `id`
-where `param_scene` = 'HEADER'
-  and `is_delete` = 0;
-
 -- 接口文档错误码
 create table if not exists feiapi.`interface_doc_error_code`
 (

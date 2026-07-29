@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.feiting.feiapi.component.InterfaceDocContentSecurityValidator;
 import com.feiting.feiapi.component.InterfaceDocCurlExampleGenerator;
 import com.feiting.feiapi.component.InterfaceDocJavaSdkExampleGenerator;
+import com.feiting.feiapi.component.RuntimeRequestParamTemplateValidator;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.mapper.InterfaceDocMapper;
 import com.feiting.feiapi.mapper.InterfaceInfoMapper;
@@ -70,6 +71,9 @@ class InterfaceDocServiceImplTest {
     /** Java SDK 示例生成器。 */
     private InterfaceDocJavaSdkExampleGenerator javaSdkExampleGenerator;
 
+    /** 运行时请求参数模板校验器。 */
+    private RuntimeRequestParamTemplateValidator runtimeRequestParamTemplateValidator;
+
     /** 被测服务。 */
     private InterfaceDocServiceImpl docService;
 
@@ -85,6 +89,7 @@ class InterfaceDocServiceImplTest {
         contentSecurityValidator = mock(InterfaceDocContentSecurityValidator.class);
         curlExampleGenerator = mock(InterfaceDocCurlExampleGenerator.class);
         javaSdkExampleGenerator = mock(InterfaceDocJavaSdkExampleGenerator.class);
+        runtimeRequestParamTemplateValidator = mock(RuntimeRequestParamTemplateValidator.class);
         docService = spy(new InterfaceDocServiceImpl(
                 interfaceInfoService,
                 interfaceInfoMapper,
@@ -94,7 +99,8 @@ class InterfaceDocServiceImplTest {
                 userInterfaceInfoService,
                 contentSecurityValidator,
                 curlExampleGenerator,
-                javaSdkExampleGenerator));
+                javaSdkExampleGenerator,
+                runtimeRequestParamTemplateValidator));
 
         ReflectionTestUtils.setField(docService, "gatewayHost", "http://gateway");
         LambdaQueryChainWrapper<InterfaceDoc> docQuery = mock(LambdaQueryChainWrapper.class);

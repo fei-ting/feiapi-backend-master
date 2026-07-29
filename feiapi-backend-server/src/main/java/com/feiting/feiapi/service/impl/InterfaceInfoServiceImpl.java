@@ -3,6 +3,7 @@ package com.feiting.feiapi.service.impl;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.feiting.feiapi.common.ErrorCode;
+import com.feiting.feiapi.component.RuntimeRequestParamTemplateValidator;
 import com.feiting.feiapi.config.InterfaceTargetHostProperties;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.mapper.InterfaceInfoMapper;
@@ -25,12 +26,34 @@ import org.springframework.stereotype.Service;
 public class InterfaceInfoServiceImpl extends ServiceImpl<InterfaceInfoMapper, InterfaceInfo>
     implements InterfaceInfoService {
 
+    /**
+     * 真实后端地址白名单配置。
+     */
     private final InterfaceTargetHostProperties interfaceTargetHostProperties;
 
-    public InterfaceInfoServiceImpl(InterfaceTargetHostProperties interfaceTargetHostProperties) {
+    /**
+     * 运行时请求参数模板校验器。
+     */
+    private final RuntimeRequestParamTemplateValidator runtimeRequestParamTemplateValidator;
+
+    /**
+     * 创建接口信息服务实现。
+     *
+     * @param interfaceTargetHostProperties        真实后端地址白名单配置
+     * @param runtimeRequestParamTemplateValidator 运行时请求参数模板校验器
+     */
+    public InterfaceInfoServiceImpl(InterfaceTargetHostProperties interfaceTargetHostProperties,
+                                    RuntimeRequestParamTemplateValidator runtimeRequestParamTemplateValidator) {
         this.interfaceTargetHostProperties = interfaceTargetHostProperties;
+        this.runtimeRequestParamTemplateValidator = runtimeRequestParamTemplateValidator;
     }
 
+    /**
+     * 校验接口运行时配置。
+     *
+     * @param interfaceInfo 接口信息
+     * @param add           是否为新增场景
+     */
     @Override
     public void validInterfaceInfo(InterfaceInfo interfaceInfo, boolean add) {
         // 空对象校验
@@ -43,6 +66,7 @@ public class InterfaceInfoServiceImpl extends ServiceImpl<InterfaceInfoMapper, I
         String url = interfaceInfo.getUrl();
         String path = interfaceInfo.getPath();
         String targetHost = interfaceInfo.getTargetHost();
+        String requestParams = interfaceInfo.getRequestParams();
         String method = interfaceInfo.getMethod();
         String quotaType = interfaceInfo.getQuotaType();
 
@@ -98,6 +122,7 @@ public class InterfaceInfoServiceImpl extends ServiceImpl<InterfaceInfoMapper, I
                 && !InterfaceTargetHostValidator.isSafeTargetHost(targetHost, interfaceTargetHostProperties.getAllowedHostnames())) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "真实后端服务地址不允许访问");
         }
+        runtimeRequestParamTemplateValidator.validate(requestParams);
     }
 
     /**
