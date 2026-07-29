@@ -55,11 +55,6 @@ public class InterfaceDoc implements Serializable {
     private String responseContentType;
 
     /**
-     * 鉴权说明。
-     */
-    private String authDescription;
-
-    /**
      * 成功响应 JSON 示例。
      */
     private String successExample;

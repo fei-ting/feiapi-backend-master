@@ -59,6 +59,11 @@ public class InterfaceDocDetailVO implements Serializable {
     private List<InterfaceDocErrorCodeVO> errorCodes;
 
     /**
+     * Java SDK 调用示例。
+     */
+    private String javaSdkExample;
+
+    /**
      * curl 调用示例。
      */
     private String curlExample;

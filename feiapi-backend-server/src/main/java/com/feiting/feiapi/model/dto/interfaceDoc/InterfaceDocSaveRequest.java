@@ -42,10 +42,6 @@ public class InterfaceDocSaveRequest implements Serializable {
     @Size(max = 128, message = "响应内容类型长度不能超过 128")
     private String responseContentType;
 
-    /** 鉴权说明。 */
-    @Size(max = 512, message = "鉴权说明长度不能超过 512")
-    private String authDescription;
-
     /** 成功响应 JSON 示例。 */
     @Size(max = 65535, message = "成功响应示例长度不能超过 65535")
     private String successExample;
