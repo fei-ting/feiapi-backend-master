@@ -49,6 +49,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -813,6 +814,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
                             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数键不能重复");
                         },
                         LinkedHashMap::new));
+        // 循环检测和深度计算依赖此处建立的 parent 引用，必须先完成父子节点关联。
         linkParamNodes(nodeMap);
         assertContainerParentTypes(nodeMap);
         assertNoDuplicateSiblingNames(nodeMap);
@@ -939,16 +941,16 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * @param nodeMap 参数键与保存节点映射
      */
     private void assertContainerParentTypes(Map<String, ParamSaveNode> nodeMap) {
-        nodeMap.values().stream()
+        List<String> invalidParentDetails = nodeMap.values().stream()
                 .filter(node -> isResponseParam(node.getRequest()) && !node.getChildren().isEmpty())
                 .filter(node -> !isContainerType(node.getRequest().getType()))
-                .findFirst()
-                .ifPresent(node -> {
-                    throw new BusinessException(ErrorCode.PARAMS_ERROR,
-                            "响应字段 " + resolveParamDisplayName(node) + " 的类型 "
-                                    + trimToEmpty(node.getRequest().getType()).toLowerCase(Locale.ROOT)
-                                    + " 不能拥有子字段");
-                });
+                .map(node -> resolveParamDisplayName(node) + "("
+                        + trimToEmpty(node.getRequest().getType()).toLowerCase(Locale.ROOT) + ")")
+                .collect(Collectors.toList());
+        if (!invalidParentDetails.isEmpty()) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,
+                    "以下响应字段不是容器类型，不能拥有子字段：" + String.join("、", invalidParentDetails));
+        }
     }
 
     /**
@@ -1002,7 +1004,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * @param nodeMap 参数键与保存节点映射
      */
     private void assertNoDuplicateSiblingNames(Map<String, ParamSaveNode> nodeMap) {
-        Set<String> siblingNameSet = new HashSet<>();
+        Map<String, Map<String, Set<String>>> siblingNamesBySceneAndParent = new HashMap<>();
         nodeMap.values().forEach(node -> {
             String parentKey = Optional.ofNullable(node.getParent())
                     .map(parent -> parent.getRequest().getParamKey().trim())
@@ -1010,8 +1012,11 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
             String paramName = isRequestParam(node.getRequest())
                     ? node.getRequest().getName()
                     : node.getRequest().getName().trim();
-            String duplicateKey = node.getRequest().getParamScene() + ":" + parentKey + ":" + paramName;
-            if (!siblingNameSet.add(duplicateKey)) {
+            // 使用嵌套映射表达场景和父级作用域，避免外部文本包含分隔符时产生组合键碰撞。
+            Set<String> siblingNames = siblingNamesBySceneAndParent
+                    .computeIfAbsent(node.getRequest().getParamScene(), ignored -> new HashMap<>())
+                    .computeIfAbsent(parentKey, ignored -> new HashSet<>());
+            if (!siblingNames.add(paramName)) {
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "同级参数名称不能重复");
             }
         });
