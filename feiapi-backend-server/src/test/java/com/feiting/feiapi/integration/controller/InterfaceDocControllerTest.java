@@ -898,10 +898,10 @@ class InterfaceDocControllerTest {
     }
 
     /**
-     * 测试标量响应字段不能拥有子字段。
+     * 测试全部标量响应父字段一次性返回。
      */
     @Test
-    @DisplayName("标量响应字段不能拥有子字段")
+    @DisplayName("多个标量响应父字段一次性返回")
     void shouldRejectScalarResponseParent() throws Exception {
         MockHttpSession adminSession = loginWithRole("idscalarparent" + suffix(), "admin");
         long id = createInterfaceInfo("scalarParentApi", "/api/scalar_parent_" + suffix(),
@@ -910,11 +910,33 @@ class InterfaceDocControllerTest {
         InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
         request.getParams().add(param("responseData", null, "RESPONSE", "data", "string", true, false, 2));
         request.getParams().add(param("responseChild", "responseData", "RESPONSE", "name", "string", false, true, 3));
+        request.getParams().add(param("responseCount", null, "RESPONSE", "count", "number", true, false, 4));
+        request.getParams().add(param("responseUnit", "responseCount", "RESPONSE", "unit", "string", false, true, 5));
 
         JsonNode response = postSave(adminSession, request);
         assertThat(response.get("code").asInt()).isEqualTo(40000);
         assertThat(response.get("message").asText())
-                .isEqualTo("响应字段 data 的类型 string 不能拥有子字段");
+                .isEqualTo("以下响应字段不是容器类型，不能拥有子字段：data(string)、count(number)");
+    }
+
+    /**
+     * 测试父级键和字段名中的分隔符不会造成同级重名误判。
+     */
+    @Test
+    @DisplayName("同级重名校验使用结构化父级作用域")
+    void shouldAllowSiblingNamesThatOnlyCollideAfterConcatenation() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idsiblingkey" + suffix(), "admin");
+        long id = createInterfaceInfo("siblingKeyApi", "/api/sibling_key_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.getParams().add(param("parent:a", null, "RESPONSE", "first", "object", true, false, 2));
+        request.getParams().add(param("parent", null, "RESPONSE", "second", "object", true, false, 3));
+        request.getParams().add(param("firstChild", "parent:a", "RESPONSE", "value", "string", false, true, 4));
+        request.getParams().add(param("secondChild", "parent", "RESPONSE", "a:value", "string", false, true, 5));
+
+        saveDocByAdmin(adminSession, request);
+        assertThat(requestDoc(id, adminSession).get("data").get("responseParams")).hasSize(4);
     }
 
     /**
