@@ -91,9 +91,9 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
     private static final int MAX_REQUEST_PARAM_COUNT = 100;
 
     /**
-     * 响应参数最大嵌套深度。
+     * 接口文档响应字段最大嵌套深度。
      */
-    private static final int MAX_RESPONSE_DEPTH = 8;
+    private static final int MAX_DOC_NESTING_DEPTH = 8;
 
     /**
      * 错误码数量上限。
@@ -814,6 +814,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
                         },
                         LinkedHashMap::new));
         linkParamNodes(nodeMap);
+        assertContainerParentTypes(nodeMap);
         assertNoDuplicateSiblingNames(nodeMap);
         validateRuntimeRequestParams(interfaceInfo, nodeMap.values().stream()
                 .map(ParamSaveNode::getRequest)
@@ -823,8 +824,8 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         List<ParamSaveNode> nodes = new ArrayList<>(nodeMap.values());
         for (ParamSaveNode node : nodes) {
             node.setDepth(resolveParamDepth(node, new HashSet<>()));
-            if (node.getDepth() > MAX_RESPONSE_DEPTH) {
-                throw new BusinessException(ErrorCode.PARAMS_ERROR, "响应参数嵌套深度不能超过 8");
+            if (isResponseParam(node.getRequest()) && node.getDepth() > MAX_DOC_NESTING_DEPTH) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "响应字段嵌套深度不能超过 8");
             }
         }
 
@@ -903,13 +904,16 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * @param nodeMap 参数键与保存节点映射
      */
     private void linkParamNodes(Map<String, ParamSaveNode> nodeMap) {
+        Map<String, List<String>> missingParentChildren = new LinkedHashMap<>();
         nodeMap.values().stream()
                 .filter(node -> StringUtils.isNotBlank(node.getRequest().getParentParamKey()))
                 .forEach(node -> {
                     String parentKey = node.getRequest().getParentParamKey().trim();
                     ParamSaveNode parentNode = nodeMap.get(parentKey);
                     if (parentNode == null) {
-                        throw new BusinessException(ErrorCode.PARAMS_ERROR, "父级参数不存在");
+                        missingParentChildren.computeIfAbsent(parentKey, ignored -> new ArrayList<>())
+                                .add(resolveParamDisplayName(node));
+                        return;
                     }
                     if (!InterfaceDocParamSceneEnum.RESPONSE.getValue().equals(parentNode.getRequest().getParamScene())) {
                         throw new BusinessException(ErrorCode.PARAMS_ERROR, "父级参数必须是响应参数");
@@ -920,6 +924,76 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
                     node.setParent(parentNode);
                     parentNode.getChildren().add(node);
                 });
+        if (!missingParentChildren.isEmpty()) {
+            String details = missingParentChildren.entrySet().stream()
+                    .map(entry -> escapeErrorMessageText(entry.getKey())
+                            + " -> [" + String.join(", ", entry.getValue()) + "]")
+                    .collect(Collectors.joining("；"));
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "响应字段父级不存在：" + details);
+        }
+    }
+
+    /**
+     * 校验拥有子字段的响应字段必须是容器类型。
+     *
+     * @param nodeMap 参数键与保存节点映射
+     */
+    private void assertContainerParentTypes(Map<String, ParamSaveNode> nodeMap) {
+        nodeMap.values().stream()
+                .filter(node -> isResponseParam(node.getRequest()) && !node.getChildren().isEmpty())
+                .filter(node -> !isContainerType(node.getRequest().getType()))
+                .findFirst()
+                .ifPresent(node -> {
+                    throw new BusinessException(ErrorCode.PARAMS_ERROR,
+                            "响应字段 " + resolveParamDisplayName(node) + " 的类型 "
+                                    + trimToEmpty(node.getRequest().getType()).toLowerCase(Locale.ROOT)
+                                    + " 不能拥有子字段");
+                });
+    }
+
+    /**
+     * 判断参数是否为响应字段。
+     *
+     * @param request 参数保存请求
+     * @return 是否为响应字段
+     */
+    private boolean isResponseParam(InterfaceDocParamSaveRequest request) {
+        return request != null
+                && InterfaceDocParamSceneEnum.RESPONSE.getValue().equals(request.getParamScene());
+    }
+
+    /**
+     * 判断字段类型是否允许拥有子字段。
+     *
+     * @param type 字段类型
+     * @return 是否为容器类型
+     */
+    private boolean isContainerType(String type) {
+        String normalizedType = trimToEmpty(type).toLowerCase(Locale.ROOT);
+        return "object".equals(normalizedType) || "array".equals(normalizedType);
+    }
+
+    /**
+     * 解析参数展示名称，名称为空时回退到会话参数键。
+     *
+     * @param node 参数节点
+     * @return 参数展示名称
+     */
+    private String resolveParamDisplayName(ParamSaveNode node) {
+        String name = trimToEmpty(node.getRequest().getName());
+        String displayName = StringUtils.isNotBlank(name) ? name : node.getRequest().getParamKey().trim();
+        return escapeErrorMessageText(displayName);
+    }
+
+    /**
+     * 转义错误信息中的外部文本，防止控制字符破坏日志或页面展示。
+     *
+     * @param value 外部文本
+     * @return 不含 JSON 外层引号的安全文本
+     */
+    private String escapeErrorMessageText(String value) {
+        String jsonText = new JsonPrimitive(value).toString();
+        return jsonText.substring(1, jsonText.length() - 1);
     }
 
     /**
