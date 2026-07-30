@@ -507,6 +507,78 @@ class InterfaceDocControllerTest {
     }
 
     /**
+     * 测试第二次非空聚合保存会完整替换旧参数和错误码快照。
+     */
+    @Test
+    @DisplayName("聚合保存使用新的非空快照完整替换旧集合")
+    void shouldReplaceExistingCollectionsWithNewFullSnapshots() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idreplace" + suffix(), "admin");
+        long id = createInterfaceInfo("replaceCollectionsApi", "/api/replace_collections_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"alice\"}");
+
+        InterfaceDocSaveRequest firstRequest = buildBasicSaveRequest(id);
+        firstRequest.getParams().add(param(
+                "oldResponse", null, "RESPONSE", "oldData", "object", true, false, 2));
+        firstRequest.getParams().add(param(
+                "oldResponseChild", "oldResponse", "RESPONSE", "oldName", "string", false, true, 3));
+        firstRequest.getErrorCodes().add(errorCode("OLD001", "旧错误一", 1));
+        firstRequest.getErrorCodes().add(errorCode("OLD002", "旧错误二", 2));
+        saveDocByAdmin(adminSession, firstRequest);
+
+        List<Long> oldParamIds = interfaceDocParamService.lambdaQuery()
+                .eq(InterfaceDocParam::getInterfaceInfoId, id)
+                .list()
+                .stream()
+                .map(InterfaceDocParam::getId)
+                .collect(Collectors.toList());
+        List<Long> oldErrorCodeIds = interfaceDocErrorCodeService.lambdaQuery()
+                .eq(InterfaceDocErrorCode::getInterfaceInfoId, id)
+                .list()
+                .stream()
+                .map(InterfaceDocErrorCode::getId)
+                .collect(Collectors.toList());
+
+        InterfaceDocSaveRequest secondRequest = buildBasicSaveRequest(id);
+        secondRequest.getParams().add(param(
+                "newResponse", null, "RESPONSE", "result", "object", true, false, 5));
+        secondRequest.getParams().add(param(
+                "newResponseChild", "newResponse", "RESPONSE", "status", "string", true, false, 6));
+        secondRequest.getErrorCodes().add(errorCode("NEW001", "新错误", 3));
+        saveDocByAdmin(adminSession, secondRequest);
+
+        List<InterfaceDocParam> persistedParams = interfaceDocParamService.lambdaQuery()
+                .eq(InterfaceDocParam::getInterfaceInfoId, id)
+                .orderByAsc(InterfaceDocParam::getSortOrder)
+                .list();
+        List<InterfaceDocErrorCode> persistedErrorCodes = interfaceDocErrorCodeService.lambdaQuery()
+                .eq(InterfaceDocErrorCode::getInterfaceInfoId, id)
+                .orderByAsc(InterfaceDocErrorCode::getSortOrder)
+                .list();
+        assertThat(persistedParams)
+                .extracting(InterfaceDocParam::getName)
+                .containsExactly("username", "result", "status");
+        assertThat(persistedParams)
+                .extracting(InterfaceDocParam::getId)
+                .doesNotContainAnyElementsOf(oldParamIds);
+        assertThat(persistedErrorCodes)
+                .extracting(InterfaceDocErrorCode::getErrorCode)
+                .containsExactly("NEW001");
+        assertThat(persistedErrorCodes)
+                .extracting(InterfaceDocErrorCode::getId)
+                .doesNotContainAnyElementsOf(oldErrorCodeIds);
+
+        JsonNode detail = requestDoc(id, adminSession).get("data");
+        assertThat(detail.get("requestParams").findValuesAsText("name")).containsExactly("username");
+        assertThat(detail.get("responseParams").findValuesAsText("name")).containsExactly("result", "status");
+        assertThat(detail.get("errorCodes").findValuesAsText("errorCode")).containsExactly("NEW001");
+        JsonNode responseRoot = detail.get("responseParams").get(0);
+        JsonNode responseChild = detail.get("responseParams").get(1);
+        assertThat(responseRoot.get("sortOrder").asInt()).isEqualTo(5);
+        assertThat(responseChild.get("sortOrder").asInt()).isEqualTo(6);
+        assertThat(responseChild.get("parentId").asLong()).isEqualTo(responseRoot.get("id").asLong());
+    }
+
+    /**
      * 测试控制器和服务入口均拒绝自定义 Header 场景，聚合查询也不展示遗留记录。
      */
     @Test
