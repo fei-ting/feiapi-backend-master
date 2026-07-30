@@ -10,7 +10,7 @@ import java.io.Serializable;
 /**
  * 用户角色变更请求
  *
- * @author yupi
+ * @author feiting
  */
 @Data
 public class UserRoleUpdateRequest implements Serializable {

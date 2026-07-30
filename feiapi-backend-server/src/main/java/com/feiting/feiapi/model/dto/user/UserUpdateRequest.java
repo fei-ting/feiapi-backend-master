@@ -13,7 +13,7 @@ import java.io.Serializable;
 /**
  * 用户更新请求
  *
- * @author yupi
+ * @author feiting
  */
 @Data
 public class UserUpdateRequest implements Serializable {

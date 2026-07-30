@@ -3,6 +3,7 @@ package com.feiting.feiapi.integration.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.feiting.feiapi.common.BaseResponse;
+import com.feiting.feiapi.constant.UserConstant;
 import com.feiting.feiapi.controller.InterfaceInfoController;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
@@ -207,6 +208,57 @@ class InterfaceInfoControllerTest {
         doc.setRequestContentType("application/json");
         doc.setResponseContentType("application/json");
         assertTrue(interfaceDocService.save(doc), "测试文档主记录应创建成功");
+    }
+
+    /**
+     * 清理非事务回滚测试真实提交的数据。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     * @param adminSession    管理员登录会话
+     */
+    private void cleanupCommittedRollbackTestData(Long interfaceInfoId, MockHttpSession adminSession) {
+        User adminUser = adminSession == null
+                ? null
+                : (User) adminSession.getAttribute(UserConstant.USER_LOGIN_STATE);
+        assertAll("非事务回滚测试数据应清理完整",
+                () -> {
+                    if (interfaceInfoId != null) {
+                        interfaceDocParamService.lambdaUpdate()
+                                .eq(InterfaceDocParam::getInterfaceInfoId, interfaceInfoId)
+                                .remove();
+                    }
+                },
+                () -> {
+                    if (interfaceInfoId != null) {
+                        interfaceDocService.lambdaUpdate()
+                                .eq(InterfaceDoc::getInterfaceInfoId, interfaceInfoId)
+                                .remove();
+                    }
+                },
+                () -> {
+                    if (interfaceInfoId != null) {
+                        userInterfaceInfoService.lambdaUpdate()
+                                .eq(UserInterfaceInfo::getInterfaceInfoId, interfaceInfoId)
+                                .remove();
+                    }
+                },
+                () -> {
+                    if (interfaceInfoId != null) {
+                        interfaceInfoService.removeById(interfaceInfoId);
+                    }
+                },
+                () -> {
+                    if (adminUser != null && adminUser.getId() != null) {
+                        userInterfaceInfoService.lambdaUpdate()
+                                .eq(UserInterfaceInfo::getUserId, adminUser.getId())
+                                .remove();
+                    }
+                },
+                () -> {
+                    if (adminUser != null && adminUser.getId() != null) {
+                        userService.removeById(adminUser.getId());
+                    }
+                });
     }
 
     /**
@@ -686,33 +738,39 @@ class InterfaceInfoControllerTest {
         @Transactional(propagation = Propagation.NOT_SUPPORTED)
         @DisplayName("参数同步超限时接口更新和文档状态整体回滚")
         void shouldRollbackUpdateAndDocStatusWhenRequestSyncExceedsLimit() throws Exception {
-            MockHttpSession session = loginAsAdmin();
-            long id = createInterfaceInfo("rollbackApi", "/api/rollback", "POST",
-                    InterfaceInfoStatusEnum.OFFLINE.getValue(), "{\"original\":\"string\"}");
-            createDocWithStatus(id, "READY");
-            String oversizedTemplate = IntStream.rangeClosed(1, 101)
-                    .mapToObj(index -> "\"field" + index + "\":\"string\"")
-                    .collect(Collectors.joining(",", "{", "}"));
-            InterfaceInfoUpdateRequest request = new InterfaceInfoUpdateRequest();
-            request.setId(id);
-            request.setName("shouldRollback");
-            request.setRequestParams(oversizedTemplate);
+            MockHttpSession session = null;
+            Long id = null;
+            try {
+                session = loginAsAdmin();
+                id = createInterfaceInfo("rollbackApi", "/api/rollback", "POST",
+                        InterfaceInfoStatusEnum.OFFLINE.getValue(), "{\"original\":\"string\"}");
+                createDocWithStatus(id, "READY");
+                String oversizedTemplate = IntStream.rangeClosed(1, 101)
+                        .mapToObj(index -> "\"field" + index + "\":\"string\"")
+                        .collect(Collectors.joining(",", "{", "}"));
+                InterfaceInfoUpdateRequest request = new InterfaceInfoUpdateRequest();
+                request.setId(id);
+                request.setName("shouldRollback");
+                request.setRequestParams(oversizedTemplate);
 
-            mockMvc.perform(post("/interfaceInfo/update")
-                            .with(csrf())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(request))
-                            .session(session))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(40000));
+                mockMvc.perform(post("/interfaceInfo/update")
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request))
+                                .session(session))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.code").value(40000));
 
-            InterfaceInfo interfaceInfo = interfaceInfoService.getById(id);
-            InterfaceDoc doc = interfaceDocService.lambdaQuery()
-                    .eq(InterfaceDoc::getInterfaceInfoId, id)
-                    .one();
-            assertEquals("rollbackApi", interfaceInfo.getName());
-            assertEquals("{\"original\":\"string\"}", interfaceInfo.getRequestParams());
-            assertEquals("READY", doc.getDocStatus());
+                InterfaceInfo interfaceInfo = interfaceInfoService.getById(id);
+                InterfaceDoc doc = interfaceDocService.lambdaQuery()
+                        .eq(InterfaceDoc::getInterfaceInfoId, id)
+                        .one();
+                assertEquals("rollbackApi", interfaceInfo.getName());
+                assertEquals("{\"original\":\"string\"}", interfaceInfo.getRequestParams());
+                assertEquals("READY", doc.getDocStatus());
+            } finally {
+                cleanupCommittedRollbackTestData(id, session);
+            }
         }
 
         /**
@@ -722,27 +780,33 @@ class InterfaceInfoControllerTest {
         @Transactional(propagation = Propagation.NOT_SUPPORTED)
         @DisplayName("非法文档状态下受控配置更新整体回滚")
         void shouldRollbackControlledUpdateWhenPersistedDocStatusIllegal() throws Exception {
-            MockHttpSession session = loginAsAdmin();
-            long id = createInterfaceInfo("illegalRollbackApi", "/api/illegal_rollback", "GET",
-                    InterfaceInfoStatusEnum.OFFLINE.getValue());
-            createDocWithStatus(id, "BROKEN");
-            InterfaceInfoUpdateRequest request = new InterfaceInfoUpdateRequest();
-            request.setId(id);
-            request.setDescription("不应保存的描述");
+            MockHttpSession session = null;
+            Long id = null;
+            try {
+                session = loginAsAdmin();
+                id = createInterfaceInfo("illegalRollbackApi", "/api/illegal_rollback", "GET",
+                        InterfaceInfoStatusEnum.OFFLINE.getValue());
+                createDocWithStatus(id, "BROKEN");
+                InterfaceInfoUpdateRequest request = new InterfaceInfoUpdateRequest();
+                request.setId(id);
+                request.setDescription("不应保存的描述");
 
-            mockMvc.perform(post("/interfaceInfo/update")
-                            .with(csrf())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(request))
-                            .session(session))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(50000));
+                mockMvc.perform(post("/interfaceInfo/update")
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request))
+                                .session(session))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.code").value(50000));
 
-            assertEquals("desc_illegalRollbackApi", interfaceInfoService.getById(id).getDescription());
-            InterfaceDoc doc = interfaceDocService.lambdaQuery()
-                    .eq(InterfaceDoc::getInterfaceInfoId, id)
-                    .one();
-            assertEquals("BROKEN", doc.getDocStatus());
+                assertEquals("desc_illegalRollbackApi", interfaceInfoService.getById(id).getDescription());
+                InterfaceDoc doc = interfaceDocService.lambdaQuery()
+                        .eq(InterfaceDoc::getInterfaceInfoId, id)
+                        .one();
+                assertEquals("BROKEN", doc.getDocStatus());
+            } finally {
+                cleanupCommittedRollbackTestData(id, session);
+            }
         }
     }
 

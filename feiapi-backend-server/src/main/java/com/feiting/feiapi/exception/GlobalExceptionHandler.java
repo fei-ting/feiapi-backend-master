@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
 /**
  * 全局异常处理器
  *
- * @author yupi
+ * @author feiting
  */
 @RestControllerAdvice
 @Slf4j

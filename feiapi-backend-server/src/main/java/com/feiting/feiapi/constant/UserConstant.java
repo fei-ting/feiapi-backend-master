@@ -3,7 +3,7 @@ package com.feiting.feiapi.constant;
 /**
  * 用户常量
  *
- * @author yupi
+ * @author feiting
  */
 public final class UserConstant {
 

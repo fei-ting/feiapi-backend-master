@@ -12,7 +12,7 @@ import java.io.Serializable;
 /**
  * 分页请求
  *
- * @author yupi
+ * @author feiting
  */
 @Data
 public class PageRequest implements Serializable {
