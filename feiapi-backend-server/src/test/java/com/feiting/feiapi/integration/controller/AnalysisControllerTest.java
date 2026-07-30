@@ -245,6 +245,14 @@ class AnalysisControllerTest {
         @DisplayName("无调用数据时返回空列表")
         void shouldReturnEmptyListWhenNoData() throws Exception {
             MockHttpSession session = loginWithRole("ane01", "admin");
+            User user = userService.lambdaQuery().eq(User::getUserAccount, "ane01").one();
+
+            // 在当前测试事务内隔离已有调用关系，并验证零调用关系不会进入排行榜
+            userInterfaceInfoService.lambdaUpdate()
+                    .eq(UserInterfaceInfo::getIsDelete, 0)
+                    .remove();
+            insertInterfaceInfo(1004L, "api_zero", "/api/zero");
+            insertUserInterfaceInfo(user.getId(), 1004L, 0);
 
             mockMvc.perform(get("/analysis/top/interface/invoke").session(session))
                     .andExpect(status().isOk())

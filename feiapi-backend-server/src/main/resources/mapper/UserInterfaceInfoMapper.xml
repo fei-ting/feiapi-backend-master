@@ -28,6 +28,7 @@
         from user_interface_info
         where is_delete = 0
         group by interface_info_id
+        having sum(total_num) > 0
         order by total_num desc limit #{limit};
     </select>
 
