@@ -8,7 +8,7 @@ import com.feiting.feiapicommon.model.entity.User;
 /**
  * 用户服务
  *
- * @author yupi
+ * @author feiting
  */
 public interface UserService extends IService<User> {
 

@@ -3,7 +3,7 @@ package com.feiting.feiapi.constant;
 /**
  * 通用常量
  *
- * @author yupi
+ * @author feiting
  */
 public final class CommonConstant {
 

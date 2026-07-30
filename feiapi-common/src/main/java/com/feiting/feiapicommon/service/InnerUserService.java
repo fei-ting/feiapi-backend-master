@@ -6,7 +6,7 @@ import com.feiting.feiapicommon.model.vo.InvokeUserVO;
 /**
  * 用户服务
  *
- * @author yupi
+ * @author feiting
  */
 public interface InnerUserService {
 

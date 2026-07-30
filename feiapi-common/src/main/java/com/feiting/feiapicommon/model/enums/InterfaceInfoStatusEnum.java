@@ -7,7 +7,7 @@ import java.util.stream.Collectors;
 /**
  * 接口信息状态枚举
  *
- * @author yupi
+ * @author feiting
  */
 public enum InterfaceInfoStatusEnum {
 
