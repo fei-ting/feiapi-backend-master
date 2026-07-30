@@ -38,6 +38,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -879,6 +880,106 @@ class InterfaceDocControllerTest {
     }
 
     /**
+     * 测试响应数组字段可以描述数组元素的子字段。
+     */
+    @Test
+    @DisplayName("响应数组字段允许拥有子字段")
+    void shouldAllowArrayResponseParent() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idarrayparent" + suffix(), "admin");
+        long id = createInterfaceInfo("arrayParentApi", "/api/array_parent_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.getParams().add(param("responseItems", null, "RESPONSE", "items", "array", true, false, 2));
+        request.getParams().add(param("responseItemId", "responseItems", "RESPONSE", "id", "number", false, false, 3));
+
+        saveDocByAdmin(adminSession, request);
+        assertThat(requestDoc(id, adminSession).get("data").get("responseParams")).hasSize(2);
+    }
+
+    /**
+     * 测试标量响应字段不能拥有子字段。
+     */
+    @Test
+    @DisplayName("标量响应字段不能拥有子字段")
+    void shouldRejectScalarResponseParent() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idscalarparent" + suffix(), "admin");
+        long id = createInterfaceInfo("scalarParentApi", "/api/scalar_parent_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.getParams().add(param("responseData", null, "RESPONSE", "data", "string", true, false, 2));
+        request.getParams().add(param("responseChild", "responseData", "RESPONSE", "name", "string", false, true, 3));
+
+        JsonNode response = postSave(adminSession, request);
+        assertThat(response.get("code").asInt()).isEqualTo(40000);
+        assertThat(response.get("message").asText())
+                .isEqualTo("响应字段 data 的类型 string 不能拥有子字段");
+    }
+
+    /**
+     * 测试缺失父级错误按父键分组并列出受影响字段。
+     */
+    @Test
+    @DisplayName("缺失响应字段父级时返回分组受影响字段")
+    void shouldReportGroupedMissingResponseParents() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idmissingparents" + suffix(), "admin");
+        long id = createInterfaceInfo("missingParentsApi", "/api/missing_parents_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.getParams().add(param("responseName", "missing-a", "RESPONSE", "name", "string", false, true, 2));
+        request.getParams().add(param("responseAge", "missing-a", "RESPONSE", "age", "number", false, true, 3));
+        request.getParams().add(param("responseDetail", "missing-b", "RESPONSE", "detail", "object", false, true, 4));
+
+        JsonNode response = postSave(adminSession, request);
+        assertThat(response.get("code").asInt()).isEqualTo(40000);
+        assertThat(response.get("message").asText())
+                .isEqualTo("响应字段父级不存在：missing-a -> [name, age]；missing-b -> [detail]");
+
+        InterfaceDocSaveRequest controlCharacterRequest = buildBasicSaveRequest(id);
+        controlCharacterRequest.getParams().add(param(
+                "responseControl", "missing\r\nparent", "RESPONSE", "detail", "object", false, true, 2));
+        JsonNode controlCharacterResponse = postSave(adminSession, controlCharacterRequest);
+        assertThat(controlCharacterResponse.get("message").asText())
+                .contains("missing\\r\\nparent -> [detail]")
+                .doesNotContain("\r", "\n");
+    }
+
+    /**
+     * 测试响应字段树允许八层但拒绝第九层。
+     */
+    @Test
+    @DisplayName("响应字段树八层允许九层拒绝")
+    void shouldAllowEightResponseDepthAndRejectNine() throws Exception {
+        MockHttpSession adminSession = loginWithRole("iddepthboundary" + suffix(), "admin");
+        long id = createInterfaceInfo("depthBoundaryApi", "/api/depth_boundary_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest eightDepthRequest = buildBasicSaveRequest(id);
+        String parentKey = null;
+        for (int index = 1; index <= 8; index++) {
+            String key = "responseDepth" + index;
+            eightDepthRequest.getParams().add(param(key, parentKey, "RESPONSE", "depth" + index,
+                    "object", true, false, index + 1));
+            parentKey = key;
+        }
+        saveDocByAdmin(adminSession, eightDepthRequest);
+
+        InterfaceDocSaveRequest nineDepthRequest = buildBasicSaveRequest(id);
+        parentKey = null;
+        for (int index = 1; index <= 9; index++) {
+            String key = "responseDepthAgain" + index;
+            nineDepthRequest.getParams().add(param(key, parentKey, "RESPONSE", "depth" + index,
+                    "object", true, false, index + 1));
+            parentKey = key;
+        }
+        JsonNode response = postSave(adminSession, nineDepthRequest);
+        assertThat(response.get("code").asInt()).isEqualTo(40000);
+        assertThat(response.get("message").asText()).isEqualTo("响应字段嵌套深度不能超过 8");
+    }
+
+    /**
      * 测试子项数据库保存失败时聚合保存整体回滚。
      */
     @Test
@@ -1307,7 +1408,7 @@ class InterfaceDocControllerTest {
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
-                .getContentAsString();
+                .getContentAsString(StandardCharsets.UTF_8);
         return objectMapper.readTree(response);
     }
 
