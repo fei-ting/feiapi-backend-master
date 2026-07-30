@@ -3,7 +3,7 @@ package com.feiting.feiapi.common;
 /**
  * 返回工具类
  *
- * @author yupi
+ * @author feiting
  */
 public class ResultUtils {
 

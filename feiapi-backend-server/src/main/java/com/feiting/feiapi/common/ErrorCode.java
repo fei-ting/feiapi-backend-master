@@ -3,7 +3,7 @@ package com.feiting.feiapi.common;
 /**
  * 错误码
  *
- * @author yupi
+ * @author feiting
  */
 public enum ErrorCode {
 

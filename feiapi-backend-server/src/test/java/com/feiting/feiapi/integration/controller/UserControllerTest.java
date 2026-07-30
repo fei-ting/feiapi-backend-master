@@ -104,6 +104,17 @@ class UserControllerTest {
         return session;
     }
 
+    /**
+     * 在当前测试事务内临时移除已有管理员角色。
+     * 测试方法结束后事务会自动回滚，不会修改数据库中的最终角色数据。
+     */
+    private void demoteExistingAdminsWithinTestTransaction() {
+        userService.lambdaUpdate()
+                .eq(User::getUserRole, UserConstant.ADMIN_ROLE)
+                .set(User::getUserRole, UserConstant.DEFAULT_ROLE)
+                .update();
+    }
+
     @Nested
     @DisplayName("POST /user/register 用户注册")
     class RegisterTests {
@@ -856,11 +867,17 @@ class UserControllerTest {
         @Test
         @DisplayName("最后一个管理员不能被降权")
         void shouldNotAllowDowngradeLastAdmin() throws Exception {
+            demoteExistingAdminsWithinTestTransaction();
             MockHttpSession adminSession = registerAndLoginAdmin("roleapi07", "password123");
 
             // 获取当前管理员用户
             User adminUser = (User) adminSession.getAttribute(UserConstant.USER_LOGIN_STATE);
             Long adminUserId = adminUser.getId();
+            org.assertj.core.api.Assertions.assertThat(userService.lambdaQuery()
+                            .eq(User::getUserRole, UserConstant.ADMIN_ROLE)
+                            .count())
+                    .as("执行降权保护前应只有一个管理员")
+                    .isEqualTo(1L);
 
             // 尝试将自己降级为普通用户
             String requestBody = "{\"id\":" + adminUserId + ",\"userRole\":\"user\"}";
@@ -941,11 +958,17 @@ class UserControllerTest {
         @Test
         @DisplayName("最后一个管理员不能被删除")
         void shouldNotAllowDeleteLastAdmin() throws Exception {
+            demoteExistingAdminsWithinTestTransaction();
             MockHttpSession adminSession = registerAndLoginAdmin("deladm01", "password123");
 
             // 获取当前管理员用户
             User adminUser = (User) adminSession.getAttribute(UserConstant.USER_LOGIN_STATE);
             Long adminUserId = adminUser.getId();
+            org.assertj.core.api.Assertions.assertThat(userService.lambdaQuery()
+                            .eq(User::getUserRole, UserConstant.ADMIN_ROLE)
+                            .count())
+                    .as("执行删除保护前应只有一个管理员")
+                    .isEqualTo(1L);
 
             // 尝试删除自己（最后一个管理员）
             String requestBody = "{\"id\":" + adminUserId + "}";
