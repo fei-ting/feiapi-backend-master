@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.exception.BusinessException;
+import com.feiting.feiapi.mapper.InterfaceInfoMapper;
 import com.feiting.feiapi.mapper.UserInterfaceInfoMapper;
 import com.feiting.feiapi.model.dto.userinterfaceinfo.UserInterfaceInfoQueryRequest;
 import com.feiting.feiapi.model.vo.UserInterfaceInfoVO;
@@ -35,6 +36,9 @@ public class UserInterfaceInfoServiceImpl extends ServiceImpl<UserInterfaceInfoM
 
     @Resource
     private UserInterfaceInfoMapper userInterfaceInfoMapper;
+
+    @Resource
+    private InterfaceInfoMapper interfaceInfoMapper;
 
     @Resource
     private InterfaceInfoService interfaceInfoService;
@@ -75,7 +79,7 @@ public class UserInterfaceInfoServiceImpl extends ServiceImpl<UserInterfaceInfoM
     @Override
     public boolean rollbackInvokeCount(long userId, long interfaceInfoId) {
         checkUserAndInterfaceId(userId, interfaceInfoId);
-        InterfaceQuotaTypeEnum quotaTypeEnum = getQuotaTypeEnum(interfaceInfoId);
+        InterfaceQuotaTypeEnum quotaTypeEnum = getQuotaTypeEnumIncludeDeleted(interfaceInfoId);
         if (!quotaTypeEnum.isLimited()) {
             return userInterfaceInfoMapper.decreaseTotalNumOnly(userId, interfaceInfoId) > 0;
         }
@@ -356,6 +360,24 @@ public class UserInterfaceInfoServiceImpl extends ServiceImpl<UserInterfaceInfoM
      */
     private InterfaceQuotaTypeEnum getQuotaTypeEnum(long interfaceInfoId) {
         return resolveQuotaTypeEnum(getInterfaceInfoOrThrow(interfaceInfoId));
+    }
+
+    /**
+     * 查询接口历史配额类型，仅用于在途请求失败后的额度补偿。
+     *
+     * @param interfaceInfoId 接口 ID
+     * @return 接口配额类型
+     */
+    private InterfaceQuotaTypeEnum getQuotaTypeEnumIncludeDeleted(long interfaceInfoId) {
+        String quotaType = interfaceInfoMapper.selectQuotaTypeIncludeDeleted(interfaceInfoId);
+        if (quotaType == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "接口不存在");
+        }
+        InterfaceQuotaTypeEnum quotaTypeEnum = InterfaceQuotaTypeEnum.getEnumByValue(quotaType);
+        if (quotaTypeEnum == null) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "接口配额类型数据异常");
+        }
+        return quotaTypeEnum;
     }
 
     /**

@@ -12,7 +12,9 @@ import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoUpdateRequest;
 import com.feiting.feiapi.model.vo.InterfaceInfoVO;
 import com.feiting.feiapi.model.dto.user.UserLoginRequest;
 import com.feiting.feiapi.model.entity.InterfaceDoc;
+import com.feiting.feiapi.model.entity.InterfaceDocErrorCode;
 import com.feiting.feiapi.model.entity.InterfaceDocParam;
+import com.feiting.feiapi.service.InterfaceDocErrorCodeService;
 import com.feiting.feiapi.service.InterfaceDocService;
 import com.feiting.feiapi.service.InterfaceDocParamService;
 import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
@@ -35,6 +37,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpSession;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.util.AopTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
@@ -94,6 +97,12 @@ class InterfaceInfoControllerTest {
     private InterfaceDocParamService interfaceDocParamService;
 
     /**
+     * 接口文档错误码服务。
+     */
+    @Resource
+    private InterfaceDocErrorCodeService interfaceDocErrorCodeService;
+
+    /**
      * 接口信息生命周期服务。
      */
     @Resource
@@ -101,6 +110,9 @@ class InterfaceInfoControllerTest {
 
     @Resource
     private UserInterfaceInfoService userInterfaceInfoService;
+
+    @Resource
+    private JdbcTemplate jdbcTemplate;
 
     @Resource
     private ObjectMapper objectMapper;
@@ -833,11 +845,23 @@ class InterfaceInfoControllerTest {
         }
 
         @Test
-        @DisplayName("管理员删除接口成功")
+        @DisplayName("管理员删除接口成功并同步逻辑删除文档数据")
         void shouldAllowAdminToDelete() throws Exception {
             String timestamp = String.valueOf(System.currentTimeMillis());
             MockHttpSession adminSession = loginWithRole("adl" + timestamp.substring(timestamp.length() - 4), "admin");
             long id = createInterfaceInfo("adminDelApi", "/api/admin_del", "GET", InterfaceInfoStatusEnum.OFFLINE.getValue());
+            createDocWithStatus(id, "READY");
+            InterfaceDocParam requestParam = buildDocParam(id, "QUERY", "keyword", 1);
+            InterfaceDocParam responseParam = buildDocParam(id, "RESPONSE", "data", 2);
+            assertTrue(interfaceDocParamService.save(requestParam));
+            assertTrue(interfaceDocParamService.save(responseParam));
+            InterfaceDocErrorCode errorCode = new InterfaceDocErrorCode();
+            errorCode.setInterfaceInfoId(id);
+            errorCode.setErrorCode("USER_NOT_FOUND");
+            errorCode.setErrorMessage("用户不存在");
+            errorCode.setSortOrder(1);
+            assertTrue(interfaceDocErrorCodeService.save(errorCode));
+
             String deleteJson = "{\"id\":" + id + "}";
             mockMvc.perform(post("/interfaceInfo/delete")
                             .with(csrf())
@@ -848,6 +872,18 @@ class InterfaceInfoControllerTest {
                     .andExpect(jsonPath("$.code").value(0));
 
             assertNull(interfaceInfoService.getById(id));
+            assertNull(interfaceDocService.lambdaQuery().eq(InterfaceDoc::getInterfaceInfoId, id).one());
+            assertEquals(0, interfaceDocParamService.lambdaQuery()
+                    .eq(InterfaceDocParam::getInterfaceInfoId, id)
+                    .count());
+            assertEquals(0, interfaceDocErrorCodeService.lambdaQuery()
+                    .eq(InterfaceDocErrorCode::getInterfaceInfoId, id)
+                    .count());
+            assertEquals(id, queryDeletedFlag("interface_info", id));
+            assertEquals(queryDeletedIdByInterfaceInfoId("interface_doc", id),
+                    queryDeletedFlag("interface_doc", queryDeletedIdByInterfaceInfoId("interface_doc", id)));
+            assertEquals(2L, countSelfDeletedRows("interface_doc_param", id));
+            assertEquals(1L, countSelfDeletedRows("interface_doc_error_code", id));
         }
 
         @Test
@@ -881,8 +917,146 @@ class InterfaceInfoControllerTest {
                             .content("{\"id\":" + id + "}")
                             .session(session))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(50001));
+                    .andExpect(jsonPath("$.code").value(50001))
+                    .andExpect(jsonPath("$.message").value("请先下线接口后再删除"));
         }
+
+        @Test
+        @DisplayName("发布验证中的接口删除被拒绝并提示发布中")
+        void shouldRejectPublishingInterfaceDelete() throws Exception {
+            MockHttpSession session = loginAsAdmin();
+            long id = createInterfaceInfo("publishingDeleteApi", "/api/publishing_delete_gate", "GET",
+                    InterfaceInfoStatusEnum.PUBLISHING.getValue());
+
+            mockMvc.perform(post("/interfaceInfo/delete")
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"id\":" + id + "}")
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(50001))
+                    .andExpect(jsonPath("$.message").value("接口正在发布验证中，不能删除"));
+        }
+
+        @Test
+        @DisplayName("相同路径和方法可反复创建删除")
+        void shouldCreateDeleteAndRecreateSamePathAndMethod() throws Exception {
+            MockHttpSession session = loginAsAdmin();
+            String path = "/api/recreate_delete";
+            long firstId = createInterfaceInfo("firstDeleteApi", path, "POST", InterfaceInfoStatusEnum.OFFLINE.getValue());
+            deleteByAdmin(session, firstId);
+
+            long secondId = createInterfaceInfo("secondDeleteApi", path, "POST", InterfaceInfoStatusEnum.OFFLINE.getValue());
+            deleteByAdmin(session, secondId);
+
+            long thirdId = createInterfaceInfo("thirdDeleteApi", path, "POST", InterfaceInfoStatusEnum.OFFLINE.getValue());
+
+            assertNotEquals(firstId, secondId);
+            assertNotEquals(secondId, thirdId);
+            assertEquals(firstId, queryDeletedFlag("interface_info", firstId));
+            assertEquals(secondId, queryDeletedFlag("interface_info", secondId));
+            assertNotNull(interfaceInfoService.getById(thirdId));
+        }
+
+        @Test
+        @DisplayName("重复删除已删除接口返回数据不存在")
+        void shouldReturnNotFoundWhenDeleteAgain() throws Exception {
+            MockHttpSession session = loginAsAdmin();
+            long id = createInterfaceInfo("deleteAgainApi", "/api/delete_again", "GET",
+                    InterfaceInfoStatusEnum.OFFLINE.getValue());
+            deleteByAdmin(session, id);
+
+            mockMvc.perform(post("/interfaceInfo/delete")
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"id\":" + id + "}")
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40400));
+        }
+    }
+
+    /**
+     * 构建测试用文档参数。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     * @param scene           参数场景
+     * @param name            参数名称
+     * @param sortOrder       排序值
+     * @return 文档参数实体
+     */
+    private InterfaceDocParam buildDocParam(long interfaceInfoId, String scene, String name, int sortOrder) {
+        InterfaceDocParam param = new InterfaceDocParam();
+        param.setInterfaceInfoId(interfaceInfoId);
+        param.setParamScene(scene);
+        param.setName(name);
+        param.setType("string");
+        param.setRequired(1);
+        param.setNullable(0);
+        param.setDescription("公开说明");
+        param.setSortOrder(sortOrder);
+        return param;
+    }
+
+    /**
+     * 管理员删除指定接口。
+     *
+     * @param session 管理员会话
+     * @param id      接口 ID
+     */
+    private void deleteByAdmin(MockHttpSession session, long id) throws Exception {
+        mockMvc.perform(post("/interfaceInfo/delete")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"id\":" + id + "}")
+                        .session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+    }
+
+    /**
+     * 查询逻辑删除标识。
+     *
+     * @param tableName 表名
+     * @param id        主键 ID
+     * @return 逻辑删除标识
+     */
+    private Long queryDeletedFlag(String tableName, Long id) {
+        return jdbcTemplate.queryForObject(
+                "select is_delete from " + tableName + " where id = ?",
+                Long.class,
+                id
+        );
+    }
+
+    /**
+     * 按接口 ID 查询已删除文档关联记录 ID。
+     *
+     * @param tableName       表名
+     * @param interfaceInfoId 接口信息 ID
+     * @return 已删除记录 ID
+     */
+    private Long queryDeletedIdByInterfaceInfoId(String tableName, Long interfaceInfoId) {
+        return jdbcTemplate.queryForObject(
+                "select id from " + tableName + " where interface_info_id = ? and is_delete <> 0",
+                Long.class,
+                interfaceInfoId
+        );
+    }
+
+    /**
+     * 统计逻辑删除标识等于自身 ID 的关联记录数量。
+     *
+     * @param tableName       表名
+     * @param interfaceInfoId 接口信息 ID
+     * @return 记录数量
+     */
+    private Long countSelfDeletedRows(String tableName, Long interfaceInfoId) {
+        return jdbcTemplate.queryForObject(
+                "select count(*) from " + tableName + " where interface_info_id = ? and is_delete = id",
+                Long.class,
+                interfaceInfoId
+        );
     }
 
     @Nested

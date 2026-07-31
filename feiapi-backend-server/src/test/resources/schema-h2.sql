@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS `interface_info` (
     `user_id` BIGINT DEFAULT NULL,
     `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
     `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    `is_delete` TINYINT NOT NULL DEFAULT 0,
+    `is_delete` BIGINT NOT NULL DEFAULT 0,
     UNIQUE (`path`, `method`, `is_delete`)
 );
 
