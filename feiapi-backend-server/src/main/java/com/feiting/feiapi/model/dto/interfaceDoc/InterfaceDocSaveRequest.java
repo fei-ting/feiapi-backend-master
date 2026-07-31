@@ -1,5 +1,7 @@
 package com.feiting.feiapi.model.dto.interfaceDoc;
 
+import com.feiting.feiapi.validation.UnicodeLength;
+import com.feiting.feiapi.validation.Utf8ByteLength;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -43,15 +45,15 @@ public class InterfaceDocSaveRequest implements Serializable {
     private String responseContentType;
 
     /** 成功响应 JSON 示例。 */
-    @Size(max = 65535, message = "成功响应示例长度不能超过 65535")
+    @Utf8ByteLength(max = 65535, message = "成功响应示例不能超过 65535 个 UTF-8 字节")
     private String successExample;
 
     /** 失败响应 JSON 示例。 */
-    @Size(max = 65535, message = "失败响应示例长度不能超过 65535")
+    @Utf8ByteLength(max = 65535, message = "失败响应示例不能超过 65535 个 UTF-8 字节")
     private String failExample;
 
     /** 文档备注。 */
-    @Size(max = 512, message = "文档备注长度不能超过 512")
+    @UnicodeLength(max = 512, message = "文档备注长度不能超过 512 个字符")
     private String remark;
 
     /**

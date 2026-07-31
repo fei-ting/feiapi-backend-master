@@ -3,6 +3,7 @@ package com.feiting.feiapi.service.impl;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.component.InterfaceDocContentSecurityValidator;
+import com.feiting.feiapi.component.InterfaceDocBoundaryValidator;
 import com.feiting.feiapi.component.InterfaceDocCurlExampleGenerator;
 import com.feiting.feiapi.component.InterfaceDocJavaSdkExampleGenerator;
 import com.feiting.feiapi.component.RuntimeRequestParamTemplateValidator;
@@ -28,6 +29,7 @@ import com.feiting.feiapi.service.InterfaceDocService;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.InterfaceQuotaConfigService;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
+import com.feiting.feiapi.utils.TextSizeUtils;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
 import com.feiting.feiapicommon.model.enums.InterfaceQuotaTypeEnum;
@@ -82,24 +84,9 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
     private static final String DEFAULT_RESPONSE_CONTENT_TYPE = "application/json";
 
     /**
-     * 参数数量上限。
-     */
-    private static final int MAX_PARAM_COUNT = 200;
-
-    /**
-     * 请求参数数量上限。
-     */
-    private static final int MAX_REQUEST_PARAM_COUNT = 100;
-
-    /**
      * 接口文档响应字段最大嵌套深度。
      */
     private static final int MAX_DOC_NESTING_DEPTH = 8;
-
-    /**
-     * 错误码数量上限。
-     */
-    private static final int MAX_ERROR_CODE_COUNT = 100;
 
     /**
      * 支持的参数类型标记。
@@ -186,6 +173,11 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
     private final RuntimeRequestParamTemplateValidator runtimeRequestParamTemplateValidator;
 
     /**
+     * 接口文档数量与文本边界校验器。
+     */
+    private final InterfaceDocBoundaryValidator boundaryValidator;
+
+    /**
      * 创建接口文档主信息服务。
      *
      * @param interfaceInfoService          接口信息服务
@@ -198,6 +190,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * @param curlExampleGenerator          curl 示例生成器
      * @param javaSdkExampleGenerator       Java SDK 示例生成器
      * @param runtimeRequestParamTemplateValidator 运行时请求参数模板校验器
+     * @param boundaryValidator                    接口文档边界校验器
      */
     public InterfaceDocServiceImpl(InterfaceInfoService interfaceInfoService,
                                    InterfaceInfoMapper interfaceInfoMapper,
@@ -208,7 +201,8 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
                                    InterfaceDocContentSecurityValidator contentSecurityValidator,
                                    InterfaceDocCurlExampleGenerator curlExampleGenerator,
                                    InterfaceDocJavaSdkExampleGenerator javaSdkExampleGenerator,
-                                   RuntimeRequestParamTemplateValidator runtimeRequestParamTemplateValidator) {
+                                   RuntimeRequestParamTemplateValidator runtimeRequestParamTemplateValidator,
+                                   InterfaceDocBoundaryValidator boundaryValidator) {
         this.interfaceInfoService = interfaceInfoService;
         this.interfaceInfoMapper = interfaceInfoMapper;
         this.interfaceDocParamService = interfaceDocParamService;
@@ -219,6 +213,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         this.curlExampleGenerator = curlExampleGenerator;
         this.javaSdkExampleGenerator = javaSdkExampleGenerator;
         this.runtimeRequestParamTemplateValidator = runtimeRequestParamTemplateValidator;
+        this.boundaryValidator = boundaryValidator;
     }
 
     /**
@@ -285,15 +280,10 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         }
         List<RuntimeRequestParam> runtimeParams = buildRuntimeRequestParams(interfaceInfo);
         ensureInterfaceDoc(interfaceInfo);
-        if (runtimeParams.size() > MAX_REQUEST_PARAM_COUNT) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数数量不能超过 100");
-        }
         long responseParamCount = listDocParams(interfaceInfo.getId()).stream()
                 .filter(param -> InterfaceDocParamSceneEnum.RESPONSE.getValue().equals(param.getParamScene()))
                 .count();
-        if (runtimeParams.size() + responseParamCount > MAX_PARAM_COUNT) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "文档参数数量不能超过 200");
-        }
+        boundaryValidator.validateParamCounts(runtimeParams.size(), responseParamCount);
         List<InterfaceDocParam> existingParams = listRequestDocParams(interfaceInfo.getId());
         reconcileRequestDocParams(interfaceInfo.getId(), runtimeParams, existingParams);
     }
@@ -328,21 +318,10 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         if (targetStatus == null || !targetStatus.getValue().equals(rawDocStatus)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "文档状态只允许 DRAFT 或 READY");
         }
+        boundaryValidator.validateSaveRequest(saveRequest);
         validateDocMain(saveRequest);
         List<InterfaceDocParamSaveRequest> paramRequests = saveRequest.getParams();
         List<InterfaceDocErrorCodeSaveRequest> errorCodeRequests = saveRequest.getErrorCodes();
-        if (paramRequests.size() > MAX_PARAM_COUNT) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "文档参数数量不能超过 200");
-        }
-        long requestParamCount = paramRequests.stream()
-                .filter(this::isRequestParam)
-                .count();
-        if (requestParamCount > MAX_REQUEST_PARAM_COUNT) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数数量不能超过 100");
-        }
-        if (errorCodeRequests.size() > MAX_ERROR_CODE_COUNT) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "错误码数量不能超过 100");
-        }
 
         List<ParamSaveNode> paramNodes = validateAndBuildParamNodes(interfaceInfo, paramRequests);
         List<InterfaceDocErrorCode> errorCodes = buildErrorCodes(interfaceInfo.getId(), errorCodeRequests);
@@ -434,6 +413,27 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         if (!InterfaceDocStatusEnum.READY.getValue().equals(status)) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口文档待完善，请先完成文档维护");
         }
+        InterfaceInfo interfaceInfo = interfaceInfoMapper.selectById(interfaceInfoId);
+        if (interfaceInfo == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+        }
+        validatePersistedDocMain(doc);
+        boundaryValidator.validatePersistedDoc(doc, listDocParams(interfaceInfoId), listErrorCodes(interfaceInfoId));
+        runtimeRequestParamTemplateValidator.validate(interfaceInfo.getRequestParams());
+    }
+
+    /**
+     * 校验发布前持久化文档主信息的枚举与版本边界。
+     *
+     * @param doc 文档主记录
+     */
+    private void validatePersistedDocMain(InterfaceDoc doc) {
+        String docVersion = TextSizeUtils.stripUnicodeWhitespace(doc.getDocVersion());
+        if (!DOC_VERSION_PATTERN.matcher(docVersion).matches()) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "文档版本号格式非法");
+        }
+        assertSupportedContentType(doc.getRequestContentType(), "请求内容类型不支持");
+        assertSupportedContentType(doc.getResponseContentType(), "响应内容类型不支持");
     }
 
     /**
@@ -1445,7 +1445,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * @return 非空文本
      */
     private String trimToEmpty(String value) {
-        return value == null ? "" : value.trim();
+        return TextSizeUtils.stripUnicodeWhitespace(value);
     }
 
     /**
@@ -1455,7 +1455,8 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * @return 去空格文本或 null
      */
     private String trimToNull(String value) {
-        return StringUtils.isBlank(value) ? null : value.trim();
+        String strippedValue = TextSizeUtils.stripUnicodeWhitespace(value);
+        return strippedValue.isEmpty() ? null : strippedValue;
     }
 
     /**

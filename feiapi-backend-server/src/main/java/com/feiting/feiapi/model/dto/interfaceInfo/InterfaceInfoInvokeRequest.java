@@ -1,9 +1,9 @@
 package com.feiting.feiapi.model.dto.interfaceInfo;
 
 
+import com.feiting.feiapi.validation.Utf8ByteLength;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
-import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -26,7 +26,7 @@ public class InterfaceInfoInvokeRequest implements Serializable {
     /**
      * 用户请求参数
      */
-    @Size(max = 65535, message = "用户请求参数长度不能超过 65535")
+    @Utf8ByteLength(max = 65535, message = "请求体不能超过 65535 字节")
     private String userRequestParams;
 
     private static final long serialVersionUID = 1L;
