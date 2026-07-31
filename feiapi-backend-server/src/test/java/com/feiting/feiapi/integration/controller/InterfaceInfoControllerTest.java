@@ -1121,6 +1121,35 @@ class InterfaceInfoControllerTest {
                     .andExpect(jsonPath("$.message").value("接口文档待完善，请先完成文档维护"));
         }
 
+        /**
+         * 发布前应重新校验持久化 JSON 示例的 UTF-8 字节边界。
+         */
+        @Test
+        @DisplayName("发布前拒绝持久化响应示例超过 65535 字节")
+        void shouldRejectPublishingPersistedOversizedExample() throws Exception {
+            MockHttpSession adminSession = loginAsAdmin();
+            long id = createInterfaceInfo("oversizedDocOnlineApi", "/api/oversized_doc_online", "GET",
+                    InterfaceInfoStatusEnum.OFFLINE.getValue());
+            createDocWithStatus(id, "READY");
+            InterfaceDoc doc = interfaceDocService.lambdaQuery()
+                    .eq(InterfaceDoc::getInterfaceInfoId, id)
+                    .one();
+            doc.setSuccessExample("a".repeat(65536));
+            assertTrue(interfaceDocService.updateById(doc));
+
+            mockMvc.perform(post("/interfaceInfo/online")
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"id\":" + id + "}")
+                            .session(adminSession))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000))
+                    .andExpect(jsonPath("$.message")
+                            .value("成功响应示例不能超过 65535 个 UTF-8 字节"));
+
+            assertEquals(InterfaceInfoStatusEnum.OFFLINE.getValue(), interfaceInfoService.getById(id).getStatus());
+        }
+
         @Test
         @DisplayName("管理员不能发布持久化状态非法的接口")
         void shouldRejectPublishingIllegalDocStatus() throws Exception {
@@ -1298,6 +1327,28 @@ class InterfaceInfoControllerTest {
     @Nested
     @DisplayName("POST /interfaceInfo/invoke 调用接口")
     class InvokeTests {
+
+        /**
+         * 用户请求参数超过 65,535 个 UTF-8 字节时返回 HTTP 413。
+         */
+        @Test
+        @DisplayName("用户请求参数超过 65535 字节返回 HTTP 413")
+        void shouldRejectInvokeBodyExceedingUtf8ByteLimit() throws Exception {
+            MockHttpSession session = loginAsUser();
+            InterfaceInfoInvokeRequest request = new InterfaceInfoInvokeRequest();
+            request.setId(1L);
+            request.setUserRequestParams("中".repeat(21846));
+
+            mockMvc.perform(post("/interfaceInfo/invoke")
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request))
+                            .session(session))
+                    .andExpect(status().isPayloadTooLarge())
+                    .andExpect(jsonPath("$.code").value(41300))
+                    .andExpect(jsonPath("$.message")
+                            .value("请求体不能超过 65535 字节"));
+        }
 
         @Test
         @DisplayName("接口不存在返回数据不存在")

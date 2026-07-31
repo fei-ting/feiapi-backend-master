@@ -1,6 +1,7 @@
 package com.feiting.feiapi.unit.service;
 
 import com.feiting.feiapi.config.InterfaceTargetHostProperties;
+import com.feiting.feiapi.component.InterfaceDocBoundaryValidator;
 import com.feiting.feiapi.component.RuntimeRequestParamTemplateValidator;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.service.impl.InterfaceInfoServiceImpl;
@@ -17,7 +18,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class InterfaceInfoServiceImplValidTest {
 
     private final InterfaceInfoServiceImpl service = new InterfaceInfoServiceImpl(
-            new InterfaceTargetHostProperties(), new RuntimeRequestParamTemplateValidator());
+            new InterfaceTargetHostProperties(),
+            new RuntimeRequestParamTemplateValidator(new InterfaceDocBoundaryValidator()));
 
     @Nested
     @DisplayName("通用校验")

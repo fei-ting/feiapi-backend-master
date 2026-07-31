@@ -1,5 +1,6 @@
 package com.feiting.feiapi.unit.component;
 
+import com.feiting.feiapi.component.InterfaceDocBoundaryValidator;
 import com.feiting.feiapi.component.RuntimeRequestParamTemplateValidator;
 import com.feiting.feiapi.exception.BusinessException;
 import org.junit.jupiter.api.DisplayName;
@@ -19,7 +20,8 @@ class RuntimeRequestParamTemplateValidatorTest {
     /**
      * 运行时请求参数模板校验器。
      */
-    private final RuntimeRequestParamTemplateValidator validator = new RuntimeRequestParamTemplateValidator();
+    private final RuntimeRequestParamTemplateValidator validator =
+            new RuntimeRequestParamTemplateValidator(new InterfaceDocBoundaryValidator());
 
     /**
      * 校验合法模板可以通过。
@@ -66,5 +68,54 @@ class RuntimeRequestParamTemplateValidatorTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("\\tuserId")
                 .hasMessageNotContaining("\tuserId");
+    }
+
+    /**
+     * 校验运行时参数数量边界。
+     */
+    @Test
+    @DisplayName("运行时参数数量超过 100 时被拒绝")
+    void shouldRejectTooManyRuntimeParams() {
+        StringBuilder requestParams = new StringBuilder("{");
+        for (int index = 1; index <= 101; index++) {
+            if (index > 1) {
+                requestParams.append(',');
+            }
+            requestParams.append('"').append("field").append(index).append("\":1");
+        }
+        requestParams.append('}');
+
+        assertThatThrownBy(() -> validator.validate(requestParams.toString()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("请求参数数量不能超过 100");
+    }
+
+    /**
+     * 校验运行时参数名称使用 Unicode 码点计数。
+     */
+    @Test
+    @DisplayName("运行时参数名称允许 128 个表情码点并拒绝第 129 个")
+    void shouldCountRuntimeParamNameByUnicodeCodePoint() {
+        String allowedName = "😀".repeat(128);
+        String rejectedName = "😀".repeat(129);
+
+        assertThatCode(() -> validator.validate("{\"" + allowedName + "\":1}"))
+                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> validator.validate("{\"" + rejectedName + "\":1}"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("参数名称长度不能超过 128 个字符");
+    }
+
+    /**
+     * 校验运行时模板请求体使用 UTF-8 字节计数。
+     */
+    @Test
+    @DisplayName("运行时模板超过 65535 个 UTF-8 字节时被拒绝")
+    void shouldRejectRuntimeTemplateExceedingUtf8ByteLimit() {
+        String requestParams = "{\"field\":\"" + "中".repeat(22000) + "\"}";
+
+        assertThatThrownBy(() -> validator.validate(requestParams))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("请求参数模板不能超过 65535 个 UTF-8 字节");
     }
 }

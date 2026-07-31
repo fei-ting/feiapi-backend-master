@@ -1,11 +1,17 @@
 package com.feiting.feiapiclientsdk.client;
 
+import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.io.OutputStream;
 import java.lang.reflect.Method;
+import java.lang.reflect.InvocationTargetException;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("FeiApiClient 客户端测试")
@@ -87,6 +93,39 @@ class FeiApiClientTest {
 
             client.disableProbeMode();
             client.disableProbeMode();
+        }
+
+        /**
+         * 使用真实分块 HTTP 响应验证 Hutool 异步响应流在响应关闭前能够完整读取。
+         *
+         * @throws Exception 本地测试服务启动或请求执行失败时抛出
+         */
+        @Test
+        @DisplayName("探测模式完整读取 Hutool 异步网络响应流")
+        void shouldReadRealAsyncResponseStreamBeforeResponseCloses() throws Exception {
+            byte[] firstChunk = "async-".getBytes(StandardCharsets.UTF_8);
+            byte[] secondChunk = "probe-body".getBytes(StandardCharsets.UTF_8);
+            HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            server.createContext("/api/love_words", exchange -> {
+                exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=UTF-8");
+                exchange.sendResponseHeaders(200, 0);
+                try (OutputStream outputStream = exchange.getResponseBody()) {
+                    outputStream.write(firstChunk);
+                    outputStream.flush();
+                    outputStream.write(secondChunk);
+                }
+            });
+            server.start();
+            FeiApiClient client = new FeiApiClient("ak", "sk",
+                    "http://127.0.0.1:" + server.getAddress().getPort(), "probe-secret");
+            client.enableProbeMode();
+
+            try {
+                assertThat(client.getLoveWords()).isEqualTo("async-probe-body");
+            } finally {
+                client.disableProbeMode();
+                server.stop(0);
+            }
         }
 
         @Test
@@ -185,6 +224,38 @@ class FeiApiClientTest {
             assertNotNull(headers.get("sign"));
             assertNotNull(headers.get("timestamp"));
             assertNull(headers.get("X-FeiAPI-Probe"));
+        }
+
+        /**
+         * 请求体恰好达到 65,535 字节时允许生成签名 Header。
+         */
+        @Test
+        @DisplayName("请求体恰好 65535 字节允许生成签名")
+        void shouldAllowRequestBodyAtExactLimit() throws Exception {
+            FeiApiClient client = new FeiApiClient("ak", "sk");
+            Method getHeaderMap = FeiApiClient.class.getDeclaredMethod(
+                    "getHeaderMap", String.class, String.class, String.class);
+            getHeaderMap.setAccessible(true);
+
+            assertDoesNotThrow(() -> getHeaderMap.invoke(client, "POST", "/api/test", "a".repeat(65535)));
+        }
+
+        /**
+         * 请求体超过 65,535 字节时应在签名前失败。
+         */
+        @Test
+        @DisplayName("请求体超过 65535 字节时拒绝生成签名")
+        void shouldRejectRequestBodyExceedingLimitBeforeSigning() throws Exception {
+            FeiApiClient client = new FeiApiClient("ak", "sk");
+            Method getHeaderMap = FeiApiClient.class.getDeclaredMethod(
+                    "getHeaderMap", String.class, String.class, String.class);
+            getHeaderMap.setAccessible(true);
+
+            InvocationTargetException exception = assertThrows(InvocationTargetException.class,
+                    () -> getHeaderMap.invoke(client, "POST", "/api/test", "a".repeat(65536)));
+
+            assertInstanceOf(IllegalArgumentException.class, exception.getCause());
+            assertEquals("请求体不能超过 65535 字节", exception.getCause().getMessage());
         }
     }
 

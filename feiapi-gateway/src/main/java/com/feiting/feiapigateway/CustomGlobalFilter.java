@@ -1,5 +1,8 @@
 package com.feiting.feiapigateway;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.feiting.feiapiclientsdk.utils.SignUtils;
 import com.feiting.feiapiclientsdk.utils.ProbeSignUtils;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
@@ -22,12 +25,14 @@ import org.springframework.cloud.gateway.support.ServerWebExchangeUtils;
 import org.springframework.core.Ordered;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferFactory;
+import org.springframework.core.io.buffer.DataBufferLimitException;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.web.util.UriComponentsBuilder;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpRequestDecorator;
@@ -70,6 +75,16 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
     /** nonce 固定长度，必须是 32 位字母数字字符串 */
     private static final int NONCE_LENGTH = 32;
 
+    /** 网关允许聚合并参与签名的最大请求体字节数 */
+    private static final int MAX_REQUEST_BODY_BYTES = 65_535;
+
+    /** 请求体超限时返回的统一业务错误码 */
+    private static final int REQUEST_BODY_TOO_LARGE_ERROR_CODE = 41_300;
+
+    /** 请求体超限时返回的统一提示 */
+    private static final String REQUEST_BODY_TOO_LARGE_MESSAGE =
+            "请求体不能超过 " + MAX_REQUEST_BODY_BYTES + " 字节";
+
     /** 普通调用 nonce 的 Redis key 前缀，格式：feiapi:nonce:{accessKey}:{nonce} */
     private static final String NONCE_KEY_PREFIX = "feiapi:nonce:";
 
@@ -111,6 +126,9 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
     private final ReactiveStringRedisTemplate reactiveStringRedisTemplate;
     private final FeiapiGatewayProperties feiapiGatewayProperties;
 
+    /** 预先序列化的请求体超限 JSON 响应字节。 */
+    private final byte[] requestBodyTooLargeResponseBytes;
+
     @DubboReference
     private InnerUserInterfaceInfoService innerUserInterfaceInfoService;
 
@@ -123,10 +141,37 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
     @DubboReference
     private InnerInterfaceInvokeLogService innerInterfaceInvokeLogService;
 
+    /**
+     * 创建网关全局过滤器，并预先生成请求体超限响应。
+     *
+     * @param reactiveStringRedisTemplate Redis 响应式操作模板
+     * @param feiapiGatewayProperties     网关配置
+     * @param objectMapper                Spring 统一配置的 JSON 序列化器
+     */
     public CustomGlobalFilter(ReactiveStringRedisTemplate reactiveStringRedisTemplate,
-                              FeiapiGatewayProperties feiapiGatewayProperties) {
+                              FeiapiGatewayProperties feiapiGatewayProperties,
+                              ObjectMapper objectMapper) {
         this.reactiveStringRedisTemplate = reactiveStringRedisTemplate;
         this.feiapiGatewayProperties = feiapiGatewayProperties;
+        this.requestBodyTooLargeResponseBytes = serializeRequestBodyTooLargeResponse(objectMapper);
+    }
+
+    /**
+     * 使用 Jackson 预先序列化请求体超限响应，避免手工拼接 JSON。
+     *
+     * @param objectMapper Spring 统一配置的 JSON 序列化器
+     * @return 请求体超限响应字节
+     */
+    private byte[] serializeRequestBodyTooLargeResponse(ObjectMapper objectMapper) {
+        ObjectNode responseBody = objectMapper.createObjectNode();
+        responseBody.put("code", REQUEST_BODY_TOO_LARGE_ERROR_CODE);
+        responseBody.putNull("data");
+        responseBody.put("message", REQUEST_BODY_TOO_LARGE_MESSAGE);
+        try {
+            return objectMapper.writeValueAsBytes(responseBody);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("初始化请求体超限响应失败", exception);
+        }
     }
 
     /**
@@ -161,134 +206,182 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
         log.info("请求参数: {}", LogDesensitizeUtils.toSafeQueryParams(request.getQueryParams()));
         log.info("请求来源地址: {}", GatewayRequestUtils.resolveClientIp(request));
 
-        // 提取普通调用签名字段：accessKey 定位调用方，nonce/timestamp 防重放，sign 校验请求完整性。
+        // 步骤1：声明长度超限时直接失败，避免进入用户查询、验签、nonce 和计费链路。
+        long contentLength = request.getHeaders().getContentLength();
+        if (contentLength > MAX_REQUEST_BODY_BYTES) {
+            return handleRequestBodyTooLarge(response);
+        }
+
+        // 步骤2：请求体只能消费一次，受限聚合用于实际字节兜底，兼容未知长度和分块传输。
+        return DataBufferUtils.join(request.getBody(), MAX_REQUEST_BODY_BYTES)
+                .defaultIfEmpty(response.bufferFactory().wrap(new byte[0]))
+                .flatMap(dataBuffer -> {
+                    byte[] bodyBytes = new byte[dataBuffer.readableByteCount()];
+                    dataBuffer.read(bodyBytes);
+                    DataBufferUtils.release(dataBuffer);
+                    return processRequest(exchange, chain, requestPath, method, bodyBytes);
+                })
+                .onErrorResume(DataBufferLimitException.class, error -> handleRequestBodyTooLarge(response));
+    }
+
+    /**
+     * 在请求体边界校验通过后处理鉴权、验签、防重放、路由和计费逻辑。
+     *
+     * @param exchange    请求上下文
+     * @param chain       过滤器链
+     * @param requestPath 请求路径
+     * @param method      请求方法
+     * @param bodyBytes   已完成边界校验的原始请求体
+     * @return 处理结果
+     */
+    private Mono<Void> processRequest(ServerWebExchange exchange,
+                                      GatewayFilterChain chain,
+                                      String requestPath,
+                                      String method,
+                                      byte[] bodyBytes) {
+        ServerHttpRequest request = exchange.getRequest();
+        ServerHttpResponse response = exchange.getResponse();
         HttpHeaders headers = request.getHeaders();
         String accessKey = headers.getFirst("accessKey");
         String nonce = headers.getFirst("nonce");
         String sign = headers.getFirst("sign");
         String timestamp = headers.getFirst("timestamp");
 
-        // 步骤1：根据 accessKey 查询调用用户，后续验签必须使用该用户自己的 secretKey。
+        // 根据 accessKey 查询调用用户，后续验签必须使用该用户自己的 secretKey。
         InvokeUserVO invokeUser = null;
         try {
             invokeUser = innerUserService.getInvokeUser(accessKey);
         } catch (Exception e) {
             log.error("getInvokeUser error: {}", e.getMessage(), e);
         }
-        if (invokeUser == null) {
+        if (invokeUser == null || !isValidNonce(nonce)) {
             return handleNoAuth(response);
         }
 
-        // 步骤2：nonce 必须是固定长度的字母数字串，避免空值、异常长度或特殊字符进入防重放缓存。
-        if (!isValidNonce(nonce)) {
-            return handleNoAuth(response);
-        }
-
-        // 步骤3：timestamp 只允许 5 分钟时间窗口内的请求，降低签名被截获后的重放风险。
+        // timestamp 只允许 5 分钟时间窗口内的请求，降低签名被截获后的重放风险。
         Long requestTimestamp = parseTimestamp(timestamp);
         long currentTime = System.currentTimeMillis() / 1000;
         if (requestTimestamp == null || Math.abs(currentTime - requestTimestamp) > FIVE_MINUTES) {
             return handleNoAuth(response);
         }
 
-        // 步骤4：Gateway 的请求体只能消费一次，这里先聚合 body 用于验签，后面再通过装饰器写回下游请求。
+        String body = new String(bodyBytes, StandardCharsets.UTF_8);
+        String serverSign = SignUtils.getSign(invokeUser.getSecretKey(), method, requestPath, nonce, timestamp, body);
+        if (sign == null || !sign.equals(serverSign)) {
+            return handleNoAuth(response);
+        }
+
         InvokeUserVO finalInvokeUser = invokeUser;
-        return DataBufferUtils.join(request.getBody())
-                .defaultIfEmpty(response.bufferFactory().wrap(new byte[0]))
-                .flatMap(dataBuffer -> {
-                    byte[] bodyBytes = new byte[dataBuffer.readableByteCount()];
-                    dataBuffer.read(bodyBytes);
-                    DataBufferUtils.release(dataBuffer);
-                    String body = new String(bodyBytes, StandardCharsets.UTF_8);
-
-                    // 步骤5：签名原文绑定 method、path、nonce、timestamp 和真实 body，任一字段被篡改都会验签失败。
-                    String secretKey = finalInvokeUser.getSecretKey();
-                    String serverSign = SignUtils.getSign(secretKey, method, requestPath, nonce, timestamp, body);
-                    if (sign == null || !sign.equals(serverSign)) {
-                        return handleNoAuth(response);
-                    }
-
-                    // 步骤6：Redis setIfAbsent 消费 nonce，同一个 accessKey 下的同一 nonce 只能成功使用一次。
-                    return tryConsumeNonce(accessKey, nonce)
-                            .flatMap(consumed -> {
-                                if (!consumed) {
-                                    return handleNoAuth(response);
-                                }
-
-                                // 步骤7：将已读取过的 body 重新包装回请求，否则下游接口将读不到请求体。
-                                DataBufferFactory bufferFactory = response.bufferFactory();
-                                ServerHttpRequest decoratedRequest = new ServerHttpRequestDecorator(request) {
-                                    @Override
-                                    public Flux<DataBuffer> getBody() {
-                                        return Flux.defer(() -> Flux.just(bufferFactory.wrap(bodyBytes)));
-                                    }
-                                };
-                                ServerWebExchange decoratedExchange = exchange.mutate().request(decoratedRequest).build();
-
-                                // 步骤8：普通调用只走已上线接口链路
-                                InterfaceInfo interfaceInfo;
-                                try {
-                                    interfaceInfo = innerInterfaceInfoService.getInterfaceInfo(requestPath, method);
-                                } catch (Exception e) {
-                                    log.error("getInterfaceInfo error: {}", e.getMessage(), e);
-                                    return handleInvokeError(response);
-                                }
-
-                                // 命中上线接口：先限流，再校验剩余调用次数，最后统计成功响应。
-                                if (interfaceInfo != null && isOnlineInterface(interfaceInfo)) {
-                                    return tryConsumeAccessKeyRateLimit(accessKey, method, requestPath)
-                                            .flatMap(rateAllowed -> {
-                                                if (!rateAllowed) {
-                                                    return handleTooManyRequests(response);
-                                                }
-                                                ServerWebExchange targetExchange = rewriteTargetExchange(decoratedExchange, interfaceInfo);
-                                                if (targetExchange == null) {
-                                                    return handleForbiddenTargetHost(response);
-                                                }
-                                                return invokeOnlineInterface(targetExchange, chain, response, finalInvokeUser, interfaceInfo);
-                                            });
-                                }
-
-                                // 步骤9：未命中上线接口时，检查是否携带发布探测标记。
-                                // 未携带探测标记的普通请求直接返回 404，避免泄露接口存在信息。
-                                if (!hasPublishingProbeHeader(request)) {
-                                    return handleNotFound(response);
-                                }
-
-                                // 步骤10：携带探测标记的请求，需要验证内部探测签名合法性。
-                                return validatePublishingProbe(request, method, requestPath)
-                                        .flatMap(valid -> {
-                                            if (!valid) {
-                                                // 探测签名不合法，返回 403 表示鉴权失败。
-                                                return handleNoAuth(response);
-                                            }
-
-                                            // 步骤11：探测签名验证通过，查询发布验证中的接口。
-                                            InterfaceInfo publishingInterfaceInfo;
-                                            try {
-                                                publishingInterfaceInfo = innerInterfaceInfoService.getPublishingInterfaceInfo(requestPath, method);
-                                            } catch (Exception e) {
-                                                log.error("getPublishingInterfaceInfo error: {}", e.getMessage(), e);
-                                                return handleInvokeError(response);
-                                            }
-                                            if (publishingInterfaceInfo == null || !isPublishingInterface(publishingInterfaceInfo)) {
-                                                // 接口不存在或已不处于发布验证状态，返回 404。
-                                                return handleNotFound(response);
-                                            }
-
-                                            // 步骤12：发布探测只验证接口可调用性，不扣减用户次数，也不记录普通调用统计。
-                                            ServerWebExchange targetExchange = rewriteTargetExchange(decoratedExchange, publishingInterfaceInfo);
-                                            if (targetExchange == null) {
-                                                return handleForbiddenTargetHost(response);
-                                            }
-                                            return chain.filter(targetExchange);
-                                        });
-                            })
-                            .onErrorResume(e -> {
-                                log.error("tryConsumeNonce error: {}", e.getMessage(), e);
-                                return handleInvokeError(response);
-                            });
+        return tryConsumeNonce(accessKey, nonce)
+                .flatMap(consumed -> processConsumedRequest(exchange, chain, requestPath, method, bodyBytes,
+                        accessKey, finalInvokeUser, consumed))
+                .onErrorResume(e -> {
+                    log.error("tryConsumeNonce error: {}", e.getMessage(), e);
+                    return handleInvokeError(response);
                 });
+    }
+
+    /**
+     * 在 nonce 成功消费后处理接口查询、目标路由和调用统计。
+     *
+     * @param exchange      请求上下文
+     * @param chain         过滤器链
+     * @param requestPath   请求路径
+     * @param method        请求方法
+     * @param bodyBytes     原始请求体
+     * @param accessKey     调用方访问密钥
+     * @param invokeUser    调用用户
+     * @param nonceConsumed nonce 是否成功消费
+     * @return 处理结果
+     */
+    private Mono<Void> processConsumedRequest(ServerWebExchange exchange,
+                                              GatewayFilterChain chain,
+                                              String requestPath,
+                                              String method,
+                                              byte[] bodyBytes,
+                                              String accessKey,
+                                              InvokeUserVO invokeUser,
+                                              boolean nonceConsumed) {
+        ServerHttpResponse response = exchange.getResponse();
+        if (!nonceConsumed) {
+            return handleNoAuth(response);
+        }
+
+        // 将已读取的正文重新包装回请求，保证下游仍能读取完整原始字节。
+        DataBufferFactory bufferFactory = response.bufferFactory();
+        ServerHttpRequest request = exchange.getRequest();
+        ServerHttpRequest decoratedRequest = new ServerHttpRequestDecorator(request) {
+            @Override
+            public Flux<DataBuffer> getBody() {
+                return Flux.defer(() -> Flux.just(bufferFactory.wrap(bodyBytes)));
+            }
+        };
+        ServerWebExchange decoratedExchange = exchange.mutate().request(decoratedRequest).build();
+
+        InterfaceInfo interfaceInfo;
+        try {
+            interfaceInfo = innerInterfaceInfoService.getInterfaceInfo(requestPath, method);
+        } catch (Exception e) {
+            log.error("getInterfaceInfo error: {}", e.getMessage(), e);
+            return handleInvokeError(response);
+        }
+        if (interfaceInfo != null && isOnlineInterface(interfaceInfo)) {
+            return tryConsumeAccessKeyRateLimit(accessKey, method, requestPath)
+                    .flatMap(rateAllowed -> {
+                        if (!rateAllowed) {
+                            return handleTooManyRequests(response);
+                        }
+                        ServerWebExchange targetExchange = rewriteTargetExchange(decoratedExchange, interfaceInfo);
+                        if (targetExchange == null) {
+                            return handleForbiddenTargetHost(response);
+                        }
+                        return invokeOnlineInterface(targetExchange, chain, response, invokeUser, interfaceInfo);
+                    });
+        }
+
+        if (!hasPublishingProbeHeader(request)) {
+            return handleNotFound(response);
+        }
+        return validatePublishingProbe(request, method, requestPath)
+                .flatMap(valid -> processPublishingProbe(decoratedExchange, chain, requestPath, method, valid));
+    }
+
+    /**
+     * 处理未命中上线接口后的发布探测请求。
+     *
+     * @param exchange    已恢复请求体的请求上下文
+     * @param chain       过滤器链
+     * @param requestPath 请求路径
+     * @param method      请求方法
+     * @param valid       探测签名是否有效
+     * @return 处理结果
+     */
+    private Mono<Void> processPublishingProbe(ServerWebExchange exchange,
+                                              GatewayFilterChain chain,
+                                              String requestPath,
+                                              String method,
+                                              boolean valid) {
+        ServerHttpResponse response = exchange.getResponse();
+        if (!valid) {
+            return handleNoAuth(response);
+        }
+
+        InterfaceInfo publishingInterfaceInfo;
+        try {
+            publishingInterfaceInfo = innerInterfaceInfoService.getPublishingInterfaceInfo(requestPath, method);
+        } catch (Exception e) {
+            log.error("getPublishingInterfaceInfo error: {}", e.getMessage(), e);
+            return handleInvokeError(response);
+        }
+        if (publishingInterfaceInfo == null || !isPublishingInterface(publishingInterfaceInfo)) {
+            return handleNotFound(response);
+        }
+
+        ServerWebExchange targetExchange = rewriteTargetExchange(exchange, publishingInterfaceInfo);
+        if (targetExchange == null) {
+            return handleForbiddenTargetHost(response);
+        }
+        return chain.filter(targetExchange);
     }
 
     /**
@@ -502,6 +595,19 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
     private Mono<Void> handleForbiddenTargetHost(ServerHttpResponse response) {
         response.setStatusCode(HttpStatus.FORBIDDEN);
         return response.setComplete();
+    }
+
+    /**
+     * 返回请求体超限的统一 HTTP 413 JSON 响应。
+     *
+     * @param response 网关响应
+     * @return 响应写出结果
+     */
+    private Mono<Void> handleRequestBodyTooLarge(ServerHttpResponse response) {
+        response.setStatusCode(HttpStatus.PAYLOAD_TOO_LARGE);
+        response.getHeaders().setContentType(new MediaType("application", "json", StandardCharsets.UTF_8));
+        response.getHeaders().setContentLength(requestBodyTooLargeResponseBytes.length);
+        return response.writeWith(Mono.just(response.bufferFactory().wrap(requestBodyTooLargeResponseBytes)));
     }
 
     /**

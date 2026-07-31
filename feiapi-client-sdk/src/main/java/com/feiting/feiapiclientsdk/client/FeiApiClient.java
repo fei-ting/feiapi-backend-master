@@ -4,14 +4,17 @@ import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONUtil;
 import com.feiting.feiapiclientsdk.annotation.SdkInvoke;
+import com.feiting.feiapiclientsdk.constant.ApiPayloadLimits;
 import com.feiting.feiapiclientsdk.model.User;
 import com.feiting.feiapiclientsdk.utils.ProbeSignUtils;
+import com.feiting.feiapiclientsdk.utils.ProbeResponseBodyReader;
 import com.feiting.feiapiclientsdk.utils.SignUtils;
 import com.google.gson.Gson;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.nio.charset.StandardCharsets;
 
 /**
  * 调用第三方接口的客户端
@@ -24,6 +27,9 @@ public class FeiApiClient {
      * 异常响应体最大展示长度，避免下游返回大文本时污染平台错误信息。
      */
     private static final int MAX_ERROR_BODY_LENGTH = 200;
+
+    /** 发布探测响应体受限读取器。 */
+    private final ProbeResponseBodyReader probeResponseBodyReader = new ProbeResponseBodyReader();
 
     private String accessKey;
     private String secretKey;
@@ -147,6 +153,7 @@ public class FeiApiClient {
      * @return 请求头
      */
     private Map<String, String> getHeaderMap(String method, String path, String body) {
+        assertRequestBodySize(body);
         Map<String, String> headers = new HashMap<>();
 
         // 为本次请求生成随机数和时间戳。
@@ -186,6 +193,16 @@ public class FeiApiClient {
      * 下游接口返回非 2xx 时，直接抛出异常，避免把失败结果继续包装成成功响应。
      */
     private String executeRequest(HttpRequest request) {
+        if (Boolean.TRUE.equals(probeMode.get())) {
+            try (HttpResponse httpResponse = request.executeAsync()) {
+                int status = httpResponse.getStatus();
+                String body = probeResponseBodyReader.read(httpResponse);
+                if (status < 200 || status >= 300) {
+                    throw new RuntimeException(buildErrorMessage(status, body));
+                }
+                return body;
+            }
+        }
         HttpResponse httpResponse = request.execute();
         int status = httpResponse.getStatus();
         String body = httpResponse.body();
@@ -193,6 +210,18 @@ public class FeiApiClient {
             throw new RuntimeException(buildErrorMessage(status, body));
         }
         return body;
+    }
+
+    /**
+     * 校验最终参与签名并发送的请求体 UTF-8 字节数。
+     *
+     * @param body 最终请求体
+     */
+    private void assertRequestBodySize(String body) {
+        int bodyBytes = body == null ? 0 : body.getBytes(StandardCharsets.UTF_8).length;
+        if (bodyBytes > ApiPayloadLimits.MAX_SIGNED_REQUEST_BODY_BYTES) {
+            throw new IllegalArgumentException("请求体不能超过 65535 字节");
+        }
     }
 
     /**

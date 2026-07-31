@@ -168,11 +168,11 @@ class InterfaceDocContentSecurityValidatorTest {
     }
 
     /**
-     * 验证超过 DTO 长度上限的 JSON 示例会在请求参数校验阶段被拒绝。
+     * 验证超过 DTO UTF-8 字节上限的 JSON 示例会在请求参数校验阶段被拒绝。
      * 使用精确断言：验证恰好有 1 个违规，且违规消息正确。
      */
     @Test
-    @DisplayName("六万五千五百三十六字符示例由 DTO 长度校验拒绝")
+    @DisplayName("六万五千五百三十六字节示例由 DTO 字节校验拒绝")
     void shouldRejectExampleLongerThanDtoLimit() {
         InterfaceDocSaveRequest request = new InterfaceDocSaveRequest();
         request.setInterfaceInfoId(1L);
@@ -187,7 +187,8 @@ class InterfaceDocContentSecurityValidatorTest {
         assertThat(BEAN_VALIDATOR.validate(request))
                 .hasSize(1)
                 .first()
-                .satisfies(violation -> assertThat(violation.getMessage()).isEqualTo("成功响应示例长度不能超过 65535"));
+                .satisfies(violation -> assertThat(violation.getMessage())
+                        .isEqualTo("成功响应示例不能超过 65535 个 UTF-8 字节"));
     }
 
     /**

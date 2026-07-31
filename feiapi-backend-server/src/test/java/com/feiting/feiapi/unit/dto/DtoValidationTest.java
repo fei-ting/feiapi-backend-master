@@ -209,6 +209,24 @@ class DtoValidationTest {
     }
 
     /**
+     * 在线调用正文应按 UTF-8 实际字节数校验。
+     */
+    @Test
+    @DisplayName("接口调用请求按 UTF-8 字节限制用户参数")
+    void shouldValidateInterfaceInvokeRequestUtf8Bytes() {
+        InterfaceInfoInvokeRequest request = new InterfaceInfoInvokeRequest();
+        request.setId(1L);
+        request.setUserRequestParams("a".repeat(65535));
+
+        assertThat(violationMessages(request)).isEmpty();
+
+        request.setUserRequestParams("中".repeat(21846));
+
+        assertThat(violationMessages(request))
+                .contains("请求体不能超过 65535 字节");
+    }
+
+    /**
      * 调用关系查询请求应校验 id、次数和状态边界
      */
     @Test
@@ -247,6 +265,53 @@ class DtoValidationTest {
         request.setErrorCodes(Collections.emptyList());
 
         assertThat(violationMessages(request)).isEmpty();
+    }
+
+    /**
+     * 文档普通文本应按 Unicode 码点而非 UTF-16 代码单元计数。
+     */
+    @Test
+    @DisplayName("文档备注按 Unicode 码点计数")
+    void shouldValidateDocRemarkByUnicodeCodePoint() {
+        InterfaceDocSaveRequest request = new InterfaceDocSaveRequest();
+        request.setInterfaceInfoId(1L);
+        request.setDocStatus("DRAFT");
+        request.setDocVersion("v1");
+        request.setRequestContentType("application/json");
+        request.setResponseContentType("application/json");
+        request.setParams(Collections.emptyList());
+        request.setErrorCodes(Collections.emptyList());
+        request.setRemark("😀".repeat(512));
+
+        assertThat(violationMessages(request)).isEmpty();
+
+        request.setRemark("😀".repeat(513));
+
+        assertThat(violationMessages(request)).contains("文档备注长度不能超过 512 个字符");
+    }
+
+    /**
+     * JSON 示例应按 UTF-8 实际字节数校验。
+     */
+    @Test
+    @DisplayName("JSON 示例按 UTF-8 字节数校验")
+    void shouldValidateJsonExampleByUtf8Bytes() {
+        InterfaceDocSaveRequest request = new InterfaceDocSaveRequest();
+        request.setInterfaceInfoId(1L);
+        request.setDocStatus("DRAFT");
+        request.setDocVersion("v1");
+        request.setRequestContentType("application/json");
+        request.setResponseContentType("application/json");
+        request.setParams(Collections.emptyList());
+        request.setErrorCodes(Collections.emptyList());
+        request.setSuccessExample("中".repeat(21845));
+
+        assertThat(violationMessages(request)).isEmpty();
+
+        request.setSuccessExample("中".repeat(21846));
+
+        assertThat(violationMessages(request))
+                .contains("成功响应示例不能超过 65535 个 UTF-8 字节");
     }
 
     /**

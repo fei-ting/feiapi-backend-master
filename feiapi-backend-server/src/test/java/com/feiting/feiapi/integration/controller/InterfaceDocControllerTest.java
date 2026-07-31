@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.feiting.feiapi.constant.UserConstant;
+import com.feiting.feiapi.component.InterfaceDocRequestBodyAdvice;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocErrorCodeSaveRequest;
 import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocParamSaveRequest;
@@ -872,6 +873,25 @@ class InterfaceDocControllerTest {
                 .mapToObj(index -> errorCode("E" + index, "错误" + index, index))
                 .collect(Collectors.toList()));
         assertSaveFailed(adminSession, request, 40000);
+    }
+
+    /**
+     * 测试聚合保存请求体超过 1 MiB 时在 JSON 解析前返回 HTTP 413。
+     */
+    @Test
+    @DisplayName("聚合保存请求体超过 1 MiB 返回 HTTP 413")
+    void shouldRejectAggregateRequestBodyExceedingOneMebibyte() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idbody" + suffix(), "admin");
+        String oversizedBody = "x".repeat(InterfaceDocRequestBodyAdvice.MAX_INTERFACE_DOC_REQUEST_BYTES + 1);
+
+        mockMvc.perform(post("/interfaceDoc/save")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(oversizedBody)
+                        .session(adminSession))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.code").value(41300))
+                .andExpect(jsonPath("$.message").value(InterfaceDocRequestBodyAdvice.REQUEST_TOO_LARGE_MESSAGE));
     }
 
     /**
