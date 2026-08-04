@@ -103,6 +103,12 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
     /** 发布探测签名 Header，使用 probeSecret 计算的 HMAC-SHA256 签名 */
     private static final String PROBE_SIGN_HEADER = "X-FeiAPI-Probe-Sign";
 
+    /** 网关返回给 SDK 的受控探测失败阶段 Header */
+    private static final String PROBE_FAILURE_STAGE_HEADER = "X-FeiAPI-Probe-Failure-Stage";
+
+    /** 网关验证通过后写给下游的内部可信探测标记 */
+    private static final String TRUSTED_PROBE_HEADER = "X-FeiAPI-Trusted-Probe";
+
     /** 限流 Lua 脚本，保证计数和过期时间设置的原子性 */
     private static final DefaultRedisScript<Long> RATE_LIMIT_SCRIPT = new DefaultRedisScript<>();
 
@@ -255,20 +261,20 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
             log.error("getInvokeUser error: {}", e.getMessage(), e);
         }
         if (invokeUser == null || !isValidNonce(nonce)) {
-            return handleNoAuth(response);
+            return handleNoAuth(response, request);
         }
 
         // timestamp 只允许 5 分钟时间窗口内的请求，降低签名被截获后的重放风险。
         Long requestTimestamp = parseTimestamp(timestamp);
         long currentTime = System.currentTimeMillis() / 1000;
         if (requestTimestamp == null || Math.abs(currentTime - requestTimestamp) > FIVE_MINUTES) {
-            return handleNoAuth(response);
+            return handleNoAuth(response, request);
         }
 
         String body = new String(bodyBytes, StandardCharsets.UTF_8);
         String serverSign = SignUtils.getSign(invokeUser.getSecretKey(), method, requestPath, nonce, timestamp, body);
         if (sign == null || !sign.equals(serverSign)) {
-            return handleNoAuth(response);
+            return handleNoAuth(response, request);
         }
 
         InvokeUserVO finalInvokeUser = invokeUser;
@@ -303,20 +309,24 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
                                               InvokeUserVO invokeUser,
                                               boolean nonceConsumed) {
         ServerHttpResponse response = exchange.getResponse();
+        ServerHttpRequest request = exchange.getRequest();
         if (!nonceConsumed) {
-            return handleNoAuth(response);
+            return handleNoAuth(response, request);
         }
 
         // 将已读取的正文重新包装回请求，保证下游仍能读取完整原始字节。
         DataBufferFactory bufferFactory = response.bufferFactory();
-        ServerHttpRequest request = exchange.getRequest();
         ServerHttpRequest decoratedRequest = new ServerHttpRequestDecorator(request) {
             @Override
             public Flux<DataBuffer> getBody() {
                 return Flux.defer(() -> Flux.just(bufferFactory.wrap(bodyBytes)));
             }
         };
-        ServerWebExchange decoratedExchange = exchange.mutate().request(decoratedRequest).build();
+        ServerWebExchange decoratedExchange = exchange.mutate()
+                .request(decoratedRequest.mutate()
+                        .headers(targetHeaders -> targetHeaders.remove(TRUSTED_PROBE_HEADER))
+                        .build())
+                .build();
 
         InterfaceInfo interfaceInfo;
         try {
@@ -363,7 +373,7 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
                                               boolean valid) {
         ServerHttpResponse response = exchange.getResponse();
         if (!valid) {
-            return handleNoAuth(response);
+            return handleNoAuth(response, "GATEWAY_AUTH");
         }
 
         InterfaceInfo publishingInterfaceInfo;
@@ -374,12 +384,23 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
             return handleInvokeError(response);
         }
         if (publishingInterfaceInfo == null || !isPublishingInterface(publishingInterfaceInfo)) {
-            return handleNotFound(response);
+            return handleNotFound(response, "GATEWAY_ROUTE");
         }
 
-        ServerWebExchange targetExchange = rewriteTargetExchange(exchange, publishingInterfaceInfo);
+        ServerWebExchange trustedExchange = exchange.mutate()
+                .request(exchange.getRequest().mutate()
+                        .headers(headers -> {
+                            headers.remove(PROBE_HEADER);
+                            headers.remove(PROBE_NONCE_HEADER);
+                            headers.remove(PROBE_TIMESTAMP_HEADER);
+                            headers.remove(PROBE_SIGN_HEADER);
+                            headers.set(TRUSTED_PROBE_HEADER, "true");
+                        })
+                        .build())
+                .build();
+        ServerWebExchange targetExchange = rewriteTargetExchange(trustedExchange, publishingInterfaceInfo);
         if (targetExchange == null) {
-            return handleForbiddenTargetHost(response);
+            return handleForbiddenTargetHost(response, "GATEWAY_ROUTE");
         }
         return chain.filter(targetExchange);
     }
@@ -560,6 +581,34 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
     }
 
     /**
+     * 按请求类型返回鉴权失败响应。
+     *
+     * <p>发布探测请求需要携带受控失败阶段，普通调用保持原有 403 响应。</p>
+     *
+     * @param response 响应对象
+     * @param request  请求对象
+     * @return 响应写出结果
+     */
+    private Mono<Void> handleNoAuth(ServerHttpResponse response, ServerHttpRequest request) {
+        if (hasPublishingProbeHeader(request)) {
+            return handleNoAuth(response, "GATEWAY_AUTH");
+        }
+        return handleNoAuth(response);
+    }
+
+    /**
+     * 返回带探测失败阶段的 403 响应。
+     *
+     * @param response 响应对象
+     * @param stage    失败阶段
+     * @return 响应写出结果
+     */
+    private Mono<Void> handleNoAuth(ServerHttpResponse response, String stage) {
+        response.getHeaders().set(PROBE_FAILURE_STAGE_HEADER, stage);
+        return handleNoAuth(response);
+    }
+
+    /**
      * 返回 500 响应，表示接口调用失败（接口不存在、已下线或验证失败）。
      */
     private Mono<Void> handleInvokeError(ServerHttpResponse response) {
@@ -582,6 +631,18 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
     }
 
     /**
+     * 返回带探测失败阶段的 404 响应。
+     *
+     * @param response 响应对象
+     * @param stage    失败阶段
+     * @return 响应写出结果
+     */
+    private Mono<Void> handleNotFound(ServerHttpResponse response, String stage) {
+        response.getHeaders().set(PROBE_FAILURE_STAGE_HEADER, stage);
+        return handleNotFound(response);
+    }
+
+    /**
      * 返回 429 响应，表示当前调用方在窗口期内已经触发限流。
      */
     private Mono<Void> handleTooManyRequests(ServerHttpResponse response) {
@@ -595,6 +656,18 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
     private Mono<Void> handleForbiddenTargetHost(ServerHttpResponse response) {
         response.setStatusCode(HttpStatus.FORBIDDEN);
         return response.setComplete();
+    }
+
+    /**
+     * 返回带探测失败阶段的目标地址拒绝响应。
+     *
+     * @param response 响应对象
+     * @param stage    失败阶段
+     * @return 响应写出结果
+     */
+    private Mono<Void> handleForbiddenTargetHost(ServerHttpResponse response, String stage) {
+        response.getHeaders().set(PROBE_FAILURE_STAGE_HEADER, stage);
+        return handleForbiddenTargetHost(response);
     }
 
     /**

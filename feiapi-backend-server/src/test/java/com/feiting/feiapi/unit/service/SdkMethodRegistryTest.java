@@ -199,6 +199,30 @@ class SdkMethodRegistryTest {
         }
 
         @Test
+        @DisplayName("SDK 调用异常使用安全公开消息并保留原始异常链")
+        void shouldHideInvocationFailureDetailsAndKeepCause() {
+            FeiApiClient client = new FeiApiClient("ak", "sk") {
+                /**
+                 * 模拟包含内部地址的底层调用异常。
+                 *
+                 * @return 不会正常返回
+                 */
+                @Override
+                public String getLoveWords() {
+                    throw new IllegalStateException("连接 http://internal-gateway:8090 失败");
+                }
+            };
+
+            BusinessException exception = assertThrows(BusinessException.class,
+                    () -> registry.invoke(client, "getLoveWords", null));
+
+            assertEquals("SDK 方法调用失败", exception.getMessage());
+            assertFalse(exception.getMessage().contains("internal-gateway"));
+            assertInstanceOf(IllegalStateException.class, exception.getCause());
+            assertTrue(exception.getCause().getMessage().contains("internal-gateway"));
+        }
+
+        @Test
         @DisplayName("注册方法的 @SdkInvoke.needParams 值与方法签名一致")
         void shouldHaveCorrectNeedParamsAnnotation() {
             Map<String, Method> methodMap = registry.getMethodMap();
