@@ -1,6 +1,7 @@
 package com.feiting.feiapiclientsdk.client;
 
 import com.sun.net.httpserver.HttpServer;
+import com.feiting.feiapiclientsdk.model.ProbeInvocationResult;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -122,6 +123,45 @@ class FeiApiClientTest {
 
             try {
                 assertThat(client.getLoveWords()).isEqualTo("async-probe-body");
+            } finally {
+                client.disableProbeMode();
+                server.stop(0);
+            }
+        }
+
+        /**
+         * 探测模式下即使下游返回非 2xx，也应保留探测元数据并正常返回响应体，
+         * 交由后端统一响应校验器分类。
+         *
+         * @throws Exception 本地测试服务启动或请求执行失败时抛出
+         */
+        @Test
+        @DisplayName("探测模式下非 2xx 仍保留探测元数据")
+        void shouldKeepProbeMetadataWhenProbeResponseIsNon2xx() throws Exception {
+            HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            server.createContext("/api/love_words", exchange -> {
+                exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=UTF-8");
+                exchange.getResponseHeaders().set("X-FeiAPI-Probe-Failure-Stage", "GATEWAY_AUTH");
+                byte[] responseBytes = "probe-denied".getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(403, responseBytes.length);
+                try (OutputStream outputStream = exchange.getResponseBody()) {
+                    outputStream.write(responseBytes);
+                }
+            });
+            server.start();
+            FeiApiClient client = new FeiApiClient("ak", "sk",
+                    "http://127.0.0.1:" + server.getAddress().getPort(), "probe-secret");
+            client.enableProbeMode();
+
+            try {
+                assertThat(client.getLoveWords()).isEqualTo("probe-denied");
+
+                ProbeInvocationResult result = client.getProbeInvocationResult();
+                assertThat(result).isNotNull();
+                assertThat(result.getStatusCode()).isEqualTo(403);
+                assertThat(result.getContentType()).contains("text/plain");
+                assertThat(result.getGatewayFailureStage()).isEqualTo("GATEWAY_AUTH");
+                assertThat(result.getBody()).isEqualTo("probe-denied");
             } finally {
                 client.disableProbeMode();
                 server.stop(0);

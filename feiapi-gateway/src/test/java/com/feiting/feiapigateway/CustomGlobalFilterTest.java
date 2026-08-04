@@ -139,6 +139,49 @@ class CustomGlobalFilterTest {
     }
 
     /**
+     * 发布探测请求普通鉴权失败时应返回网关鉴权阶段。
+     */
+    @Test
+    @DisplayName("探测请求普通鉴权失败返回 GATEWAY_AUTH 阶段")
+    void shouldReturnGatewayAuthStageWhenProbeRequestFailsCommonAuth() {
+        InnerUserService userService = mock(InnerUserService.class);
+        InnerInterfaceInfoService interfaceInfoService = mock(InnerInterfaceInfoService.class);
+        CustomGlobalFilter filter = createBoundaryFilter(userService, interfaceInfoService);
+        MockServerHttpRequest request = MockServerHttpRequest.get("/api/test")
+                .header("X-FeiAPI-Probe", "true")
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+        GatewayFilterChain chain = mock(GatewayFilterChain.class);
+
+        filter.filter(exchange, chain).block();
+
+        MockServerHttpResponse response = exchange.getResponse();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(response.getHeaders().getFirst("X-FeiAPI-Probe-Failure-Stage")).isEqualTo("GATEWAY_AUTH");
+        verifyNoInteractions(interfaceInfoService, chain);
+    }
+
+    /**
+     * 普通请求鉴权失败时不应暴露发布探测失败阶段。
+     */
+    @Test
+    @DisplayName("普通请求鉴权失败不返回探测阶段")
+    void shouldNotReturnProbeStageWhenNormalRequestFailsCommonAuth() {
+        InnerUserService userService = mock(InnerUserService.class);
+        InnerInterfaceInfoService interfaceInfoService = mock(InnerInterfaceInfoService.class);
+        CustomGlobalFilter filter = createBoundaryFilter(userService, interfaceInfoService);
+        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/api/test").build());
+        GatewayFilterChain chain = mock(GatewayFilterChain.class);
+
+        filter.filter(exchange, chain).block();
+
+        MockServerHttpResponse response = exchange.getResponse();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(response.getHeaders().containsKey("X-FeiAPI-Probe-Failure-Stage")).isFalse();
+        verifyNoInteractions(interfaceInfoService, chain);
+    }
+
+    /**
      * 创建只用于请求体边界测试的过滤器并注入关键业务依赖。
      *
      * @param userService          用户查询服务

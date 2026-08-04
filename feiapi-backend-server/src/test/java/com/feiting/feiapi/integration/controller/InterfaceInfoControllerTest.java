@@ -75,6 +75,16 @@ class InterfaceInfoControllerTest {
      */
     private static final String TEST_TARGET_HOST = "http://feiapi-interface:8123";
 
+    /**
+     * 测试配置中的发布探测管理员 AccessKey。
+     */
+    private static final String TEST_PROBE_ACCESS_KEY = "test-access-key";
+
+    /**
+     * 测试配置中的发布探测管理员 SecretKey。
+     */
+    private static final String TEST_PROBE_SECRET_KEY = "test-secret-key";
+
     @Resource
     private MockMvc mockMvc;
 
@@ -143,6 +153,21 @@ class InterfaceInfoControllerTest {
         // 使用短前缀 + 时间戳后4位，确保账号长度符合 4-10 位规则
         String timestamp = String.valueOf(System.currentTimeMillis());
         return loginWithRole("aif" + timestamp.substring(timestamp.length() - 4), "admin");
+    }
+
+    /**
+     * 使用具备发布探测配置密钥的管理员登录。
+     *
+     * @return 管理员登录会话
+     */
+    private MockHttpSession loginAsProbeAdmin() throws Exception {
+        MockHttpSession session = loginAsAdmin();
+        User adminUser = (User) session.getAttribute(UserConstant.USER_LOGIN_STATE);
+        adminUser.setAccessKey(TEST_PROBE_ACCESS_KEY);
+        adminUser.setSecretKey(TEST_PROBE_SECRET_KEY);
+        assertTrue(userService.updateById(adminUser), "发布探测管理员密钥应配置成功");
+        session.setAttribute(UserConstant.USER_LOGIN_STATE, adminUser);
+        return session;
     }
 
     private MockHttpSession loginAsUser() throws Exception {
@@ -219,6 +244,7 @@ class InterfaceInfoControllerTest {
         doc.setDocVersion("v1");
         doc.setRequestContentType("application/json");
         doc.setResponseContentType("application/json");
+        doc.setSuccessExample("{\"content\":\"ok\"}");
         assertTrue(interfaceDocService.save(doc), "测试文档主记录应创建成功");
     }
 
@@ -1259,7 +1285,7 @@ class InterfaceInfoControllerTest {
         @Test
         @DisplayName("管理员发布 OFFLINE 接口，状态变为 PUBLISHING（验证会失败回滚到 OFFLINE）")
         void shouldStartPublishingFromOffline() throws Exception {
-            MockHttpSession adminSession = loginAsAdmin();
+            MockHttpSession adminSession = loginAsProbeAdmin();
             long id = createInterfaceInfo("onlineApi", "/api/online_test", "GET", InterfaceInfoStatusEnum.OFFLINE.getValue());
             createDocWithStatus(id, "READY");
 
@@ -1281,7 +1307,7 @@ class InterfaceInfoControllerTest {
         @Test
         @DisplayName("管理员不能发布文档待完善的下线接口")
         void shouldRejectPublishingDraftInterface() throws Exception {
-            MockHttpSession adminSession = loginAsAdmin();
+            MockHttpSession adminSession = loginAsProbeAdmin();
             long id = createInterfaceInfo("draftOnlineApi", "/api/draft_online_test", "GET",
                     InterfaceInfoStatusEnum.OFFLINE.getValue());
 
@@ -1289,10 +1315,10 @@ class InterfaceInfoControllerTest {
                             .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"id\":" + id + "}")
-                            .session(adminSession))
+                    .session(adminSession))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(50001))
-                    .andExpect(jsonPath("$.message").value("接口文档待完善，请先完成文档维护"));
+                    .andExpect(jsonPath("$.code").value(40901))
+                    .andExpect(jsonPath("$.message").value("接口发布前检查未通过，请先修复检查问题"));
         }
 
         /**
@@ -1301,14 +1327,14 @@ class InterfaceInfoControllerTest {
         @Test
         @DisplayName("发布前拒绝持久化响应示例超过 65535 字节")
         void shouldRejectPublishingPersistedOversizedExample() throws Exception {
-            MockHttpSession adminSession = loginAsAdmin();
+            MockHttpSession adminSession = loginAsProbeAdmin();
             long id = createInterfaceInfo("oversizedDocOnlineApi", "/api/oversized_doc_online", "GET",
                     InterfaceInfoStatusEnum.OFFLINE.getValue());
             createDocWithStatus(id, "READY");
             InterfaceDoc doc = interfaceDocService.lambdaQuery()
                     .eq(InterfaceDoc::getInterfaceInfoId, id)
                     .one();
-            doc.setSuccessExample("a".repeat(65536));
+            doc.setSuccessExample("{\"content\":\"" + "a".repeat(65536) + "\"}");
             assertTrue(interfaceDocService.updateById(doc));
 
             mockMvc.perform(post("/interfaceInfo/online")
@@ -1317,9 +1343,9 @@ class InterfaceInfoControllerTest {
                             .content("{\"id\":" + id + "}")
                             .session(adminSession))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(40000))
+                    .andExpect(jsonPath("$.code").value(40901))
                     .andExpect(jsonPath("$.message")
-                            .value("成功响应示例不能超过 65535 个 UTF-8 字节"));
+                            .value("接口发布前检查未通过，请先修复检查问题"));
 
             assertEquals(InterfaceInfoStatusEnum.OFFLINE.getValue(), interfaceInfoService.getById(id).getStatus());
         }
@@ -1327,7 +1353,7 @@ class InterfaceInfoControllerTest {
         @Test
         @DisplayName("管理员不能发布持久化状态非法的接口")
         void shouldRejectPublishingIllegalDocStatus() throws Exception {
-            MockHttpSession adminSession = loginAsAdmin();
+            MockHttpSession adminSession = loginAsProbeAdmin();
             long id = createInterfaceInfo("illegalStatusOnlineApi", "/api/illegal_status_online", "GET",
                     InterfaceInfoStatusEnum.OFFLINE.getValue());
             createDocWithStatus(id, "BROKEN");
@@ -1338,8 +1364,8 @@ class InterfaceInfoControllerTest {
                             .content("{\"id\":" + id + "}")
                             .session(adminSession))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(50000))
-                    .andExpect(jsonPath("$.message").value("接口文档状态数据异常"));
+                    .andExpect(jsonPath("$.code").value(40901))
+                    .andExpect(jsonPath("$.message").value("接口发布前检查未通过，请先修复检查问题"));
         }
 
         @Test

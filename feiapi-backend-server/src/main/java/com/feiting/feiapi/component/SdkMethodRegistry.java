@@ -71,8 +71,7 @@ public class SdkMethodRegistry {
             return method.invoke(client);
         } catch (IllegalAccessException | InvocationTargetException e) {
             Throwable cause = e.getCause();
-            String errorMsg = cause != null ? cause.getMessage() : e.getMessage();
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "接口调用失败：" + methodName + "，原因：" + errorMsg);
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "SDK 方法调用失败", cause == null ? e : cause);
         }
     }
 

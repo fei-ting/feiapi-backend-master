@@ -1,6 +1,7 @@
 package com.feiting.feiapi.service;
 
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
+import com.feiting.feiapi.model.publish.InterfacePublishContext;
 
 /**
  * 接口信息生命周期服务。
@@ -38,6 +39,14 @@ public interface InterfaceInfoLifecycleService {
      * @return 发布中的接口快照
      */
     InterfaceInfo startPublishing(Long interfaceInfoId);
+
+    /**
+     * 校验发布条件并将下线接口切换为发布中状态，返回完整发布上下文。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     * @return 发布上下文
+     */
+    InterfacePublishContext startPublishingWithContext(Long interfaceInfoId);
 
     /**
      * 将发布中的接口切换为上线状态。

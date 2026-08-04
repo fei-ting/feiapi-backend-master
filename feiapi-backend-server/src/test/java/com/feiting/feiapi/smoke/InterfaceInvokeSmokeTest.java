@@ -3,12 +3,15 @@ package com.feiting.feiapi.smoke;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.feiting.feiapi.component.SdkMethodRegistry;
+import com.feiting.feiapi.exception.InterfacePublishProbeException;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
 import com.feiting.feiapi.model.dto.user.UserLoginRequest;
 import com.feiting.feiapi.model.entity.InterfaceDoc;
+import com.feiting.feiapi.model.enums.PublishProbeFailureStageEnum;
 import com.feiting.feiapi.service.InterfaceDocService;
 import com.feiting.feiapi.service.InterfaceInfoService;
+import com.feiting.feiapi.service.InterfacePublishProbeService;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapiclientsdk.client.FeiApiClient;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
@@ -28,6 +31,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.lang.reflect.Method;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -56,6 +61,12 @@ class InterfaceInvokeSmokeTest {
     /** 测试密码。 */
     private static final String TEST_PASSWORD = "password123";
 
+    /** 测试配置中的发布探测管理员 AccessKey。 */
+    private static final String TEST_PROBE_ACCESS_KEY = "test-access-key";
+
+    /** 测试配置中的发布探测管理员 SecretKey。 */
+    private static final String TEST_PROBE_SECRET_KEY = "test-secret-key";
+
     @Resource
     private MockMvc mockMvc;
 
@@ -80,12 +91,18 @@ class InterfaceInvokeSmokeTest {
     @MockBean
     private SdkMethodRegistry sdkMethodRegistry;
 
+    /** 发布探测服务 mock，用于隔离真实网关依赖。 */
+    @MockBean
+    private InterfacePublishProbeService interfacePublishProbeService;
+
     /**
      * 配置烟雾测试使用的 SDK 方法注册能力。
      */
     @BeforeEach
-    void setUpSdkMethodRegistry() {
+    void setUpSdkMethodRegistry() throws NoSuchMethodException {
+        Method getLoveWordsMethod = FeiApiClient.class.getDeclaredMethod("getLoveWords");
         Mockito.when(sdkMethodRegistry.supports("getLoveWords")).thenReturn(true);
+        Mockito.when(sdkMethodRegistry.getMethodMap()).thenReturn(Map.of("getLoveWords", getLoveWordsMethod));
     }
 
     /**
@@ -111,6 +128,9 @@ class InterfaceInvokeSmokeTest {
         userService.userRegister(account, TEST_PASSWORD, TEST_PASSWORD);
         User user = userService.lambdaQuery().eq(User::getUserAccount, account).one();
         user.setUserRole(role);
+        if ("admin".equals(role)) {
+            configureProbeCredentials(user);
+        }
         userService.updateById(user);
 
         UserLoginRequest loginRequest = new UserLoginRequest();
@@ -124,6 +144,16 @@ class InterfaceInvokeSmokeTest {
                         .session(session))
                 .andExpect(status().isOk());
         return session;
+    }
+
+    /**
+     * 为管理员配置与测试配置一致的发布探测密钥。
+     *
+     * @param user 管理员用户
+     */
+    private void configureProbeCredentials(User user) {
+        user.setAccessKey(TEST_PROBE_ACCESS_KEY);
+        user.setSecretKey(TEST_PROBE_SECRET_KEY);
     }
 
     /**
@@ -181,6 +211,7 @@ class InterfaceInvokeSmokeTest {
             doc.setResponseContentType("application/json");
         }
         doc.setDocStatus("READY");
+        doc.setSuccessExample("{\"content\":\"ok\"}");
         assertThat(interfaceDocService.saveOrUpdate(doc)).isTrue();
     }
 
@@ -385,7 +416,11 @@ class InterfaceInvokeSmokeTest {
             markDocReady(interfaceInfoId);
 
             // ======== Step2: 发布接口（走真实 /online 链路） ========
-            // 网关不可用，发布验证会失败，但应验证状态机正确转换和回滚
+            // 模拟发布探测失败，验证状态机正确转换和回滚
+            Mockito.doThrow(new InterfacePublishProbeException(PublishProbeFailureStageEnum.CONNECTION_TIMEOUT,
+                            "测试模拟网关不可用"))
+                    .when(interfacePublishProbeService)
+                    .probe(Mockito.any());
             String onlineJson = "{\"id\":" + interfaceInfoId + "}";
             MvcResult onlineResult = mockMvc.perform(post("/interfaceInfo/online")
                             .with(csrf())
@@ -393,7 +428,7 @@ class InterfaceInvokeSmokeTest {
                             .content(onlineJson)
                             .session(adminSession))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(50000))  // 验证失败
+                    .andExpect(jsonPath("$.code").value(50001))
                     .andReturn();
 
             // 验证错误消息包含特定关键词

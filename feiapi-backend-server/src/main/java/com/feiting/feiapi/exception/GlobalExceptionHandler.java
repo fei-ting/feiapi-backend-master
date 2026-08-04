@@ -3,6 +3,8 @@ package com.feiting.feiapi.exception;
 import com.feiting.feiapi.common.BaseResponse;
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.common.ResultUtils;
+import com.feiting.feiapi.model.vo.InterfacePublishCheckVO;
+import com.feiting.feiapi.model.vo.InterfacePublishProbeFailureVO;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.MessageSourceResolvable;
@@ -38,6 +40,36 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
+
+    /**
+     * 处理接口发布前静态检查失败。
+     *
+     * @param e 发布前检查失败异常
+     * @return 带检查问题列表的错误响应
+     */
+    @ExceptionHandler(InterfacePublishCheckException.class)
+    public BaseResponse<InterfacePublishCheckVO> interfacePublishCheckExceptionHandler(InterfacePublishCheckException e) {
+        log.warn("interfacePublishCheckException: {}", e.getMessage());
+        InterfacePublishCheckVO checkVO = new InterfacePublishCheckVO();
+        checkVO.setPassed(false);
+        checkVO.setIssues(e.getIssues());
+        return new BaseResponse<>(ErrorCode.PUBLISH_CHECK_FAILED.getCode(), checkVO, e.getMessage());
+    }
+
+    /**
+     * 处理接口发布探测失败。
+     *
+     * @param e 发布探测失败异常
+     * @return 带探测阶段的错误响应
+     */
+    @ExceptionHandler(InterfacePublishProbeException.class)
+    public BaseResponse<InterfacePublishProbeFailureVO> interfacePublishProbeExceptionHandler(InterfacePublishProbeException e) {
+        log.warn("interfacePublishProbeException: {}", e.getMessage());
+        InterfacePublishProbeFailureVO failureVO = new InterfacePublishProbeFailureVO();
+        failureVO.setStage(e.getStage().name());
+        failureVO.setReason(e.getReason());
+        return new BaseResponse<>(ErrorCode.PUBLISH_PROBE_FAILED.getCode(), failureVO, e.getMessage());
+    }
 
     @ExceptionHandler(BusinessException.class)
     public BaseResponse<?> businessExceptionHandler(BusinessException e) {

@@ -11,6 +11,7 @@ import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -41,6 +42,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @ActiveProfiles("test")
 @DisplayName("接口信息生命周期并发集成测试")
 class InterfaceInfoLifecycleConcurrencyTest {
+
+    /** 测试配置中的发布探测管理员账号。 */
+    private static final String TEST_PROBE_ADMIN_ACCOUNT = "probeadmin";
+
+    /** 测试配置中的发布探测管理员 AccessKey。 */
+    private static final String TEST_PROBE_ACCESS_KEY = "test-access-key";
+
+    /** 测试配置中的发布探测管理员 SecretKey。 */
+    private static final String TEST_PROBE_SECRET_KEY = "test-secret-key";
 
     /** 接口信息服务。 */
     @Resource
@@ -74,6 +84,20 @@ class InterfaceInfoLifecycleConcurrencyTest {
     private final List<Long> createdInterfaceIds = new ArrayList<>();
 
     /**
+     * 准备发布门禁所需的探测管理员。
+     */
+    @BeforeEach
+    void setUpProbeAdmin() {
+        jdbcTemplate.update("DELETE FROM `user` WHERE user_account = ? OR access_key = ?",
+                TEST_PROBE_ADMIN_ACCOUNT, TEST_PROBE_ACCESS_KEY);
+        jdbcTemplate.update("""
+                        INSERT INTO `user` (user_name, user_account, user_role, user_password, access_key, secret_key, is_delete)
+                        VALUES (?, ?, 'admin', 'encoded-password', ?, ?, 0)
+                        """,
+                "发布探测管理员", TEST_PROBE_ADMIN_ACCOUNT, TEST_PROBE_ACCESS_KEY, TEST_PROBE_SECRET_KEY);
+    }
+
+    /**
      * 清理测试持久化数据。
      */
     @AfterEach
@@ -93,6 +117,8 @@ class InterfaceInfoLifecycleConcurrencyTest {
                             .remove();
                     interfaceInfoService.removeById(interfaceInfoId);
                 });
+        jdbcTemplate.update("DELETE FROM `user` WHERE user_account = ? OR access_key = ?",
+                TEST_PROBE_ADMIN_ACCOUNT, TEST_PROBE_ACCESS_KEY);
     }
 
     /**
@@ -188,7 +214,7 @@ class InterfaceInfoLifecycleConcurrencyTest {
                     .isInstanceOf(ExecutionException.class)
                     .hasCauseInstanceOf(BusinessException.class)
                     .rootCause()
-                    .hasMessage("接口文档待完善，请先完成文档维护");
+                    .hasMessage("接口发布前检查未通过，请先修复检查问题");
             assertThat(interfaceInfoService.getById(interfaceInfoId).getStatus())
                     .isEqualTo(InterfaceInfoStatusEnum.OFFLINE.getValue());
         } finally {
