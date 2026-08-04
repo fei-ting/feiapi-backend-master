@@ -227,13 +227,35 @@ class InterfaceDocContentSecurityValidatorTest {
     @ParameterizedTest
     @ValueSource(strings = {
             "检查Redis连接", "查看Dubbo日志", "检查 Nacos 服务状态", "通过JDBC查询数据表",
-            "查看 C:\\logs\\server.log", "检查 /var/log/service.log", "检查数据库状态"
+            "查看 C:\\logs\\server.log", "检查 /var/log/service.log", "检查数据库状态",
+            "内部路由命中失败", "内网地址不可达", "真实后端地址错误", "targetHost 未配置",
+            "upstream 返回异常", "异常堆栈包含 SQLSTATE", "stack trace shows timeout"
     })
     @DisplayName("拒绝错误解决建议中的内部实现信息")
     void shouldRejectInternalInformation(String solution) {
         assertThatThrownBy(() -> validator.validateSolution(solution))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("错误解决建议不能包含内部实现信息");
+                .hasMessage("文档内容不能包含内部实现信息");
+    }
+
+    /**
+     * 验证普通公开文本也拒绝内部实现信息。
+     *
+     * @param text 公开文本
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "公开备注包含 Redis 连接说明",
+            "参数说明暴露 /etc/feiapi/config.yml",
+            "校验规则提到 C:\\logs\\service.log",
+            "错误说明包含 targetHost",
+            "服务器路径：/data/feiapi/app"
+    })
+    @DisplayName("普通公开文本统一拒绝内部实现信息")
+    void shouldRejectInternalInformationInPublicText(String text) {
+        assertThatThrownBy(() -> validator.validateText(text))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("文档内容不能包含内部实现信息");
     }
 
     /**
@@ -242,10 +264,24 @@ class InterfaceDocContentSecurityValidatorTest {
      * @param text 普通文本
      */
     @ParameterizedTest
-    @ValueSource(strings = {"", "redish 是业务字段", "databaseValue 是参数名", "请检查请求参数后重试"})
+    @ValueSource(strings = {
+            "", "redish 是业务字段", "databaseValue 是参数名", "请检查请求参数后重试",
+            "/data/users", "/home/profile", "请求路径说明：/data/users"
+    })
     @DisplayName("允许空文本和普通业务说明")
     void shouldAllowNormalText(String text) {
         assertThatCode(() -> validator.validateSolution(text)).doesNotThrowAnyException();
+    }
+
+    /**
+     * 验证 JSON 示例中的公开接口路径不会被服务器路径规则误判。
+     */
+    @Test
+    @DisplayName("允许 JSON 示例中的公开接口路径")
+    void shouldAllowPublicPathInJsonExample() {
+        assertThatCode(() -> validator.validateJsonExample(
+                "{\"next\":\"/data/users\"}", "JSON 示例格式不正确"))
+                .doesNotThrowAnyException();
     }
 
     /**

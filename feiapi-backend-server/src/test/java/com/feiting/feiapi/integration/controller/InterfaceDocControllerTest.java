@@ -826,6 +826,57 @@ class InterfaceDocControllerTest {
     }
 
     /**
+     * 测试聚合保存接口统一拒绝公开文本中的内部实现信息。
+     */
+    @Test
+    @DisplayName("聚合保存接口拒绝公开文本中的内部实现信息")
+    void shouldRejectInternalInfoInAllPublicTextFields() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idpubint" + suffix(), "admin");
+        long id = createInterfaceInfo("publicInternalApi", "/api/public_internal_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest remarkRequest = buildBasicSaveRequest(id);
+        remarkRequest.setRemark("公开备注包含 Redis 连接说明");
+        assertSaveFailed(adminSession, remarkRequest, 40000);
+
+        InterfaceDocSaveRequest paramDescriptionRequest = buildBasicSaveRequest(id);
+        paramDescriptionRequest.getParams().get(0).setDescription("参数说明暴露 /etc/feiapi/config.yml");
+        assertSaveFailed(adminSession, paramDescriptionRequest, 40000);
+
+        InterfaceDocSaveRequest validationRuleRequest = buildBasicSaveRequest(id);
+        validationRuleRequest.getParams().get(0).setValidationRule("targetHost 必须存在");
+        assertSaveFailed(adminSession, validationRuleRequest, 40000);
+
+        InterfaceDocSaveRequest errorDescriptionRequest = buildBasicSaveRequest(id);
+        InterfaceDocErrorCodeSaveRequest errorCode = errorCode("I002", "公开错误", 1);
+        errorCode.setDescription("错误说明包含 upstream 信息");
+        errorDescriptionRequest.getErrorCodes().add(errorCode);
+        assertSaveFailed(adminSession, errorDescriptionRequest, 40000);
+    }
+
+    /**
+     * 测试普通公开文案不会被内部信息规则误拒绝。
+     */
+    @Test
+    @DisplayName("聚合保存接口允许不含内部细节的普通公开文案")
+    void shouldAllowNormalPublicTextAfterInternalInfoHardening() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idnormalpub" + suffix(), "admin");
+        long id = createInterfaceInfo("normalPublicApi", "/api/normal_public_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.setRemark("请求路径说明用于帮助开发者选择正确参数");
+        request.getParams().get(0).setDescription("异常处理建议请检查输入格式");
+        request.getParams().get(0).setValidationRule("长度为 1 到 32 个字符");
+        InterfaceDocErrorCodeSaveRequest errorCode = errorCode("N001", "参数格式错误", 1);
+        errorCode.setDescription("公开错误说明");
+        errorCode.setSolution("请检查请求参数后重试");
+        request.getErrorCodes().add(errorCode);
+
+        saveDocByAdmin(adminSession, request);
+    }
+
+    /**
      * 测试聚合保存接口拒绝重复错误码。
      */
     @Test
@@ -839,6 +890,65 @@ class InterfaceDocControllerTest {
         request.getErrorCodes().add(errorCode("A001", "错误 A", 1));
         request.getErrorCodes().add(errorCode("A001", "错误 A2", 2));
         assertSaveFailed(adminSession, request, 40000);
+    }
+
+    /**
+     * 测试聚合保存接口按大小写不敏感规则拒绝重复错误码。
+     */
+    @Test
+    @DisplayName("聚合保存接口拒绝大小写不同的重复错误码")
+    void shouldRejectDuplicateErrorCodesIgnoringCase() throws Exception {
+        MockHttpSession adminSession = loginWithRole("iddupcase" + suffix(), "admin");
+        long id = createInterfaceInfo("dupCaseApi", "/api/dup_case_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.getErrorCodes().add(errorCode(" A001 ", "错误 A", 1));
+        request.getErrorCodes().add(errorCode("a001", "错误 A2", 2));
+        assertSaveFailed(adminSession, request, 40000);
+    }
+
+    /**
+     * 测试错误码保存失败不会清空已有文档和错误码。
+     */
+    @Test
+    @DisplayName("重复错误码保存失败时已有文档和错误码保持不变")
+    void shouldKeepOldErrorCodesWhenDuplicateErrorCodesRejected() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idduproll" + suffix(), "admin");
+        long id = createInterfaceInfo("dupRollbackApi", "/api/dup_rollback_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+        InterfaceDocSaveRequest oldRequest = buildBasicSaveRequest(id);
+        oldRequest.setRemark("old public remark");
+        oldRequest.getErrorCodes().add(errorCode("OLD001", "旧错误", 1));
+        saveDocByAdmin(adminSession, oldRequest);
+
+        InterfaceDocSaveRequest duplicateRequest = buildBasicSaveRequest(id);
+        duplicateRequest.setRemark("new public remark");
+        duplicateRequest.getErrorCodes().add(errorCode("A001", "错误 A", 1));
+        duplicateRequest.getErrorCodes().add(errorCode("a001", "错误 A2", 2));
+        assertSaveFailed(adminSession, duplicateRequest, 40000);
+
+        JsonNode detail = requestDoc(id, adminSession).get("data");
+        assertThat(detail.get("doc").get("remark").asText()).isEqualTo("old public remark");
+        assertThat(detail.get("errorCodes").findValuesAsText("errorCode")).containsExactly("OLD001");
+    }
+
+    /**
+     * 测试单个混合大小写错误码保存后按原始大小写回读。
+     */
+    @Test
+    @DisplayName("单个混合大小写错误码保存后保留原始大小写")
+    void shouldKeepOriginalErrorCodeCaseWhenSaved() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idkeepcase" + suffix(), "admin");
+        long id = createInterfaceInfo("keepCaseApi", "/api/keep_case_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.getErrorCodes().add(errorCode(" User_Not_Found ", "用户不存在", 1));
+        saveDocByAdmin(adminSession, request);
+
+        JsonNode detail = requestDoc(id, adminSession).get("data");
+        assertThat(detail.get("errorCodes").findValuesAsText("errorCode")).containsExactly("User_Not_Found");
     }
 
     /**

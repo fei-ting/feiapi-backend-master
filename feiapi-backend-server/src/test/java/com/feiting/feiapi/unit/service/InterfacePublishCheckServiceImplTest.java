@@ -99,6 +99,21 @@ class InterfacePublishCheckServiceImplTest {
     }
 
     /**
+     * 公开接口路径不能被内部文件系统路径规则误判。
+     */
+    @Test
+    @DisplayName("发布检查允许公开接口路径使用 data 前缀")
+    void shouldAllowPublicDataPathDuringPublishCheck() throws Exception {
+        InterfacePublishContext context = buildInterfaceConfigContext("getLoveWords", "{}");
+        context.getInterfaceInfo().setPath("/data/users");
+        context.getInterfaceInfo().setUrl("http://feiapi-interface/data/users");
+
+        List<InterfacePublishIssueVO> issues = invokeRule("checkInterfaceConfig", context, ruleCheckService);
+
+        assertThat(ruleCodes(issues)).doesNotContain("INTERFACE_TEXT_UNSAFE");
+    }
+
+    /**
      * 发布检查必须重新校验文档版本格式。
      */
     @Test

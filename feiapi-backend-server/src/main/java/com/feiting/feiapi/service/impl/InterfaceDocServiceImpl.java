@@ -1094,7 +1094,8 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         for (InterfaceDocErrorCodeSaveRequest request : errorCodeRequests) {
             validateErrorCode(request);
             String errorCodeValue = trimToEmpty(request.getErrorCode());
-            if (!errorCodeSet.add(errorCodeValue)) {
+            String errorCodeCompareKey = errorCodeValue.toLowerCase(Locale.ROOT);
+            if (!errorCodeSet.add(errorCodeCompareKey)) {
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "同一接口的错误码不能重复");
             }
             InterfaceDocErrorCode errorCode = new InterfaceDocErrorCode();
