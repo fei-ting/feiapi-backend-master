@@ -2,6 +2,7 @@ package com.feiting.feiapi.smoke;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.component.SdkMethodRegistry;
 import com.feiting.feiapi.exception.InterfacePublishProbeException;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
@@ -428,7 +429,7 @@ class InterfaceInvokeSmokeTest {
                             .content(onlineJson)
                             .session(adminSession))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(50001))
+                    .andExpect(jsonPath("$.code").value(ErrorCode.PUBLISH_PROBE_FAILED.getCode()))
                     .andReturn();
 
             // 验证错误消息包含特定关键词
