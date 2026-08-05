@@ -1,7 +1,6 @@
 package com.feiting.feiapi.unit.component;
 
-import com.feiting.feiapi.component.InterfaceDocBoundaryValidator;
-import com.feiting.feiapi.component.RuntimeRequestParamTemplateValidator;
+import com.feiting.feiapi.interfaceplatform.definition.component.RuntimeRequestParamTemplateValidator;
 import com.feiting.feiapi.exception.BusinessException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,7 +20,7 @@ class RuntimeRequestParamTemplateValidatorTest {
      * 运行时请求参数模板校验器。
      */
     private final RuntimeRequestParamTemplateValidator validator =
-            new RuntimeRequestParamTemplateValidator(new InterfaceDocBoundaryValidator());
+            new RuntimeRequestParamTemplateValidator();
 
     /**
      * 校验合法模板可以通过。

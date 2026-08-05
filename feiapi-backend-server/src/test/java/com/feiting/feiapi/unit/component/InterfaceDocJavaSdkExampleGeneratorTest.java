@@ -1,7 +1,7 @@
 package com.feiting.feiapi.unit.component;
 
 import com.feiting.feiapi.component.InterfaceDocJavaSdkExampleGenerator;
-import com.feiting.feiapi.component.SdkMethodRegistry;
+import com.feiting.feiapi.interfaceplatform.definition.component.SdkMethodRegistry;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.model.vo.InterfaceDocParamVO;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;

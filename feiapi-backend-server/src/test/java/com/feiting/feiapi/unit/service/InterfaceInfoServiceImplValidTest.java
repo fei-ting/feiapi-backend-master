@@ -1,8 +1,7 @@
 package com.feiting.feiapi.unit.service;
 
 import com.feiting.feiapi.config.InterfaceTargetHostProperties;
-import com.feiting.feiapi.component.InterfaceDocBoundaryValidator;
-import com.feiting.feiapi.component.RuntimeRequestParamTemplateValidator;
+import com.feiting.feiapi.interfaceplatform.definition.component.RuntimeRequestParamTemplateValidator;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.service.impl.InterfaceInfoServiceImpl;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
@@ -19,7 +18,7 @@ class InterfaceInfoServiceImplValidTest {
 
     private final InterfaceInfoServiceImpl service = new InterfaceInfoServiceImpl(
             new InterfaceTargetHostProperties(),
-            new RuntimeRequestParamTemplateValidator(new InterfaceDocBoundaryValidator()));
+            new RuntimeRequestParamTemplateValidator());
 
     @Nested
     @DisplayName("通用校验")

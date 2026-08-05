@@ -2,7 +2,7 @@ package com.feiting.feiapi.unit.service;
 
 import com.feiting.feiapi.component.InterfaceDocBoundaryValidator;
 import com.feiting.feiapi.component.InterfaceDocContentSecurityValidator;
-import com.feiting.feiapi.component.RuntimeRequestParamTemplateValidator;
+import com.feiting.feiapi.interfaceplatform.definition.component.RuntimeRequestParamTemplateValidator;
 import com.feiting.feiapi.model.entity.InterfaceDoc;
 import com.feiting.feiapi.model.entity.InterfaceDocParam;
 import com.feiting.feiapi.model.enums.InterfaceDocParamSceneEnum;
@@ -413,7 +413,7 @@ class InterfacePublishCheckServiceImplTest {
         InterfaceDocBoundaryValidator boundaryValidator = new InterfaceDocBoundaryValidator();
         InterfaceDocContentSecurityValidator contentSecurityValidator = new InterfaceDocContentSecurityValidator();
         RuntimeRequestParamTemplateValidator runtimeValidator =
-                new RuntimeRequestParamTemplateValidator(boundaryValidator);
+                new RuntimeRequestParamTemplateValidator();
         return new InterfacePublishCheckServiceImpl(
                 null, null, null, null, null, null, null, null,
                 null, new com.feiting.feiapi.config.InterfaceTargetHostProperties(),
