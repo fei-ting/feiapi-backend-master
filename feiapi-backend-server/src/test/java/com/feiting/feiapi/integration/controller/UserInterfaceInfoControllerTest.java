@@ -109,7 +109,7 @@ class UserInterfaceInfoControllerTest {
         info.setMethod("GET");
         info.setStatus(0);
         info.setUserId(1L);
-        info.setIsDelete(0);
+        info.setIsDelete(0L);
         interfaceInfoService.save(info);
         return info.getId();
     }

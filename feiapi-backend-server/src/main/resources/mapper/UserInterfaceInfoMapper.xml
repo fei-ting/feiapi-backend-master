@@ -24,11 +24,14 @@
 
     <!--List<UserInterfaceInfo> listTopInvokeInterfaceInfo(int limit);-->
     <select id="listTopInvokeInterfaceInfo" resultType="com.feiting.feiapicommon.model.entity.UserInterfaceInfo">
-        select interface_info_id, sum(total_num) as total_num
-        from user_interface_info
-        where is_delete = 0
-        group by interface_info_id
-        having sum(total_num) > 0
+        select uii.interface_info_id, sum(uii.total_num) as total_num
+        from user_interface_info uii
+        join interface_info ii
+          on ii.id = uii.interface_info_id
+         and ii.is_delete = 0
+        where uii.is_delete = 0
+        group by uii.interface_info_id
+        having sum(uii.total_num) > 0
         order by total_num desc limit #{limit};
     </select>
 

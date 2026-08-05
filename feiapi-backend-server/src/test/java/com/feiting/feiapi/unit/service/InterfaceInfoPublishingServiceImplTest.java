@@ -1,11 +1,11 @@
 package com.feiting.feiapi.unit.service;
 
 import com.feiting.feiapi.common.ErrorCode;
-import com.feiting.feiapi.component.SdkMethodRegistry;
 import com.feiting.feiapi.exception.BusinessException;
+import com.feiting.feiapi.model.publish.InterfacePublishContext;
 import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
+import com.feiting.feiapi.service.InterfacePublishProbeService;
 import com.feiting.feiapi.service.impl.InterfaceInfoPublishingServiceImpl;
-import com.feiting.feiapiclientsdk.client.FeiApiClient;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -31,11 +31,8 @@ class InterfaceInfoPublishingServiceImplTest {
     /** 接口生命周期服务。 */
     private InterfaceInfoLifecycleService interfaceInfoLifecycleService;
 
-    /** 平台 SDK 客户端。 */
-    private FeiApiClient feiApiClient;
-
-    /** SDK 方法注册器。 */
-    private SdkMethodRegistry sdkMethodRegistry;
+    /** 发布探测执行服务。 */
+    private InterfacePublishProbeService interfacePublishProbeService;
 
     /** 被测发布编排服务。 */
     private InterfaceInfoPublishingServiceImpl publishingService;
@@ -46,12 +43,10 @@ class InterfaceInfoPublishingServiceImplTest {
     @BeforeEach
     void setUp() {
         interfaceInfoLifecycleService = mock(InterfaceInfoLifecycleService.class);
-        feiApiClient = mock(FeiApiClient.class);
-        sdkMethodRegistry = mock(SdkMethodRegistry.class);
+        interfacePublishProbeService = mock(InterfacePublishProbeService.class);
         publishingService = new InterfaceInfoPublishingServiceImpl(
                 interfaceInfoLifecycleService,
-                feiApiClient,
-                sdkMethodRegistry);
+                interfacePublishProbeService);
     }
 
     /**
@@ -60,17 +55,15 @@ class InterfaceInfoPublishingServiceImplTest {
     @Test
     @DisplayName("探测成功完成发布")
     void shouldCompletePublishingWhenProbeSucceeds() {
-        InterfaceInfo interfaceInfo = buildPublishingInterface();
-        when(interfaceInfoLifecycleService.startPublishing(INTERFACE_INFO_ID)).thenReturn(interfaceInfo);
-        when(sdkMethodRegistry.invoke(feiApiClient, "getLoveWords", null)).thenReturn("调用成功");
+        InterfacePublishContext publishContext = buildPublishingContext();
+        when(interfaceInfoLifecycleService.startPublishingWithContext(INTERFACE_INFO_ID)).thenReturn(publishContext);
 
         boolean result = publishingService.publish(INTERFACE_INFO_ID);
 
         assertThat(result).isTrue();
+        verify(interfacePublishProbeService).probe(publishContext);
         verify(interfaceInfoLifecycleService).completePublishing(INTERFACE_INFO_ID);
         verify(interfaceInfoLifecycleService, never()).rollbackPublishing(INTERFACE_INFO_ID);
-        verify(feiApiClient).enableProbeMode();
-        verify(feiApiClient).disableProbeMode();
     }
 
     /**
@@ -82,14 +75,14 @@ class InterfaceInfoPublishingServiceImplTest {
         BusinessException startException = new BusinessException(
                 ErrorCode.OPERATION_ERROR,
                 "接口正在发布验证中，请稍后重试");
-        when(interfaceInfoLifecycleService.startPublishing(INTERFACE_INFO_ID)).thenThrow(startException);
+        when(interfaceInfoLifecycleService.startPublishingWithContext(INTERFACE_INFO_ID)).thenThrow(startException);
 
         assertThatThrownBy(() -> publishingService.publish(INTERFACE_INFO_ID))
                 .isSameAs(startException);
 
         verify(interfaceInfoLifecycleService, never()).rollbackPublishing(INTERFACE_INFO_ID);
         verify(interfaceInfoLifecycleService, never()).completePublishing(INTERFACE_INFO_ID);
-        verifyNoInteractions(feiApiClient, sdkMethodRegistry);
+        verifyNoInteractions(interfacePublishProbeService);
     }
 
     /**
@@ -98,17 +91,16 @@ class InterfaceInfoPublishingServiceImplTest {
     @Test
     @DisplayName("探测业务异常回滚发布状态")
     void shouldRollbackAndKeepBusinessExceptionWhenProbeFails() {
-        InterfaceInfo interfaceInfo = buildPublishingInterface();
+        InterfacePublishContext publishContext = buildPublishingContext();
         BusinessException probeException = new BusinessException(ErrorCode.SYSTEM_ERROR, "下游拒绝探测");
-        when(interfaceInfoLifecycleService.startPublishing(INTERFACE_INFO_ID)).thenReturn(interfaceInfo);
-        when(sdkMethodRegistry.invoke(feiApiClient, "getLoveWords", null)).thenThrow(probeException);
+        when(interfaceInfoLifecycleService.startPublishingWithContext(INTERFACE_INFO_ID)).thenReturn(publishContext);
+        org.mockito.Mockito.doThrow(probeException).when(interfacePublishProbeService).probe(publishContext);
 
         assertThatThrownBy(() -> publishingService.publish(INTERFACE_INFO_ID))
                 .isSameAs(probeException);
 
         verify(interfaceInfoLifecycleService).rollbackPublishing(INTERFACE_INFO_ID);
         verify(interfaceInfoLifecycleService, never()).completePublishing(INTERFACE_INFO_ID);
-        verify(feiApiClient).disableProbeMode();
     }
 
     /**
@@ -117,16 +109,15 @@ class InterfaceInfoPublishingServiceImplTest {
     @Test
     @DisplayName("探测空结果回滚发布状态")
     void shouldRollbackWhenProbeReturnsNull() {
-        InterfaceInfo interfaceInfo = buildPublishingInterface();
-        when(interfaceInfoLifecycleService.startPublishing(INTERFACE_INFO_ID)).thenReturn(interfaceInfo);
-        when(sdkMethodRegistry.invoke(feiApiClient, "getLoveWords", null)).thenReturn(null);
+        InterfacePublishContext publishContext = buildPublishingContext();
+        BusinessException probeException = new BusinessException(ErrorCode.OPERATION_ERROR, "SDK 未返回探测响应元数据");
+        when(interfaceInfoLifecycleService.startPublishingWithContext(INTERFACE_INFO_ID)).thenReturn(publishContext);
+        org.mockito.Mockito.doThrow(probeException).when(interfacePublishProbeService).probe(publishContext);
 
         assertThatThrownBy(() -> publishingService.publish(INTERFACE_INFO_ID))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("接口验证失败");
+                .isSameAs(probeException);
 
         verify(interfaceInfoLifecycleService).rollbackPublishing(INTERFACE_INFO_ID);
-        verify(feiApiClient).disableProbeMode();
     }
 
     /**
@@ -135,17 +126,16 @@ class InterfaceInfoPublishingServiceImplTest {
     @Test
     @DisplayName("未知探测异常转换后回滚发布状态")
     void shouldWrapUnexpectedProbeExceptionAndRollback() {
-        InterfaceInfo interfaceInfo = buildPublishingInterface();
-        when(interfaceInfoLifecycleService.startPublishing(INTERFACE_INFO_ID)).thenReturn(interfaceInfo);
-        when(sdkMethodRegistry.invoke(feiApiClient, "getLoveWords", null))
-                .thenThrow(new IllegalStateException("连接中断"));
+        InterfacePublishContext publishContext = buildPublishingContext();
+        when(interfaceInfoLifecycleService.startPublishingWithContext(INTERFACE_INFO_ID)).thenReturn(publishContext);
+        org.mockito.Mockito.doThrow(new IllegalStateException("连接中断"))
+                .when(interfacePublishProbeService).probe(publishContext);
 
         assertThatThrownBy(() -> publishingService.publish(INTERFACE_INFO_ID))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("接口验证失败：连接中断");
 
         verify(interfaceInfoLifecycleService).rollbackPublishing(INTERFACE_INFO_ID);
-        verify(feiApiClient).disableProbeMode();
     }
 
     /**
@@ -153,10 +143,12 @@ class InterfaceInfoPublishingServiceImplTest {
      *
      * @return 接口快照
      */
-    private InterfaceInfo buildPublishingInterface() {
+    private InterfacePublishContext buildPublishingContext() {
         InterfaceInfo interfaceInfo = new InterfaceInfo();
         interfaceInfo.setId(INTERFACE_INFO_ID);
         interfaceInfo.setSdkMethodName("getLoveWords");
-        return interfaceInfo;
+        InterfacePublishContext publishContext = new InterfacePublishContext();
+        publishContext.setInterfaceInfo(interfaceInfo);
+        return publishContext;
     }
 }

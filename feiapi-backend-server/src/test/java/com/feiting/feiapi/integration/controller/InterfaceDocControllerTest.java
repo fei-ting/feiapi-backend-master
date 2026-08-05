@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.feiting.feiapi.constant.UserConstant;
+import com.feiting.feiapi.component.InterfaceDocRequestBodyAdvice;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocErrorCodeSaveRequest;
 import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocParamSaveRequest;
@@ -38,6 +39,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -506,6 +508,78 @@ class InterfaceDocControllerTest {
     }
 
     /**
+     * 测试第二次非空聚合保存会完整替换旧参数和错误码快照。
+     */
+    @Test
+    @DisplayName("聚合保存使用新的非空快照完整替换旧集合")
+    void shouldReplaceExistingCollectionsWithNewFullSnapshots() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idreplace" + suffix(), "admin");
+        long id = createInterfaceInfo("replaceCollectionsApi", "/api/replace_collections_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"alice\"}");
+
+        InterfaceDocSaveRequest firstRequest = buildBasicSaveRequest(id);
+        firstRequest.getParams().add(param(
+                "oldResponse", null, "RESPONSE", "oldData", "object", true, false, 2));
+        firstRequest.getParams().add(param(
+                "oldResponseChild", "oldResponse", "RESPONSE", "oldName", "string", false, true, 3));
+        firstRequest.getErrorCodes().add(errorCode("OLD001", "旧错误一", 1));
+        firstRequest.getErrorCodes().add(errorCode("OLD002", "旧错误二", 2));
+        saveDocByAdmin(adminSession, firstRequest);
+
+        List<Long> oldParamIds = interfaceDocParamService.lambdaQuery()
+                .eq(InterfaceDocParam::getInterfaceInfoId, id)
+                .list()
+                .stream()
+                .map(InterfaceDocParam::getId)
+                .collect(Collectors.toList());
+        List<Long> oldErrorCodeIds = interfaceDocErrorCodeService.lambdaQuery()
+                .eq(InterfaceDocErrorCode::getInterfaceInfoId, id)
+                .list()
+                .stream()
+                .map(InterfaceDocErrorCode::getId)
+                .collect(Collectors.toList());
+
+        InterfaceDocSaveRequest secondRequest = buildBasicSaveRequest(id);
+        secondRequest.getParams().add(param(
+                "newResponse", null, "RESPONSE", "result", "object", true, false, 5));
+        secondRequest.getParams().add(param(
+                "newResponseChild", "newResponse", "RESPONSE", "status", "string", true, false, 6));
+        secondRequest.getErrorCodes().add(errorCode("NEW001", "新错误", 3));
+        saveDocByAdmin(adminSession, secondRequest);
+
+        List<InterfaceDocParam> persistedParams = interfaceDocParamService.lambdaQuery()
+                .eq(InterfaceDocParam::getInterfaceInfoId, id)
+                .orderByAsc(InterfaceDocParam::getSortOrder)
+                .list();
+        List<InterfaceDocErrorCode> persistedErrorCodes = interfaceDocErrorCodeService.lambdaQuery()
+                .eq(InterfaceDocErrorCode::getInterfaceInfoId, id)
+                .orderByAsc(InterfaceDocErrorCode::getSortOrder)
+                .list();
+        assertThat(persistedParams)
+                .extracting(InterfaceDocParam::getName)
+                .containsExactly("username", "result", "status");
+        assertThat(persistedParams)
+                .extracting(InterfaceDocParam::getId)
+                .doesNotContainAnyElementsOf(oldParamIds);
+        assertThat(persistedErrorCodes)
+                .extracting(InterfaceDocErrorCode::getErrorCode)
+                .containsExactly("NEW001");
+        assertThat(persistedErrorCodes)
+                .extracting(InterfaceDocErrorCode::getId)
+                .doesNotContainAnyElementsOf(oldErrorCodeIds);
+
+        JsonNode detail = requestDoc(id, adminSession).get("data");
+        assertThat(detail.get("requestParams").findValuesAsText("name")).containsExactly("username");
+        assertThat(detail.get("responseParams").findValuesAsText("name")).containsExactly("result", "status");
+        assertThat(detail.get("errorCodes").findValuesAsText("errorCode")).containsExactly("NEW001");
+        JsonNode responseRoot = detail.get("responseParams").get(0);
+        JsonNode responseChild = detail.get("responseParams").get(1);
+        assertThat(responseRoot.get("sortOrder").asInt()).isEqualTo(5);
+        assertThat(responseChild.get("sortOrder").asInt()).isEqualTo(6);
+        assertThat(responseChild.get("parentId").asLong()).isEqualTo(responseRoot.get("id").asLong());
+    }
+
+    /**
      * 测试控制器和服务入口均拒绝自定义 Header 场景，聚合查询也不展示遗留记录。
      */
     @Test
@@ -752,6 +826,57 @@ class InterfaceDocControllerTest {
     }
 
     /**
+     * 测试聚合保存接口统一拒绝公开文本中的内部实现信息。
+     */
+    @Test
+    @DisplayName("聚合保存接口拒绝公开文本中的内部实现信息")
+    void shouldRejectInternalInfoInAllPublicTextFields() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idpubint" + suffix(), "admin");
+        long id = createInterfaceInfo("publicInternalApi", "/api/public_internal_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest remarkRequest = buildBasicSaveRequest(id);
+        remarkRequest.setRemark("公开备注包含 Redis 连接说明");
+        assertSaveFailed(adminSession, remarkRequest, 40000);
+
+        InterfaceDocSaveRequest paramDescriptionRequest = buildBasicSaveRequest(id);
+        paramDescriptionRequest.getParams().get(0).setDescription("参数说明暴露 /etc/feiapi/config.yml");
+        assertSaveFailed(adminSession, paramDescriptionRequest, 40000);
+
+        InterfaceDocSaveRequest validationRuleRequest = buildBasicSaveRequest(id);
+        validationRuleRequest.getParams().get(0).setValidationRule("targetHost 必须存在");
+        assertSaveFailed(adminSession, validationRuleRequest, 40000);
+
+        InterfaceDocSaveRequest errorDescriptionRequest = buildBasicSaveRequest(id);
+        InterfaceDocErrorCodeSaveRequest errorCode = errorCode("I002", "公开错误", 1);
+        errorCode.setDescription("错误说明包含 upstream 信息");
+        errorDescriptionRequest.getErrorCodes().add(errorCode);
+        assertSaveFailed(adminSession, errorDescriptionRequest, 40000);
+    }
+
+    /**
+     * 测试普通公开文案不会被内部信息规则误拒绝。
+     */
+    @Test
+    @DisplayName("聚合保存接口允许不含内部细节的普通公开文案")
+    void shouldAllowNormalPublicTextAfterInternalInfoHardening() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idnormalpub" + suffix(), "admin");
+        long id = createInterfaceInfo("normalPublicApi", "/api/normal_public_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.setRemark("请求路径说明用于帮助开发者选择正确参数");
+        request.getParams().get(0).setDescription("异常处理建议请检查输入格式");
+        request.getParams().get(0).setValidationRule("长度为 1 到 32 个字符");
+        InterfaceDocErrorCodeSaveRequest errorCode = errorCode("N001", "参数格式错误", 1);
+        errorCode.setDescription("公开错误说明");
+        errorCode.setSolution("请检查请求参数后重试");
+        request.getErrorCodes().add(errorCode);
+
+        saveDocByAdmin(adminSession, request);
+    }
+
+    /**
      * 测试聚合保存接口拒绝重复错误码。
      */
     @Test
@@ -765,6 +890,65 @@ class InterfaceDocControllerTest {
         request.getErrorCodes().add(errorCode("A001", "错误 A", 1));
         request.getErrorCodes().add(errorCode("A001", "错误 A2", 2));
         assertSaveFailed(adminSession, request, 40000);
+    }
+
+    /**
+     * 测试聚合保存接口按大小写不敏感规则拒绝重复错误码。
+     */
+    @Test
+    @DisplayName("聚合保存接口拒绝大小写不同的重复错误码")
+    void shouldRejectDuplicateErrorCodesIgnoringCase() throws Exception {
+        MockHttpSession adminSession = loginWithRole("iddupcase" + suffix(), "admin");
+        long id = createInterfaceInfo("dupCaseApi", "/api/dup_case_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.getErrorCodes().add(errorCode(" A001 ", "错误 A", 1));
+        request.getErrorCodes().add(errorCode("a001", "错误 A2", 2));
+        assertSaveFailed(adminSession, request, 40000);
+    }
+
+    /**
+     * 测试错误码保存失败不会清空已有文档和错误码。
+     */
+    @Test
+    @DisplayName("重复错误码保存失败时已有文档和错误码保持不变")
+    void shouldKeepOldErrorCodesWhenDuplicateErrorCodesRejected() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idduproll" + suffix(), "admin");
+        long id = createInterfaceInfo("dupRollbackApi", "/api/dup_rollback_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+        InterfaceDocSaveRequest oldRequest = buildBasicSaveRequest(id);
+        oldRequest.setRemark("old public remark");
+        oldRequest.getErrorCodes().add(errorCode("OLD001", "旧错误", 1));
+        saveDocByAdmin(adminSession, oldRequest);
+
+        InterfaceDocSaveRequest duplicateRequest = buildBasicSaveRequest(id);
+        duplicateRequest.setRemark("new public remark");
+        duplicateRequest.getErrorCodes().add(errorCode("A001", "错误 A", 1));
+        duplicateRequest.getErrorCodes().add(errorCode("a001", "错误 A2", 2));
+        assertSaveFailed(adminSession, duplicateRequest, 40000);
+
+        JsonNode detail = requestDoc(id, adminSession).get("data");
+        assertThat(detail.get("doc").get("remark").asText()).isEqualTo("old public remark");
+        assertThat(detail.get("errorCodes").findValuesAsText("errorCode")).containsExactly("OLD001");
+    }
+
+    /**
+     * 测试单个混合大小写错误码保存后按原始大小写回读。
+     */
+    @Test
+    @DisplayName("单个混合大小写错误码保存后保留原始大小写")
+    void shouldKeepOriginalErrorCodeCaseWhenSaved() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idkeepcase" + suffix(), "admin");
+        long id = createInterfaceInfo("keepCaseApi", "/api/keep_case_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.getErrorCodes().add(errorCode(" User_Not_Found ", "用户不存在", 1));
+        saveDocByAdmin(adminSession, request);
+
+        JsonNode detail = requestDoc(id, adminSession).get("data");
+        assertThat(detail.get("errorCodes").findValuesAsText("errorCode")).containsExactly("User_Not_Found");
     }
 
     /**
@@ -799,6 +983,25 @@ class InterfaceDocControllerTest {
                 .mapToObj(index -> errorCode("E" + index, "错误" + index, index))
                 .collect(Collectors.toList()));
         assertSaveFailed(adminSession, request, 40000);
+    }
+
+    /**
+     * 测试聚合保存请求体超过 1 MiB 时在 JSON 解析前返回 HTTP 413。
+     */
+    @Test
+    @DisplayName("聚合保存请求体超过 1 MiB 返回 HTTP 413")
+    void shouldRejectAggregateRequestBodyExceedingOneMebibyte() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idbody" + suffix(), "admin");
+        String oversizedBody = "x".repeat(InterfaceDocRequestBodyAdvice.MAX_INTERFACE_DOC_REQUEST_BYTES + 1);
+
+        mockMvc.perform(post("/interfaceDoc/save")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(oversizedBody)
+                        .session(adminSession))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.code").value(41300))
+                .andExpect(jsonPath("$.message").value(InterfaceDocRequestBodyAdvice.REQUEST_TOO_LARGE_MESSAGE));
     }
 
     /**
@@ -876,6 +1079,128 @@ class InterfaceDocControllerTest {
             parentKey = key;
         }
         assertSaveFailed(adminSession, depthRequest, 40000);
+    }
+
+    /**
+     * 测试响应数组字段可以描述数组元素的子字段。
+     */
+    @Test
+    @DisplayName("响应数组字段允许拥有子字段")
+    void shouldAllowArrayResponseParent() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idarrayparent" + suffix(), "admin");
+        long id = createInterfaceInfo("arrayParentApi", "/api/array_parent_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.getParams().add(param("responseItems", null, "RESPONSE", "items", "array", true, false, 2));
+        request.getParams().add(param("responseItemId", "responseItems", "RESPONSE", "id", "number", false, false, 3));
+
+        saveDocByAdmin(adminSession, request);
+        assertThat(requestDoc(id, adminSession).get("data").get("responseParams")).hasSize(2);
+    }
+
+    /**
+     * 测试全部标量响应父字段一次性返回。
+     */
+    @Test
+    @DisplayName("多个标量响应父字段一次性返回")
+    void shouldRejectScalarResponseParent() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idscalarparent" + suffix(), "admin");
+        long id = createInterfaceInfo("scalarParentApi", "/api/scalar_parent_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.getParams().add(param("responseData", null, "RESPONSE", "data", "string", true, false, 2));
+        request.getParams().add(param("responseChild", "responseData", "RESPONSE", "name", "string", false, true, 3));
+        request.getParams().add(param("responseCount", null, "RESPONSE", "count", "number", true, false, 4));
+        request.getParams().add(param("responseUnit", "responseCount", "RESPONSE", "unit", "string", false, true, 5));
+
+        JsonNode response = postSave(adminSession, request);
+        assertThat(response.get("code").asInt()).isEqualTo(40000);
+        assertThat(response.get("message").asText())
+                .isEqualTo("以下响应字段不是容器类型，不能拥有子字段：data(string)、count(number)");
+    }
+
+    /**
+     * 测试父级键和字段名中的分隔符不会造成同级重名误判。
+     */
+    @Test
+    @DisplayName("同级重名校验使用结构化父级作用域")
+    void shouldAllowSiblingNamesThatOnlyCollideAfterConcatenation() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idsiblingkey" + suffix(), "admin");
+        long id = createInterfaceInfo("siblingKeyApi", "/api/sibling_key_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.getParams().add(param("parent:a", null, "RESPONSE", "first", "object", true, false, 2));
+        request.getParams().add(param("parent", null, "RESPONSE", "second", "object", true, false, 3));
+        request.getParams().add(param("firstChild", "parent:a", "RESPONSE", "value", "string", false, true, 4));
+        request.getParams().add(param("secondChild", "parent", "RESPONSE", "a:value", "string", false, true, 5));
+
+        saveDocByAdmin(adminSession, request);
+        assertThat(requestDoc(id, adminSession).get("data").get("responseParams")).hasSize(4);
+    }
+
+    /**
+     * 测试缺失父级错误按父键分组并列出受影响字段。
+     */
+    @Test
+    @DisplayName("缺失响应字段父级时返回分组受影响字段")
+    void shouldReportGroupedMissingResponseParents() throws Exception {
+        MockHttpSession adminSession = loginWithRole("idmissingparents" + suffix(), "admin");
+        long id = createInterfaceInfo("missingParentsApi", "/api/missing_parents_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest request = buildBasicSaveRequest(id);
+        request.getParams().add(param("responseName", "missing-a", "RESPONSE", "name", "string", false, true, 2));
+        request.getParams().add(param("responseAge", "missing-a", "RESPONSE", "age", "number", false, true, 3));
+        request.getParams().add(param("responseDetail", "missing-b", "RESPONSE", "detail", "object", false, true, 4));
+
+        JsonNode response = postSave(adminSession, request);
+        assertThat(response.get("code").asInt()).isEqualTo(40000);
+        assertThat(response.get("message").asText())
+                .isEqualTo("响应字段父级不存在：missing-a -> [name, age]；missing-b -> [detail]");
+
+        InterfaceDocSaveRequest controlCharacterRequest = buildBasicSaveRequest(id);
+        controlCharacterRequest.getParams().add(param(
+                "responseControl", "missing\r\nparent", "RESPONSE", "detail", "object", false, true, 2));
+        JsonNode controlCharacterResponse = postSave(adminSession, controlCharacterRequest);
+        assertThat(controlCharacterResponse.get("message").asText())
+                .contains("missing\\r\\nparent -> [detail]")
+                .doesNotContain("\r", "\n");
+    }
+
+    /**
+     * 测试响应字段树允许八层但拒绝第九层。
+     */
+    @Test
+    @DisplayName("响应字段树八层允许九层拒绝")
+    void shouldAllowEightResponseDepthAndRejectNine() throws Exception {
+        MockHttpSession adminSession = loginWithRole("iddepthboundary" + suffix(), "admin");
+        long id = createInterfaceInfo("depthBoundaryApi", "/api/depth_boundary_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "POST", "{\"username\":\"string\"}");
+
+        InterfaceDocSaveRequest eightDepthRequest = buildBasicSaveRequest(id);
+        String parentKey = null;
+        for (int index = 1; index <= 8; index++) {
+            String key = "responseDepth" + index;
+            eightDepthRequest.getParams().add(param(key, parentKey, "RESPONSE", "depth" + index,
+                    "object", true, false, index + 1));
+            parentKey = key;
+        }
+        saveDocByAdmin(adminSession, eightDepthRequest);
+
+        InterfaceDocSaveRequest nineDepthRequest = buildBasicSaveRequest(id);
+        parentKey = null;
+        for (int index = 1; index <= 9; index++) {
+            String key = "responseDepthAgain" + index;
+            nineDepthRequest.getParams().add(param(key, parentKey, "RESPONSE", "depth" + index,
+                    "object", true, false, index + 1));
+            parentKey = key;
+        }
+        JsonNode response = postSave(adminSession, nineDepthRequest);
+        assertThat(response.get("code").asInt()).isEqualTo(40000);
+        assertThat(response.get("message").asText()).isEqualTo("响应字段嵌套深度不能超过 8");
     }
 
     /**
@@ -1307,7 +1632,7 @@ class InterfaceDocControllerTest {
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
-                .getContentAsString();
+                .getContentAsString(StandardCharsets.UTF_8);
         return objectMapper.readTree(response);
     }
 

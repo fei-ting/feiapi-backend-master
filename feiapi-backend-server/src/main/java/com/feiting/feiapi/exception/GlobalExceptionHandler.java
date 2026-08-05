@@ -3,13 +3,18 @@ package com.feiting.feiapi.exception;
 import com.feiting.feiapi.common.BaseResponse;
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.common.ResultUtils;
+import com.feiting.feiapi.model.vo.InterfacePublishCheckVO;
+import com.feiting.feiapi.model.vo.InterfacePublishProbeFailureVO;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.MessageSourceResolvable;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.ObjectError;
+import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotAcceptableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -36,6 +41,36 @@ import java.util.stream.Collectors;
 @Slf4j
 public class GlobalExceptionHandler {
 
+    /**
+     * 处理接口发布前静态检查失败。
+     *
+     * @param e 发布前检查失败异常
+     * @return 带检查问题列表的错误响应
+     */
+    @ExceptionHandler(InterfacePublishCheckException.class)
+    public BaseResponse<InterfacePublishCheckVO> interfacePublishCheckExceptionHandler(InterfacePublishCheckException e) {
+        log.warn("interfacePublishCheckException: {}", e.getMessage());
+        InterfacePublishCheckVO checkVO = new InterfacePublishCheckVO();
+        checkVO.setPassed(false);
+        checkVO.setIssues(e.getIssues());
+        return new BaseResponse<>(ErrorCode.PUBLISH_CHECK_FAILED.getCode(), checkVO, e.getMessage());
+    }
+
+    /**
+     * 处理接口发布探测失败。
+     *
+     * @param e 发布探测失败异常
+     * @return 带探测阶段的错误响应
+     */
+    @ExceptionHandler(InterfacePublishProbeException.class)
+    public BaseResponse<InterfacePublishProbeFailureVO> interfacePublishProbeExceptionHandler(InterfacePublishProbeException e) {
+        log.warn("interfacePublishProbeException: {}", e.getMessage());
+        InterfacePublishProbeFailureVO failureVO = new InterfacePublishProbeFailureVO();
+        failureVO.setStage(e.getStage().name());
+        failureVO.setReason(e.getReason());
+        return new BaseResponse<>(ErrorCode.PUBLISH_PROBE_FAILED.getCode(), failureVO, e.getMessage());
+    }
+
     @ExceptionHandler(BusinessException.class)
     public BaseResponse<?> businessExceptionHandler(BusinessException e) {
         log.error("businessException: " + e.getMessage(), e);
@@ -43,22 +78,43 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 请求正文超过业务允许上限时返回 HTTP 413。
+     *
+     * @param e 请求正文超限异常
+     * @return HTTP 413 错误响应
+     */
+    @ExceptionHandler(RequestBodyTooLargeException.class)
+    public ResponseEntity<BaseResponse<?>> requestBodyTooLargeExceptionHandler(RequestBodyTooLargeException e) {
+        log.warn("请求体过大: {}", e.getMessage());
+        return buildPayloadTooLargeResponse(e.getMessage());
+    }
+
+    /**
      * 请求体无法解析（JSON 格式错误、必填字段缺失等），归类为参数错误
      */
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    public BaseResponse<?> httpMessageNotReadableExceptionHandler(HttpMessageNotReadableException e) {
+    public ResponseEntity<BaseResponse<?>> httpMessageNotReadableExceptionHandler(HttpMessageNotReadableException e) {
+        RequestBodyTooLargeException tooLargeException = findCause(e, RequestBodyTooLargeException.class);
+        if (tooLargeException != null) {
+            log.warn("请求体读取超过限制: {}", tooLargeException.getMessage());
+            return buildPayloadTooLargeResponse(tooLargeException.getMessage());
+        }
         log.warn("请求体解析失败: {}", e.getMessage());
-        return ResultUtils.error(ErrorCode.PARAMS_ERROR, "请求参数格式错误");
+        return ResponseEntity.ok(ResultUtils.error(ErrorCode.PARAMS_ERROR, "请求参数格式错误"));
     }
 
     /**
      * 请求体参数校验失败
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public BaseResponse<?> methodArgumentNotValidExceptionHandler(MethodArgumentNotValidException e) {
+    public ResponseEntity<BaseResponse<?>> methodArgumentNotValidExceptionHandler(MethodArgumentNotValidException e) {
         String message = buildBindingErrorMessage(e.getBindingResult());
+        if (isOnlineInvokeBodyTooLarge(e.getBindingResult())) {
+            log.warn("在线调用请求体超过限制: {}", message);
+            return buildPayloadTooLargeResponse("请求体不能超过 65535 字节");
+        }
         log.warn("请求体参数校验失败: {}", message);
-        return ResultUtils.error(ErrorCode.PARAMS_ERROR, message);
+        return ResponseEntity.ok(ResultUtils.error(ErrorCode.PARAMS_ERROR, message));
     }
 
     /**
@@ -214,6 +270,63 @@ public class GlobalExceptionHandler {
                 .map(violation -> violation.getPropertyPath() + ": " + violation.getMessage())
                 .collect(Collectors.joining("; "));
         return hasText(message) ? message : ErrorCode.PARAMS_ERROR.getMessage();
+    }
+
+    /**
+     * 判断绑定错误是否来自在线调用正文的 UTF-8 字节上限。
+     *
+     * @param bindingResult 参数绑定结果
+     * @return 是否属于在线调用请求体超限
+     */
+    private boolean isOnlineInvokeBodyTooLarge(BindingResult bindingResult) {
+        return bindingResult.getFieldErrors().stream()
+                .anyMatch(this::isOnlineInvokeBodyTooLarge);
+    }
+
+    /**
+     * 判断字段错误是否为在线调用正文 UTF-8 字节约束。
+     * <p>
+     * 通过同时匹配字段名 {@code userRequestParams} 和约束类型 {@code Utf8ByteLength}
+     * 来精确定位在线调用请求体超限场景。如果未来其他 DTO 字段也使用 {@code @Utf8ByteLength}
+     * 注解（如 JSON 示例字段），此处不会误匹配，因为字段名不同。
+     * </p>
+     *
+     * @param fieldError 字段错误
+     * @return 是否属于在线调用请求体超限
+     */
+    private boolean isOnlineInvokeBodyTooLarge(FieldError fieldError) {
+        return "userRequestParams".equals(fieldError.getField())
+                && "Utf8ByteLength".equals(fieldError.getCode());
+    }
+
+    /**
+     * 构造统一的 HTTP 413 JSON 响应。
+     *
+     * @param message 可公开的超限提示
+     * @return HTTP 413 响应
+     */
+    private ResponseEntity<BaseResponse<?>> buildPayloadTooLargeResponse(String message) {
+        BaseResponse<?> response = ResultUtils.error(ErrorCode.REQUEST_BODY_TOO_LARGE_ERROR, message);
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(response);
+    }
+
+    /**
+     * 在异常原因链中查找指定类型异常。
+     *
+     * @param throwable 异常
+     * @param causeType 原因类型
+     * @param <T>       原因类型参数
+     * @return 找到的原因，未找到时返回 null
+     */
+    private <T extends Throwable> T findCause(Throwable throwable, Class<T> causeType) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (causeType.isInstance(current)) {
+                return causeType.cast(current);
+            }
+            current = current.getCause();
+        }
+        return null;
     }
 
     /**

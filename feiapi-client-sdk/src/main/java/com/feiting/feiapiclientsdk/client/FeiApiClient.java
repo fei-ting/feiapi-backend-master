@@ -4,14 +4,19 @@ import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONUtil;
 import com.feiting.feiapiclientsdk.annotation.SdkInvoke;
+import com.feiting.feiapiclientsdk.constant.ApiPayloadLimits;
+import com.feiting.feiapiclientsdk.model.ProbeInvocationResult;
+import com.feiting.feiapiclientsdk.model.ProbeStrategy;
 import com.feiting.feiapiclientsdk.model.User;
 import com.feiting.feiapiclientsdk.utils.ProbeSignUtils;
+import com.feiting.feiapiclientsdk.utils.ProbeResponseBodyReader;
 import com.feiting.feiapiclientsdk.utils.SignUtils;
 import com.google.gson.Gson;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.nio.charset.StandardCharsets;
 
 /**
  * 调用第三方接口的客户端
@@ -24,6 +29,12 @@ public class FeiApiClient {
      * 异常响应体最大展示长度，避免下游返回大文本时污染平台错误信息。
      */
     private static final int MAX_ERROR_BODY_LENGTH = 200;
+
+    /** 发布探测响应体受限读取器。 */
+    private final ProbeResponseBodyReader probeResponseBodyReader = new ProbeResponseBodyReader();
+
+    /** 网关受控失败阶段 Header。 */
+    private static final String PROBE_FAILURE_STAGE_HEADER = "X-FeiAPI-Probe-Failure-Stage";
 
     private String accessKey;
     private String secretKey;
@@ -39,6 +50,11 @@ public class FeiApiClient {
      * 防止线程池复用线程时残留探测模式。
      */
     private final ThreadLocal<Boolean> probeMode = ThreadLocal.withInitial(() -> Boolean.FALSE);
+
+    /**
+     * 当前线程最近一次发布探测响应元数据。
+     */
+    private final ThreadLocal<ProbeInvocationResult> probeInvocationResult = new ThreadLocal<>();
 
     public FeiApiClient() {
     }
@@ -66,11 +82,22 @@ public class FeiApiClient {
     }
 
     public void enableProbeMode() {
+        this.probeInvocationResult.remove();
         this.probeMode.set(Boolean.TRUE);
     }
 
     public void disableProbeMode() {
         this.probeMode.remove();
+        this.probeInvocationResult.remove();
+    }
+
+    /**
+     * 获取当前线程最近一次发布探测响应元数据。
+     *
+     * @return 探测响应元数据
+     */
+    public ProbeInvocationResult getProbeInvocationResult() {
+        return probeInvocationResult.get();
     }
 
     /**
@@ -78,7 +105,7 @@ public class FeiApiClient {
      *
      * GET 请求没有请求体，因此签名时传入 null。
      */
-    @SdkInvoke(needParams = false)
+    @SdkInvoke(needParams = false, probeStrategy = ProbeStrategy.SAFE_REAL_CALL)
     public String getLoveWords() {
         return executeRequest(HttpRequest.get(gatewayHost + "/api/love_words")
                 .addHeaders(getHeaderMap("GET", "/api/love_words", null)));
@@ -97,7 +124,7 @@ public class FeiApiClient {
      * @param requestParam 请求参数
      * @return 响应结果
      */
-    @SdkInvoke(needParams = true)
+    @SdkInvoke(needParams = true, probeStrategy = ProbeStrategy.SAFE_REAL_CALL)
     public String getUsernameByPost(String requestParam) {
         Gson gson = new Gson();
         User user = gson.fromJson(requestParam, User.class);
@@ -117,7 +144,7 @@ public class FeiApiClient {
      * @param requestParam 请求参数 JSON 字符串
      * @return 响应结果（包含 base64 和 dataUri）
      */
-    @SdkInvoke(needParams = true)
+    @SdkInvoke(needParams = true, probeStrategy = ProbeStrategy.SAFE_REAL_CALL)
     public String generateQrCode(String requestParam) {
         return executeRequest(HttpRequest.post(gatewayHost + "/api/qrcode/generate")
                 .addHeaders(getHeaderMap("POST", "/api/qrcode/generate", requestParam))
@@ -147,6 +174,7 @@ public class FeiApiClient {
      * @return 请求头
      */
     private Map<String, String> getHeaderMap(String method, String path, String body) {
+        assertRequestBodySize(body);
         Map<String, String> headers = new HashMap<>();
 
         // 为本次请求生成随机数和时间戳。
@@ -183,9 +211,32 @@ public class FeiApiClient {
     }
 
     /**
-     * 下游接口返回非 2xx 时，直接抛出异常，避免把失败结果继续包装成成功响应。
+     * 执行接口请求。
+     *
+     * <p>普通调用遇到非 2xx 时继续抛出异常，避免把失败结果包装成成功响应。
+     * 发布探测调用需要把状态码、响应体和网关失败阶段交给后端统一校验器分类，
+     * 因此探测模式不在 SDK 内提前抛出非 2xx 异常。</p>
+     *
+     * @param request HTTP 请求
+     * @return 响应体
      */
     private String executeRequest(HttpRequest request) {
+        if (Boolean.TRUE.equals(probeMode.get())) {
+            try (HttpResponse httpResponse = request
+                    .setConnectionTimeout(3_000)
+                    .setReadTimeout(10_000)
+                    .executeAsync()) {
+                int status = httpResponse.getStatus();
+                String body = probeResponseBodyReader.read(httpResponse);
+                ProbeInvocationResult result = new ProbeInvocationResult();
+                result.setStatusCode(status);
+                result.setContentType(httpResponse.header("Content-Type"));
+                result.setGatewayFailureStage(httpResponse.header(PROBE_FAILURE_STAGE_HEADER));
+                result.setBody(body);
+                probeInvocationResult.set(result);
+                return body;
+            }
+        }
         HttpResponse httpResponse = request.execute();
         int status = httpResponse.getStatus();
         String body = httpResponse.body();
@@ -193,6 +244,18 @@ public class FeiApiClient {
             throw new RuntimeException(buildErrorMessage(status, body));
         }
         return body;
+    }
+
+    /**
+     * 校验最终参与签名并发送的请求体 UTF-8 字节数。
+     *
+     * @param body 最终请求体
+     */
+    private void assertRequestBodySize(String body) {
+        int bodyBytes = body == null ? 0 : body.getBytes(StandardCharsets.UTF_8).length;
+        if (bodyBytes > ApiPayloadLimits.MAX_SIGNED_REQUEST_BODY_BYTES) {
+            throw new IllegalArgumentException("请求体不能超过 65535 字节");
+        }
     }
 
     /**

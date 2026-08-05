@@ -1,5 +1,6 @@
 package com.feiting.feiapi.model.dto.interfaceDoc;
 
+import com.feiting.feiapi.validation.UnicodeLength;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -31,7 +32,7 @@ public class InterfaceDocParamSaveRequest implements Serializable {
 
     /** 参数名称。 */
     @NotBlank(message = "参数名称不能为空")
-    @Size(max = 128, message = "参数名称长度不能超过 128")
+    @UnicodeLength(max = 128, message = "参数名称长度不能超过 128 个字符")
     private String name;
 
     /** 参数类型。 */
@@ -47,19 +48,19 @@ public class InterfaceDocParamSaveRequest implements Serializable {
     private Boolean nullable;
 
     /** 默认值。 */
-    @Size(max = 512, message = "默认值长度不能超过 512")
+    @UnicodeLength(max = 512, message = "默认值长度不能超过 512 个字符")
     private String defaultValue;
 
     /** 示例值。 */
-    @Size(max = 1024, message = "示例值长度不能超过 1024")
+    @UnicodeLength(max = 1024, message = "示例值长度不能超过 1024 个字符")
     private String exampleValue;
 
     /** 参数说明。 */
-    @Size(max = 512, message = "参数说明长度不能超过 512")
+    @UnicodeLength(max = 512, message = "参数说明长度不能超过 512 个字符")
     private String description;
 
     /** 校验规则展示说明。 */
-    @Size(max = 512, message = "校验规则长度不能超过 512")
+    @UnicodeLength(max = 512, message = "校验规则长度不能超过 512 个字符")
     private String validationRule;
 
     /** 排序值。 */

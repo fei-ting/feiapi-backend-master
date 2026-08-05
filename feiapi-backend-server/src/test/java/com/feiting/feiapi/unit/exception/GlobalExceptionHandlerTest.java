@@ -3,6 +3,14 @@ package com.feiting.feiapi.unit.exception;
 import com.feiting.feiapi.common.BaseResponse;
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.exception.GlobalExceptionHandler;
+import com.feiting.feiapi.exception.InterfacePublishCheckException;
+import com.feiting.feiapi.exception.InterfacePublishProbeException;
+import com.feiting.feiapi.exception.RequestBodyTooLargeException;
+import com.feiting.feiapi.model.enums.InterfacePublishIssueCategoryEnum;
+import com.feiting.feiapi.model.enums.PublishProbeFailureStageEnum;
+import com.feiting.feiapi.model.vo.InterfacePublishCheckVO;
+import com.feiting.feiapi.model.vo.InterfacePublishIssueVO;
+import com.feiting.feiapi.model.vo.InterfacePublishProbeFailureVO;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Path;
@@ -11,6 +19,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.BindException;
@@ -60,6 +70,46 @@ class GlobalExceptionHandlerTest {
     }
 
     /**
+     * 校验发布前静态检查失败返回专用错误码和问题列表。
+     */
+    @Test
+    @DisplayName("InterfacePublishCheckException 返回检查问题数据")
+    void shouldReturnPublishCheckFailureData() {
+        InterfacePublishIssueVO issue = new InterfacePublishIssueVO();
+        issue.setCategory(InterfacePublishIssueCategoryEnum.DOCUMENT.name());
+        issue.setRuleCode("DOCUMENT_READY_REQUIRED");
+        issue.setField("doc.docStatus");
+        issue.setMessage("接口文档必须完成维护");
+        InterfacePublishCheckException exception = new InterfacePublishCheckException(List.of(issue));
+
+        BaseResponse<InterfacePublishCheckVO> response = handler.interfacePublishCheckExceptionHandler(exception);
+
+        assertThat(response.getCode()).isEqualTo(ErrorCode.PUBLISH_CHECK_FAILED.getCode());
+        assertThat(response.getMessage()).isEqualTo("接口发布前检查未通过，请先修复检查问题");
+        assertThat(response.getData()).isNotNull();
+        assertThat(response.getData().isPassed()).isFalse();
+        assertThat(response.getData().getIssues()).containsExactly(issue);
+    }
+
+    /**
+     * 校验发布探测失败返回专用错误码和探测阶段。
+     */
+    @Test
+    @DisplayName("InterfacePublishProbeException 返回探测失败阶段")
+    void shouldReturnPublishProbeFailureData() {
+        InterfacePublishProbeException exception = new InterfacePublishProbeException(
+                PublishProbeFailureStageEnum.GATEWAY_AUTH, "网关发布探测校验失败");
+
+        BaseResponse<InterfacePublishProbeFailureVO> response = handler.interfacePublishProbeExceptionHandler(exception);
+
+        assertThat(response.getCode()).isEqualTo(ErrorCode.PUBLISH_PROBE_FAILED.getCode());
+        assertThat(response.getMessage()).isEqualTo("发布探测失败[GATEWAY_AUTH]：网关发布探测校验失败");
+        assertThat(response.getData()).isNotNull();
+        assertThat(response.getData().getStage()).isEqualTo("GATEWAY_AUTH");
+        assertThat(response.getData().getReason()).isEqualTo("网关发布探测校验失败");
+    }
+
+    /**
      * 校验请求体解析失败返回统一参数错误响应
      */
     @Test
@@ -67,7 +117,7 @@ class GlobalExceptionHandlerTest {
     void shouldReturnParamErrorWhenBodyNotReadable() {
         HttpMessageNotReadableException exception = new HttpMessageNotReadableException("JSON parse error");
 
-        BaseResponse<?> response = handler.httpMessageNotReadableExceptionHandler(exception);
+        BaseResponse<?> response = handler.httpMessageNotReadableExceptionHandler(exception).getBody();
 
         assertErrorResponse(response, ErrorCode.PARAMS_ERROR, "请求参数格式错误");
     }
@@ -82,9 +132,48 @@ class GlobalExceptionHandlerTest {
         MethodArgumentNotValidException exception =
                 new MethodArgumentNotValidException(createMethodParameter(), bindingResult);
 
-        BaseResponse<?> response = handler.methodArgumentNotValidExceptionHandler(exception);
+        BaseResponse<?> response = handler.methodArgumentNotValidExceptionHandler(exception).getBody();
 
         assertErrorResponse(response, ErrorCode.PARAMS_ERROR, "name: 不能为空");
+    }
+
+    /**
+     * 校验请求正文超限返回 HTTP 413 和专用业务码。
+     */
+    @Test
+    @DisplayName("RequestBodyTooLargeException 返回 HTTP 413")
+    void shouldReturnPayloadTooLargeResponse() {
+        RequestBodyTooLargeException exception = new RequestBodyTooLargeException("请求体不能超过 65535 字节");
+
+        ResponseEntity<BaseResponse<?>> response = handler.requestBodyTooLargeExceptionHandler(exception);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
+        assertErrorResponse(response.getBody(), ErrorCode.REQUEST_BODY_TOO_LARGE_ERROR, "请求体不能超过 65535 字节");
+    }
+
+    /**
+     * 校验在线调用 UTF-8 字节约束失败返回 HTTP 413。
+     */
+    @Test
+    @DisplayName("在线调用 UTF-8 字节约束返回 HTTP 413")
+    void shouldReturnPayloadTooLargeForInvokeBodyValidation() throws NoSuchMethodException {
+        BeanPropertyBindingResult bindingResult = new BeanPropertyBindingResult(new Object(), "request");
+        bindingResult.addError(new FieldError(
+                "request",
+                "userRequestParams",
+                "value",
+                false,
+                new String[]{"Utf8ByteLength"},
+                null,
+                "请求体不能超过 65535 字节"));
+        MethodArgumentNotValidException exception =
+                new MethodArgumentNotValidException(createMethodParameter(), bindingResult);
+
+        ResponseEntity<BaseResponse<?>> response = handler.methodArgumentNotValidExceptionHandler(exception);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
+        assertErrorResponse(response.getBody(), ErrorCode.REQUEST_BODY_TOO_LARGE_ERROR,
+                "请求体不能超过 65535 字节");
     }
 
     /**

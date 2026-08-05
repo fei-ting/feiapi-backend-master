@@ -3,6 +3,7 @@ package com.feiting.feiapi.service.impl;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.component.InterfaceDocContentSecurityValidator;
+import com.feiting.feiapi.component.InterfaceDocBoundaryValidator;
 import com.feiting.feiapi.component.InterfaceDocCurlExampleGenerator;
 import com.feiting.feiapi.component.InterfaceDocJavaSdkExampleGenerator;
 import com.feiting.feiapi.component.RuntimeRequestParamTemplateValidator;
@@ -28,6 +29,7 @@ import com.feiting.feiapi.service.InterfaceDocService;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.InterfaceQuotaConfigService;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
+import com.feiting.feiapi.utils.TextSizeUtils;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
 import com.feiting.feiapicommon.model.enums.InterfaceQuotaTypeEnum;
@@ -49,6 +51,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -81,24 +84,9 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
     private static final String DEFAULT_RESPONSE_CONTENT_TYPE = "application/json";
 
     /**
-     * 参数数量上限。
+     * 接口文档响应字段最大嵌套深度。
      */
-    private static final int MAX_PARAM_COUNT = 200;
-
-    /**
-     * 请求参数数量上限。
-     */
-    private static final int MAX_REQUEST_PARAM_COUNT = 100;
-
-    /**
-     * 响应参数最大嵌套深度。
-     */
-    private static final int MAX_RESPONSE_DEPTH = 8;
-
-    /**
-     * 错误码数量上限。
-     */
-    private static final int MAX_ERROR_CODE_COUNT = 100;
+    private static final int MAX_DOC_NESTING_DEPTH = 8;
 
     /**
      * 支持的参数类型标记。
@@ -185,6 +173,11 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
     private final RuntimeRequestParamTemplateValidator runtimeRequestParamTemplateValidator;
 
     /**
+     * 接口文档数量与文本边界校验器。
+     */
+    private final InterfaceDocBoundaryValidator boundaryValidator;
+
+    /**
      * 创建接口文档主信息服务。
      *
      * @param interfaceInfoService          接口信息服务
@@ -197,6 +190,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * @param curlExampleGenerator          curl 示例生成器
      * @param javaSdkExampleGenerator       Java SDK 示例生成器
      * @param runtimeRequestParamTemplateValidator 运行时请求参数模板校验器
+     * @param boundaryValidator                    接口文档边界校验器
      */
     public InterfaceDocServiceImpl(InterfaceInfoService interfaceInfoService,
                                    InterfaceInfoMapper interfaceInfoMapper,
@@ -207,7 +201,8 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
                                    InterfaceDocContentSecurityValidator contentSecurityValidator,
                                    InterfaceDocCurlExampleGenerator curlExampleGenerator,
                                    InterfaceDocJavaSdkExampleGenerator javaSdkExampleGenerator,
-                                   RuntimeRequestParamTemplateValidator runtimeRequestParamTemplateValidator) {
+                                   RuntimeRequestParamTemplateValidator runtimeRequestParamTemplateValidator,
+                                   InterfaceDocBoundaryValidator boundaryValidator) {
         this.interfaceInfoService = interfaceInfoService;
         this.interfaceInfoMapper = interfaceInfoMapper;
         this.interfaceDocParamService = interfaceDocParamService;
@@ -218,6 +213,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         this.curlExampleGenerator = curlExampleGenerator;
         this.javaSdkExampleGenerator = javaSdkExampleGenerator;
         this.runtimeRequestParamTemplateValidator = runtimeRequestParamTemplateValidator;
+        this.boundaryValidator = boundaryValidator;
     }
 
     /**
@@ -284,15 +280,10 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         }
         List<RuntimeRequestParam> runtimeParams = buildRuntimeRequestParams(interfaceInfo);
         ensureInterfaceDoc(interfaceInfo);
-        if (runtimeParams.size() > MAX_REQUEST_PARAM_COUNT) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数数量不能超过 100");
-        }
         long responseParamCount = listDocParams(interfaceInfo.getId()).stream()
                 .filter(param -> InterfaceDocParamSceneEnum.RESPONSE.getValue().equals(param.getParamScene()))
                 .count();
-        if (runtimeParams.size() + responseParamCount > MAX_PARAM_COUNT) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "文档参数数量不能超过 200");
-        }
+        boundaryValidator.validateParamCounts(runtimeParams.size(), responseParamCount);
         List<InterfaceDocParam> existingParams = listRequestDocParams(interfaceInfo.getId());
         reconcileRequestDocParams(interfaceInfo.getId(), runtimeParams, existingParams);
     }
@@ -327,21 +318,10 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         if (targetStatus == null || !targetStatus.getValue().equals(rawDocStatus)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "文档状态只允许 DRAFT 或 READY");
         }
+        boundaryValidator.validateSaveRequest(saveRequest);
         validateDocMain(saveRequest);
         List<InterfaceDocParamSaveRequest> paramRequests = saveRequest.getParams();
         List<InterfaceDocErrorCodeSaveRequest> errorCodeRequests = saveRequest.getErrorCodes();
-        if (paramRequests.size() > MAX_PARAM_COUNT) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "文档参数数量不能超过 200");
-        }
-        long requestParamCount = paramRequests.stream()
-                .filter(this::isRequestParam)
-                .count();
-        if (requestParamCount > MAX_REQUEST_PARAM_COUNT) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数数量不能超过 100");
-        }
-        if (errorCodeRequests.size() > MAX_ERROR_CODE_COUNT) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "错误码数量不能超过 100");
-        }
 
         List<ParamSaveNode> paramNodes = validateAndBuildParamNodes(interfaceInfo, paramRequests);
         List<InterfaceDocErrorCode> errorCodes = buildErrorCodes(interfaceInfo.getId(), errorCodeRequests);
@@ -433,6 +413,27 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         if (!InterfaceDocStatusEnum.READY.getValue().equals(status)) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口文档待完善，请先完成文档维护");
         }
+        InterfaceInfo interfaceInfo = interfaceInfoMapper.selectById(interfaceInfoId);
+        if (interfaceInfo == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+        }
+        validatePersistedDocMain(doc);
+        boundaryValidator.validatePersistedDoc(doc, listDocParams(interfaceInfoId), listErrorCodes(interfaceInfoId));
+        runtimeRequestParamTemplateValidator.validate(interfaceInfo.getRequestParams());
+    }
+
+    /**
+     * 校验发布前持久化文档主信息的枚举与版本边界。
+     *
+     * @param doc 文档主记录
+     */
+    private void validatePersistedDocMain(InterfaceDoc doc) {
+        String docVersion = TextSizeUtils.stripUnicodeWhitespace(doc.getDocVersion());
+        if (!DOC_VERSION_PATTERN.matcher(docVersion).matches()) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "文档版本号格式非法");
+        }
+        assertSupportedContentType(doc.getRequestContentType(), "请求内容类型不支持");
+        assertSupportedContentType(doc.getResponseContentType(), "响应内容类型不支持");
     }
 
     /**
@@ -813,7 +814,9 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
                             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数键不能重复");
                         },
                         LinkedHashMap::new));
+        // 循环检测和深度计算依赖此处建立的 parent 引用，必须先完成父子节点关联。
         linkParamNodes(nodeMap);
+        assertContainerParentTypes(nodeMap);
         assertNoDuplicateSiblingNames(nodeMap);
         validateRuntimeRequestParams(interfaceInfo, nodeMap.values().stream()
                 .map(ParamSaveNode::getRequest)
@@ -823,8 +826,8 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         List<ParamSaveNode> nodes = new ArrayList<>(nodeMap.values());
         for (ParamSaveNode node : nodes) {
             node.setDepth(resolveParamDepth(node, new HashSet<>()));
-            if (node.getDepth() > MAX_RESPONSE_DEPTH) {
-                throw new BusinessException(ErrorCode.PARAMS_ERROR, "响应参数嵌套深度不能超过 8");
+            if (isResponseParam(node.getRequest()) && node.getDepth() > MAX_DOC_NESTING_DEPTH) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "响应字段嵌套深度不能超过 8");
             }
         }
 
@@ -903,13 +906,16 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * @param nodeMap 参数键与保存节点映射
      */
     private void linkParamNodes(Map<String, ParamSaveNode> nodeMap) {
+        Map<String, List<String>> missingParentChildren = new LinkedHashMap<>();
         nodeMap.values().stream()
                 .filter(node -> StringUtils.isNotBlank(node.getRequest().getParentParamKey()))
                 .forEach(node -> {
                     String parentKey = node.getRequest().getParentParamKey().trim();
                     ParamSaveNode parentNode = nodeMap.get(parentKey);
                     if (parentNode == null) {
-                        throw new BusinessException(ErrorCode.PARAMS_ERROR, "父级参数不存在");
+                        missingParentChildren.computeIfAbsent(parentKey, ignored -> new ArrayList<>())
+                                .add(resolveParamDisplayName(node));
+                        return;
                     }
                     if (!InterfaceDocParamSceneEnum.RESPONSE.getValue().equals(parentNode.getRequest().getParamScene())) {
                         throw new BusinessException(ErrorCode.PARAMS_ERROR, "父级参数必须是响应参数");
@@ -920,6 +926,76 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
                     node.setParent(parentNode);
                     parentNode.getChildren().add(node);
                 });
+        if (!missingParentChildren.isEmpty()) {
+            String details = missingParentChildren.entrySet().stream()
+                    .map(entry -> escapeErrorMessageText(entry.getKey())
+                            + " -> [" + String.join(", ", entry.getValue()) + "]")
+                    .collect(Collectors.joining("；"));
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "响应字段父级不存在：" + details);
+        }
+    }
+
+    /**
+     * 校验拥有子字段的响应字段必须是容器类型。
+     *
+     * @param nodeMap 参数键与保存节点映射
+     */
+    private void assertContainerParentTypes(Map<String, ParamSaveNode> nodeMap) {
+        List<String> invalidParentDetails = nodeMap.values().stream()
+                .filter(node -> isResponseParam(node.getRequest()) && !node.getChildren().isEmpty())
+                .filter(node -> !isContainerType(node.getRequest().getType()))
+                .map(node -> resolveParamDisplayName(node) + "("
+                        + trimToEmpty(node.getRequest().getType()).toLowerCase(Locale.ROOT) + ")")
+                .collect(Collectors.toList());
+        if (!invalidParentDetails.isEmpty()) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,
+                    "以下响应字段不是容器类型，不能拥有子字段：" + String.join("、", invalidParentDetails));
+        }
+    }
+
+    /**
+     * 判断参数是否为响应字段。
+     *
+     * @param request 参数保存请求
+     * @return 是否为响应字段
+     */
+    private boolean isResponseParam(InterfaceDocParamSaveRequest request) {
+        return request != null
+                && InterfaceDocParamSceneEnum.RESPONSE.getValue().equals(request.getParamScene());
+    }
+
+    /**
+     * 判断字段类型是否允许拥有子字段。
+     *
+     * @param type 字段类型
+     * @return 是否为容器类型
+     */
+    private boolean isContainerType(String type) {
+        String normalizedType = trimToEmpty(type).toLowerCase(Locale.ROOT);
+        return "object".equals(normalizedType) || "array".equals(normalizedType);
+    }
+
+    /**
+     * 解析参数展示名称，名称为空时回退到会话参数键。
+     *
+     * @param node 参数节点
+     * @return 参数展示名称
+     */
+    private String resolveParamDisplayName(ParamSaveNode node) {
+        String name = trimToEmpty(node.getRequest().getName());
+        String displayName = StringUtils.isNotBlank(name) ? name : node.getRequest().getParamKey().trim();
+        return escapeErrorMessageText(displayName);
+    }
+
+    /**
+     * 转义错误信息中的外部文本，防止控制字符破坏日志或页面展示。
+     *
+     * @param value 外部文本
+     * @return 不含 JSON 外层引号的安全文本
+     */
+    private String escapeErrorMessageText(String value) {
+        String jsonText = new JsonPrimitive(value).toString();
+        return jsonText.substring(1, jsonText.length() - 1);
     }
 
     /**
@@ -928,7 +1004,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * @param nodeMap 参数键与保存节点映射
      */
     private void assertNoDuplicateSiblingNames(Map<String, ParamSaveNode> nodeMap) {
-        Set<String> siblingNameSet = new HashSet<>();
+        Map<String, Map<String, Set<String>>> siblingNamesBySceneAndParent = new HashMap<>();
         nodeMap.values().forEach(node -> {
             String parentKey = Optional.ofNullable(node.getParent())
                     .map(parent -> parent.getRequest().getParamKey().trim())
@@ -936,8 +1012,11 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
             String paramName = isRequestParam(node.getRequest())
                     ? node.getRequest().getName()
                     : node.getRequest().getName().trim();
-            String duplicateKey = node.getRequest().getParamScene() + ":" + parentKey + ":" + paramName;
-            if (!siblingNameSet.add(duplicateKey)) {
+            // 使用嵌套映射表达场景和父级作用域，避免外部文本包含分隔符时产生组合键碰撞。
+            Set<String> siblingNames = siblingNamesBySceneAndParent
+                    .computeIfAbsent(node.getRequest().getParamScene(), ignored -> new HashMap<>())
+                    .computeIfAbsent(parentKey, ignored -> new HashSet<>());
+            if (!siblingNames.add(paramName)) {
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "同级参数名称不能重复");
             }
         });
@@ -1015,7 +1094,8 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
         for (InterfaceDocErrorCodeSaveRequest request : errorCodeRequests) {
             validateErrorCode(request);
             String errorCodeValue = trimToEmpty(request.getErrorCode());
-            if (!errorCodeSet.add(errorCodeValue)) {
+            String errorCodeCompareKey = errorCodeValue.toLowerCase(Locale.ROOT);
+            if (!errorCodeSet.add(errorCodeCompareKey)) {
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "同一接口的错误码不能重复");
             }
             InterfaceDocErrorCode errorCode = new InterfaceDocErrorCode();
@@ -1366,7 +1446,7 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * @return 非空文本
      */
     private String trimToEmpty(String value) {
-        return value == null ? "" : value.trim();
+        return TextSizeUtils.stripUnicodeWhitespace(value);
     }
 
     /**
@@ -1376,7 +1456,8 @@ public class InterfaceDocServiceImpl extends ServiceImpl<InterfaceDocMapper, Int
      * @return 去空格文本或 null
      */
     private String trimToNull(String value) {
-        return StringUtils.isBlank(value) ? null : value.trim();
+        String strippedValue = TextSizeUtils.stripUnicodeWhitespace(value);
+        return strippedValue.isEmpty() ? null : strippedValue;
     }
 
     /**

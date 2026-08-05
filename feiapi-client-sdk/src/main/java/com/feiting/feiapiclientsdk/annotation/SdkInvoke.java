@@ -1,5 +1,7 @@
 package com.feiting.feiapiclientsdk.annotation;
 
+import com.feiting.feiapiclientsdk.model.ProbeStrategy;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -16,4 +18,9 @@ public @interface SdkInvoke {
      * 当前方法是否需要请求参数。
      */
     boolean needParams() default false;
+
+    /**
+     * 当前方法的发布探测安全策略。
+     */
+    ProbeStrategy probeStrategy() default ProbeStrategy.UNSPECIFIED;
 }

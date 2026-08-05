@@ -11,6 +11,7 @@ import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoQueryRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoUpdateRequest;
 import com.feiting.feiapi.model.enums.UserRoleEnum;
+import com.feiting.feiapi.model.vo.InterfacePublishCheckVO;
 import com.feiting.feiapi.model.vo.InterfaceInfoVO;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapi.annotation.AuthCheck;
@@ -19,6 +20,7 @@ import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
 import com.feiting.feiapi.service.InterfaceInfoPublishingService;
+import com.feiting.feiapi.service.InterfacePublishCheckService;
 import com.feiting.feiapi.service.InterfaceDocService;
 import com.feiting.feiapi.service.InterfaceQuotaConfigService;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
@@ -73,6 +75,12 @@ public class InterfaceInfoController {
      */
     @Resource
     private InterfaceInfoPublishingService interfaceInfoPublishingService;
+
+    /**
+     * 接口发布前静态检查服务。
+     */
+    @Resource
+    private InterfacePublishCheckService interfacePublishCheckService;
 
     /**
      * 接口文档服务。
@@ -277,6 +285,21 @@ public class InterfaceInfoController {
         }
 
         return ResultUtils.success(interfaceInfoPublishingService.publish(idRequest.getId()));
+    }
+
+    /**
+     * 发布前只读检查接口。
+     *
+     * @param id 接口信息 ID
+     * @return 发布前检查结果
+     */
+    @GetMapping("/publish/check")
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
+    public BaseResponse<InterfacePublishCheckVO> checkPublish(long id) {
+        if (id <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        return ResultUtils.success(interfacePublishCheckService.check(id));
     }
 
 

@@ -1,12 +1,11 @@
 package com.feiting.feiapi.service.impl;
 
 import com.feiting.feiapi.common.ErrorCode;
-import com.feiting.feiapi.component.SdkMethodRegistry;
 import com.feiting.feiapi.exception.BusinessException;
+import com.feiting.feiapi.model.publish.InterfacePublishContext;
 import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
 import com.feiting.feiapi.service.InterfaceInfoPublishingService;
-import com.feiting.feiapiclientsdk.client.FeiApiClient;
-import com.feiting.feiapicommon.model.entity.InterfaceInfo;
+import com.feiting.feiapi.service.InterfacePublishProbeService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -23,14 +22,9 @@ public class InterfaceInfoPublishingServiceImpl implements InterfaceInfoPublishi
     private final InterfaceInfoLifecycleService interfaceInfoLifecycleService;
 
     /**
-     * 平台 SDK 客户端。
+     * 发布探测执行服务。
      */
-    private final FeiApiClient feiApiClient;
-
-    /**
-     * SDK 方法注册器。
-     */
-    private final SdkMethodRegistry sdkMethodRegistry;
+    private final InterfacePublishProbeService interfacePublishProbeService;
 
     /**
      * 创建接口发布编排服务。
@@ -40,11 +34,9 @@ public class InterfaceInfoPublishingServiceImpl implements InterfaceInfoPublishi
      * @param sdkMethodRegistry             SDK 方法注册器
      */
     public InterfaceInfoPublishingServiceImpl(InterfaceInfoLifecycleService interfaceInfoLifecycleService,
-                                              FeiApiClient feiApiClient,
-                                              SdkMethodRegistry sdkMethodRegistry) {
+                                              InterfacePublishProbeService interfacePublishProbeService) {
         this.interfaceInfoLifecycleService = interfaceInfoLifecycleService;
-        this.feiApiClient = feiApiClient;
-        this.sdkMethodRegistry = sdkMethodRegistry;
+        this.interfacePublishProbeService = interfacePublishProbeService;
     }
 
     /**
@@ -55,16 +47,9 @@ public class InterfaceInfoPublishingServiceImpl implements InterfaceInfoPublishi
      */
     @Override
     public boolean publish(Long interfaceInfoId) {
-        InterfaceInfo publishingInterface = interfaceInfoLifecycleService.startPublishing(interfaceInfoId);
+        InterfacePublishContext publishContext = interfaceInfoLifecycleService.startPublishingWithContext(interfaceInfoId);
         try {
-            feiApiClient.enableProbeMode();
-            Object invokeResult = sdkMethodRegistry.invoke(
-                    feiApiClient,
-                    publishingInterface.getSdkMethodName(),
-                    publishingInterface.getRequestParams());
-            if (invokeResult == null) {
-                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "接口验证失败");
-            }
+            interfacePublishProbeService.probe(publishContext);
             interfaceInfoLifecycleService.completePublishing(interfaceInfoId);
             return true;
         } catch (Exception e) {
@@ -73,8 +58,6 @@ public class InterfaceInfoPublishingServiceImpl implements InterfaceInfoPublishi
                 throw (BusinessException) e;
             }
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "接口验证失败：" + e.getMessage());
-        } finally {
-            feiApiClient.disableProbeMode();
         }
     }
 

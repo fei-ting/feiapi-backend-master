@@ -7,6 +7,7 @@ import com.feiting.feiapi.model.vo.InterfaceInfoVO;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 /**
 * @author asus
@@ -24,6 +25,25 @@ public interface InterfaceInfoMapper extends BaseMapper<InterfaceInfo> {
      */
     @Select("SELECT * FROM interface_info WHERE id = #{id} AND is_delete = 0 FOR UPDATE")
     InterfaceInfo selectByIdForUpdate(@Param("id") Long id);
+
+    /**
+     * 按接口 ID、下线状态和未删除条件逻辑删除接口主记录。
+     *
+     * @param id            接口信息 ID
+     * @param offlineStatus 下线状态值
+     * @return 影响行数
+     */
+    @Update("UPDATE interface_info SET is_delete = id WHERE id = #{id} AND status = #{offlineStatus} AND is_delete = 0")
+    int logicDeleteOfflineById(@Param("id") Long id, @Param("offlineStatus") Integer offlineStatus);
+
+    /**
+     * 按接口 ID 查询配额类型，不过滤逻辑删除记录。
+     *
+     * @param id 接口信息 ID
+     * @return 接口配额类型，不存在时返回空
+     */
+    @Select("SELECT quota_type FROM interface_info WHERE id = #{id}")
+    String selectQuotaTypeIncludeDeleted(@Param("id") Long id);
 
     /**
      * 按接口调用总数分页查询接口视图。

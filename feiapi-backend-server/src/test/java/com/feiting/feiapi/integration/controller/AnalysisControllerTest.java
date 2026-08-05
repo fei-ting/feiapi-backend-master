@@ -99,7 +99,7 @@ class AnalysisControllerTest {
         info.setMethod("GET");
         info.setStatus(1);
         info.setUserId(1L);
-        info.setIsDelete(0);
+        info.setIsDelete(0L);
         interfaceInfoService.save(info);
     }
 
@@ -259,6 +259,39 @@ class AnalysisControllerTest {
                     .andExpect(jsonPath("$.code").value(0))
                     .andExpect(jsonPath("$.data").isArray())
                     .andExpect(jsonPath("$.data").isEmpty());
+        }
+
+        @Test
+        @DisplayName("已删除高调用接口不占用排行榜名额")
+        void shouldExcludeDeletedInterfacesBeforeLimit() throws Exception {
+            MockHttpSession session = loginWithRole("and01", "admin");
+            User user = userService.lambdaQuery().eq(User::getUserAccount, "and01").one();
+            userInterfaceInfoService.lambdaUpdate()
+                    .eq(UserInterfaceInfo::getIsDelete, 0)
+                    .remove();
+
+            insertInterfaceInfo(1011L, "api_deleted_top", "/api/deleted_top");
+            insertInterfaceInfo(1012L, "api_active_first", "/api/active_first");
+            insertInterfaceInfo(1013L, "api_active_second", "/api/active_second");
+            insertInterfaceInfo(1014L, "api_active_third", "/api/active_third");
+            insertUserInterfaceInfo(user.getId(), 1011L, 1000);
+            insertUserInterfaceInfo(user.getId(), 1012L, 300);
+            insertUserInterfaceInfo(user.getId(), 1013L, 200);
+            insertUserInterfaceInfo(user.getId(), 1014L, 100);
+            assertTrue(interfaceInfoService.removeById(1011L));
+
+            MvcResult result = mockMvc.perform(get("/analysis/top/interface/invoke").session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andReturn();
+
+            com.fasterxml.jackson.databind.JsonNode data = objectMapper
+                    .readTree(result.getResponse().getContentAsString())
+                    .get("data");
+            assertEquals(3, data.size());
+            assertEquals(1012L, data.get(0).get("id").asLong());
+            assertEquals(1013L, data.get(1).get("id").asLong());
+            assertEquals(1014L, data.get(2).get("id").asLong());
         }
 
         @Test

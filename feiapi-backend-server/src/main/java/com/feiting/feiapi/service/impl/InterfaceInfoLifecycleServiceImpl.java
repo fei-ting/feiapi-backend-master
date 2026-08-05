@@ -4,9 +4,16 @@ import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.component.SdkMethodRegistry;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.mapper.InterfaceInfoMapper;
+import com.feiting.feiapi.model.entity.InterfaceDoc;
+import com.feiting.feiapi.model.entity.InterfaceDocErrorCode;
+import com.feiting.feiapi.model.entity.InterfaceDocParam;
+import com.feiting.feiapi.model.publish.InterfacePublishContext;
+import com.feiting.feiapi.service.InterfaceDocErrorCodeService;
+import com.feiting.feiapi.service.InterfaceDocParamService;
 import com.feiting.feiapi.service.InterfaceDocService;
 import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
 import com.feiting.feiapi.service.InterfaceInfoService;
+import com.feiting.feiapi.service.InterfacePublishCheckService;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
 import java.util.Date;
@@ -43,26 +50,49 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
     private final InterfaceDocService interfaceDocService;
 
     /**
+     * 接口文档参数服务。
+     */
+    private final InterfaceDocParamService interfaceDocParamService;
+
+    /**
+     * 接口文档错误码服务。
+     */
+    private final InterfaceDocErrorCodeService interfaceDocErrorCodeService;
+
+    /**
      * SDK 方法注册器。
      */
     private final SdkMethodRegistry sdkMethodRegistry;
+
+    /**
+     * 发布前静态检查服务。
+     */
+    private final InterfacePublishCheckService interfacePublishCheckService;
 
     /**
      * 创建接口信息生命周期服务。
      *
      * @param interfaceInfoService 接口信息服务
      * @param interfaceInfoMapper  接口信息数据访问对象
-     * @param interfaceDocService  接口文档服务
-     * @param sdkMethodRegistry    SDK 方法注册器
+     * @param interfaceDocService          接口文档服务
+     * @param interfaceDocParamService     接口文档参数服务
+     * @param interfaceDocErrorCodeService 接口文档错误码服务
+     * @param sdkMethodRegistry            SDK 方法注册器
      */
     public InterfaceInfoLifecycleServiceImpl(InterfaceInfoService interfaceInfoService,
                                              InterfaceInfoMapper interfaceInfoMapper,
                                              InterfaceDocService interfaceDocService,
-                                             SdkMethodRegistry sdkMethodRegistry) {
+                                             InterfaceDocParamService interfaceDocParamService,
+                                             InterfaceDocErrorCodeService interfaceDocErrorCodeService,
+                                             SdkMethodRegistry sdkMethodRegistry,
+                                             InterfacePublishCheckService interfacePublishCheckService) {
         this.interfaceInfoService = interfaceInfoService;
         this.interfaceInfoMapper = interfaceInfoMapper;
         this.interfaceDocService = interfaceDocService;
+        this.interfaceDocParamService = interfaceDocParamService;
+        this.interfaceDocErrorCodeService = interfaceDocErrorCodeService;
         this.sdkMethodRegistry = sdkMethodRegistry;
+        this.interfacePublishCheckService = interfacePublishCheckService;
     }
 
     /**
@@ -135,12 +165,21 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
         if (interfaceInfo == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
-        assertOffline(interfaceInfo, "接口仅允许在下线状态删除");
-        boolean result = interfaceInfoService.lambdaUpdate()
-                .eq(InterfaceInfo::getId, interfaceInfoId)
-                .eq(InterfaceInfo::getStatus, InterfaceInfoStatusEnum.OFFLINE.getValue())
+        assertDeletableOffline(interfaceInfo);
+        interfaceDocParamService.lambdaUpdate()
+                .eq(InterfaceDocParam::getInterfaceInfoId, interfaceInfoId)
                 .remove();
-        if (!result) {
+        interfaceDocErrorCodeService.lambdaUpdate()
+                .eq(InterfaceDocErrorCode::getInterfaceInfoId, interfaceInfoId)
+                .remove();
+        interfaceDocService.lambdaUpdate()
+                .eq(InterfaceDoc::getInterfaceInfoId, interfaceInfoId)
+                .remove();
+        int deletedRows = interfaceInfoMapper.logicDeleteOfflineById(
+                interfaceInfoId,
+                InterfaceInfoStatusEnum.OFFLINE.getValue()
+        );
+        if (deletedRows != 1) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口状态已变化，请刷新后重试");
         }
         return true;
@@ -155,6 +194,18 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
     @Override
     @Transactional(rollbackFor = Exception.class)
     public InterfaceInfo startPublishing(Long interfaceInfoId) {
+        return startPublishingWithContext(interfaceInfoId).getInterfaceInfo();
+    }
+
+    /**
+     * 校验发布条件并将下线接口切换为发布中状态，返回完整发布上下文。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     * @return 发布上下文
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public InterfacePublishContext startPublishingWithContext(Long interfaceInfoId) {
         validateInterfaceInfoId(interfaceInfoId);
         InterfaceInfo interfaceInfo = interfaceInfoMapper.selectByIdForUpdate(interfaceInfoId);
         if (interfaceInfo == null) {
@@ -168,21 +219,14 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口仅支持从下线状态发布");
         }
 
-        String sdkMethodName = StringUtils.trimToNull(interfaceInfo.getSdkMethodName());
-        if (sdkMethodName == null) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "接口未配置 SDK 方法名");
-        }
-        if (!sdkMethodRegistry.supports(sdkMethodName)) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的接口方法：" + sdkMethodName);
-        }
-        interfaceDocService.validateReadyForPublish(interfaceInfoId);
+        InterfacePublishContext publishContext = interfacePublishCheckService.buildContextForPublish(interfaceInfo);
         updatePublishingStatus(interfaceInfoId,
                 InterfaceInfoStatusEnum.OFFLINE.getValue(),
                 InterfaceInfoStatusEnum.PUBLISHING.getValue(),
                 "接口发布状态更新失败，请刷新后重试");
-        interfaceInfo.setSdkMethodName(sdkMethodName);
         interfaceInfo.setStatus(InterfaceInfoStatusEnum.PUBLISHING.getValue());
-        return interfaceInfo;
+        publishContext.setInterfaceInfo(interfaceInfo);
+        return publishContext;
     }
 
     /**
@@ -279,6 +323,24 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
         if (!Objects.equals(interfaceInfo.getStatus(), InterfaceInfoStatusEnum.OFFLINE.getValue())) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, errorMessage);
         }
+    }
+
+    /**
+     * 校验接口是否允许删除。
+     *
+     * @param interfaceInfo 接口信息
+     */
+    private void assertDeletableOffline(InterfaceInfo interfaceInfo) {
+        if (Objects.equals(interfaceInfo.getStatus(), InterfaceInfoStatusEnum.OFFLINE.getValue())) {
+            return;
+        }
+        if (Objects.equals(interfaceInfo.getStatus(), InterfaceInfoStatusEnum.ONLINE.getValue())) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "请先下线接口后再删除");
+        }
+        if (Objects.equals(interfaceInfo.getStatus(), InterfaceInfoStatusEnum.PUBLISHING.getValue())) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口正在发布验证中，不能删除");
+        }
+        throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口状态异常，不能删除");
     }
 
     /**

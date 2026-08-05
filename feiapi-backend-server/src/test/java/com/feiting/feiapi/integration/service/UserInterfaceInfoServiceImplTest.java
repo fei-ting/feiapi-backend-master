@@ -221,6 +221,55 @@ class UserInterfaceInfoServiceImplTest {
             assertEquals(0, info.getLeftNum());
             assertEquals(0, info.getTotalNum());
         }
+
+        @Test
+        @DisplayName("有限额度接口删除后在途失败补偿仍恢复额度")
+        void shouldRollbackLimitedQuotaAfterInterfaceDeleted() {
+            long interfaceInfoId = insertInterfaceInfo(InterfaceQuotaTypeEnum.BASIC_QUOTA.getValue());
+            insertUserInterfaceInfo(1L, interfaceInfoId, 9, 1);
+            assertTrue(interfaceInfoService.removeById(interfaceInfoId));
+
+            boolean result = userInterfaceInfoService.rollbackInvokeCount(1L, interfaceInfoId);
+
+            assertTrue(result);
+            UserInterfaceInfo info = userInterfaceInfoService.lambdaQuery()
+                    .eq(UserInterfaceInfo::getUserId, 1L)
+                    .eq(UserInterfaceInfo::getInterfaceInfoId, interfaceInfoId)
+                    .one();
+            assertNotNull(info);
+            assertEquals(10, info.getLeftNum());
+            assertEquals(0, info.getTotalNum());
+        }
+
+        @Test
+        @DisplayName("免费无限接口删除后在途失败补偿只回退总调用次数")
+        void shouldRollbackUnlimitedQuotaAfterInterfaceDeleted() {
+            long interfaceInfoId = insertInterfaceInfo(InterfaceQuotaTypeEnum.FREE_UNLIMITED.getValue());
+            assertTrue(userInterfaceInfoService.invokeCount(1L, interfaceInfoId));
+            assertTrue(interfaceInfoService.removeById(interfaceInfoId));
+
+            boolean result = userInterfaceInfoService.rollbackInvokeCount(1L, interfaceInfoId);
+
+            assertTrue(result);
+            UserInterfaceInfo info = userInterfaceInfoService.lambdaQuery()
+                    .eq(UserInterfaceInfo::getUserId, 1L)
+                    .eq(UserInterfaceInfo::getInterfaceInfoId, interfaceInfoId)
+                    .one();
+            assertNotNull(info);
+            assertEquals(0, info.getLeftNum());
+            assertEquals(0, info.getTotalNum());
+        }
+
+        @Test
+        @DisplayName("已删除接口不能开始新的预扣")
+        void shouldRejectInvokeCountAfterInterfaceDeleted() {
+            long interfaceInfoId = insertInterfaceInfo(InterfaceQuotaTypeEnum.BASIC_QUOTA.getValue());
+            insertUserInterfaceInfo(1L, interfaceInfoId, 10, 0);
+            assertTrue(interfaceInfoService.removeById(interfaceInfoId));
+
+            assertThrows(BusinessException.class,
+                    () -> userInterfaceInfoService.invokeCount(1L, interfaceInfoId));
+        }
     }
 
     @Nested

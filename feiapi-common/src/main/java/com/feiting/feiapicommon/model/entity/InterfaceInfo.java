@@ -99,10 +99,10 @@ public class InterfaceInfo implements Serializable {
     private Date updateTime;
 
     /**
-     * 是否删除(0-未删, 1-已删)
+     * 逻辑删除标识，0 表示未删除，其他值表示已删除记录 ID。
      */
-    @TableLogic
-    private Integer isDelete;
+    @TableLogic(value = "0", delval = "id")
+    private Long isDelete;
 
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;

@@ -80,18 +80,37 @@ public class InterfaceDocContentSecurityValidator {
 
     /** 英文内部实现关键词匹配规则，使用 ASCII 标识符边界。 */
     private static final Pattern INTERNAL_KEYWORD_PATTERN = Pattern.compile(
-            "(?i)(?<![A-Za-z0-9_])(?:db|database|mysql|postgresql|oracle|mongodb|redis|dubbo|nacos|jdbc)"
+            "(?i)(?<![A-Za-z0-9_])(?:db|database|mysql|postgresql|oracle|mongodb|redis|dubbo|nacos|jdbc|"
+                    + "targethost|upstream|sqlstate)"
                     + "(?![A-Za-z0-9_])");
 
     /** 中文内部实现信息匹配规则。 */
-    private static final Pattern INTERNAL_CHINESE_PATTERN = Pattern.compile("数据库|数据表|服务器绝对路径");
+    private static final Pattern INTERNAL_CHINESE_PATTERN = Pattern.compile(
+            "数据库|数据表|服务器绝对路径|内部路由|内网地址|真实后端地址|异常堆栈");
+
+    /** 英文内部路由和排查短语匹配规则。 */
+    private static final Pattern INTERNAL_PHRASE_PATTERN = Pattern.compile(
+            "(?i)(?:internal\\s+route|intranet\\s+address|real\\s+backend\\s+address|stack\\s+trace)");
 
     /** Windows 服务器绝对路径匹配规则。 */
     private static final Pattern WINDOWS_PATH_PATTERN = Pattern.compile("(?i)(?<![A-Za-z0-9_])[A-Za-z]:\\\\");
 
-    /** Unix 服务器绝对路径匹配规则。 */
+    /** Linux 常见服务器绝对路径匹配规则。 */
     private static final Pattern UNIX_PATH_PATTERN = Pattern.compile(
             "(?i)(?<![A-Za-z0-9_])/(?:var|etc|usr|opt|home|root|data)(?:/|$)");
+
+    /** Linux 明确系统路径匹配规则。 */
+    private static final Pattern UNIX_SYSTEM_PATH_PATTERN = Pattern.compile(
+            "(?i)(?<![A-Za-z0-9_])/(?:etc|proc|sys)(?:/|$)|"
+                    + "(?<![A-Za-z0-9_])/var/log(?:/|$)|"
+                    + "(?<![A-Za-z0-9_])/usr/(?:local|bin|sbin)(?:/|$)|"
+                    + "(?<![A-Za-z0-9_])/opt/(?:[A-Za-z0-9_.-]+)(?:/|$)");
+
+    /** Linux 歧义路径的内部文件系统上下文匹配规则。 */
+    private static final Pattern UNIX_PATH_CONTEXT_PATTERN = Pattern.compile(
+            "(?i)(?:服务器(?:绝对)?路径|服务器目录|部署目录|配置文件|日志目录|文件系统|"
+                    + "server\\s+path|deployment\\s+directory|configuration\\s+file|"
+                    + "log\\s+directory|filesystem)");
 
     /**
      * 校验 JSON 示例的语法、深度和敏感内容。
@@ -126,6 +145,7 @@ public class InterfaceDocContentSecurityValidator {
                 || containsUnmaskedSensitiveValue(text)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "文档内容不能包含未脱敏敏感信息");
         }
+        validateInternalImplementationInfo(text, "文档内容不能包含内部实现信息");
     }
 
     /**
@@ -147,14 +167,23 @@ public class InterfaceDocContentSecurityValidator {
      */
     public void validateSolution(String solution) {
         validateText(solution);
-        if (StringUtils.isBlank(solution)) {
-            return;
-        }
-        if (INTERNAL_KEYWORD_PATTERN.matcher(solution).find()
-                || INTERNAL_CHINESE_PATTERN.matcher(solution).find()
-                || WINDOWS_PATH_PATTERN.matcher(solution).find()
-                || UNIX_PATH_PATTERN.matcher(solution).find()) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "错误解决建议不能包含内部实现信息");
+    }
+
+    /**
+     * 校验高置信度内部实现信息。
+     *
+     * @param text         待校验文本
+     * @param errorMessage 错误提示
+     */
+    private void validateInternalImplementationInfo(String text, String errorMessage) {
+        if (INTERNAL_KEYWORD_PATTERN.matcher(text).find()
+                || INTERNAL_CHINESE_PATTERN.matcher(text).find()
+                || INTERNAL_PHRASE_PATTERN.matcher(text).find()
+                || WINDOWS_PATH_PATTERN.matcher(text).find()
+                || UNIX_SYSTEM_PATH_PATTERN.matcher(text).find()
+                || (UNIX_PATH_PATTERN.matcher(text).find()
+                && UNIX_PATH_CONTEXT_PATTERN.matcher(text).find())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, errorMessage);
         }
     }
 
