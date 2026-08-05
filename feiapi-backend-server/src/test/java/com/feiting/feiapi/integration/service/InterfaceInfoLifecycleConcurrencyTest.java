@@ -1,8 +1,8 @@
 package com.feiting.feiapi.integration.service;
 
 import com.feiting.feiapi.exception.BusinessException;
-import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocSaveRequest;
-import com.feiting.feiapi.model.entity.InterfaceDoc;
+import com.feiting.feiapi.interfaceplatform.documentation.model.dto.interfaceDoc.InterfaceDocSaveRequest;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDoc;
 import com.feiting.feiapi.service.InterfaceDocErrorCodeService;
 import com.feiting.feiapi.service.InterfaceDocParamService;
 import com.feiting.feiapi.service.InterfaceDocService;
@@ -105,11 +105,11 @@ class InterfaceInfoLifecycleConcurrencyTest {
         createdInterfaceIds.stream()
                 .forEach(interfaceInfoId -> {
                     interfaceDocErrorCodeService.lambdaUpdate()
-                            .eq(com.feiting.feiapi.model.entity.InterfaceDocErrorCode::getInterfaceInfoId,
+                            .eq(com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocErrorCode::getInterfaceInfoId,
                                     interfaceInfoId)
                             .remove();
                     interfaceDocParamService.lambdaUpdate()
-                            .eq(com.feiting.feiapi.model.entity.InterfaceDocParam::getInterfaceInfoId,
+                            .eq(com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocParam::getInterfaceInfoId,
                                     interfaceInfoId)
                             .remove();
                     interfaceDocService.lambdaUpdate()

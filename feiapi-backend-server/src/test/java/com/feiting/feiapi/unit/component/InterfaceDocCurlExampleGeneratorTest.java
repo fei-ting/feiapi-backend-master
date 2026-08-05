@@ -1,10 +1,10 @@
 package com.feiting.feiapi.unit.component;
 
-import com.feiting.feiapi.component.InterfaceDocCurlExampleGenerator;
+import com.feiting.feiapi.interfaceplatform.documentation.component.InterfaceDocCurlExampleGenerator;
 import com.feiting.feiapi.exception.BusinessException;
-import com.feiting.feiapi.model.vo.InterfaceDocDetailVO;
-import com.feiting.feiapi.model.vo.InterfaceDocParamVO;
-import com.feiting.feiapi.model.vo.InterfaceDocVO;
+import com.feiting.feiapi.interfaceplatform.documentation.model.vo.InterfaceDocDetailVO;
+import com.feiting.feiapi.interfaceplatform.documentation.model.vo.InterfaceDocParamVO;
+import com.feiting.feiapi.interfaceplatform.documentation.model.vo.InterfaceDocVO;
 import com.feiting.feiapiclientsdk.utils.SignUtils;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import org.junit.jupiter.api.BeforeEach;

@@ -7,7 +7,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
 @EnableDubbo
-@MapperScan("com.feiting.feiapi.mapper")
+@MapperScan({
+        "com.feiting.feiapi.mapper",
+        "com.feiting.feiapi.interfaceplatform.documentation.mapper"
+})
 public class FeiapiBackendApplication {
 
     public static void main(String[] args) {

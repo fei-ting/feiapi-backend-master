@@ -21,7 +21,7 @@ import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
 import com.feiting.feiapi.service.InterfaceInfoPublishingService;
 import com.feiting.feiapi.service.InterfacePublishCheckService;
-import com.feiting.feiapi.service.InterfaceDocService;
+import com.feiting.feiapi.interfaceplatform.documentation.service.api.InterfaceDocQueryService;
 import com.feiting.feiapi.service.InterfaceQuotaConfigService;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapi.interfaceplatform.definition.component.SdkMethodRegistry;
@@ -86,7 +86,7 @@ public class InterfaceInfoController {
      * 接口文档服务。
      */
     @Resource
-    private InterfaceDocService interfaceDocService;
+    private InterfaceDocQueryService interfaceDocQueryService;
 
     @Resource
     private InterfaceQuotaConfigService interfaceQuotaConfigService;
@@ -433,7 +433,7 @@ public class InterfaceInfoController {
                 .map(InterfaceInfoVO::getId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
-        Map<Long, String> docStatusMap = interfaceDocService.listDocStatusByInterfaceInfoIds(interfaceInfoIds);
+        Map<Long, String> docStatusMap = interfaceDocQueryService.listDocStatusByInterfaceInfoIds(interfaceInfoIds);
         Optional.ofNullable(records)
                 .orElse(Collections.emptyList())
                 .stream()

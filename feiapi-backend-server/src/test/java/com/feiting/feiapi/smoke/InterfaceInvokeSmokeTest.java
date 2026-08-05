@@ -8,7 +8,7 @@ import com.feiting.feiapi.exception.InterfacePublishProbeException;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
 import com.feiting.feiapi.model.dto.user.UserLoginRequest;
-import com.feiting.feiapi.model.entity.InterfaceDoc;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDoc;
 import com.feiting.feiapi.model.enums.PublishProbeFailureStageEnum;
 import com.feiting.feiapi.service.InterfaceDocService;
 import com.feiting.feiapi.service.InterfaceInfoService;

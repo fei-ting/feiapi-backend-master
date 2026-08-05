@@ -1,7 +1,7 @@
 package com.feiting.feiapi.integration.service;
 
-import com.feiting.feiapi.model.entity.InterfaceDocErrorCode;
-import com.feiting.feiapi.model.entity.InterfaceDocParam;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocErrorCode;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocParam;
 import com.feiting.feiapi.service.InterfaceDocErrorCodeService;
 import com.feiting.feiapi.service.InterfaceDocParamService;
 import com.feiting.feiapi.service.InterfaceInfoLifecycleService;

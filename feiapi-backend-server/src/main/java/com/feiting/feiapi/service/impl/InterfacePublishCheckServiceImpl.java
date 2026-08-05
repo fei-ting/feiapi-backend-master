@@ -1,31 +1,32 @@
 package com.feiting.feiapi.service.impl;
 
 import com.feiting.feiapi.common.ErrorCode;
-import com.feiting.feiapi.component.InterfaceDocBoundaryValidator;
-import com.feiting.feiapi.component.InterfaceDocContentSecurityValidator;
-import com.feiting.feiapi.component.InterfaceDocCurlExampleGenerator;
-import com.feiting.feiapi.component.InterfaceDocJavaSdkExampleGenerator;
+import com.feiting.feiapi.interfaceplatform.documentation.component.InterfaceDocBoundaryValidator;
+import com.feiting.feiapi.interfaceplatform.documentation.component.InterfaceDocContentSecurityValidator;
+import com.feiting.feiapi.interfaceplatform.documentation.component.InterfaceDocCurlExampleGenerator;
+import com.feiting.feiapi.interfaceplatform.documentation.component.InterfaceDocJavaSdkExampleGenerator;
 import com.feiting.feiapi.component.InterfaceProbeRequestBuilder;
 import com.feiting.feiapi.config.InterfaceTargetHostProperties;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.exception.InterfacePublishCheckException;
 import com.feiting.feiapi.interfaceplatform.definition.component.RuntimeRequestParamTemplateValidator;
 import com.feiting.feiapi.interfaceplatform.definition.component.SdkMethodRegistry;
+import com.feiting.feiapi.interfaceplatform.documentation.model.snapshot.InterfaceDocErrorCodeSnapshot;
+import com.feiting.feiapi.interfaceplatform.documentation.model.snapshot.InterfaceDocParamSnapshot;
+import com.feiting.feiapi.interfaceplatform.documentation.model.snapshot.InterfaceDocPublishSnapshot;
+import com.feiting.feiapi.interfaceplatform.documentation.service.api.InterfaceDocPublishReader;
 import com.feiting.feiapi.mapper.InterfaceInfoMapper;
-import com.feiting.feiapi.model.entity.InterfaceDoc;
-import com.feiting.feiapi.model.entity.InterfaceDocErrorCode;
-import com.feiting.feiapi.model.entity.InterfaceDocParam;
-import com.feiting.feiapi.model.enums.InterfaceDocParamSceneEnum;
-import com.feiting.feiapi.model.enums.InterfaceDocStatusEnum;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDoc;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocErrorCode;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocParam;
+import com.feiting.feiapi.interfaceplatform.documentation.model.enums.InterfaceDocParamSceneEnum;
+import com.feiting.feiapi.interfaceplatform.documentation.model.enums.InterfaceDocStatusEnum;
 import com.feiting.feiapi.model.enums.InterfacePublishIssueCategoryEnum;
 import com.feiting.feiapi.model.publish.InterfacePublishContext;
-import com.feiting.feiapi.model.vo.InterfaceDocDetailVO;
-import com.feiting.feiapi.model.vo.InterfaceDocParamVO;
+import com.feiting.feiapi.interfaceplatform.documentation.model.vo.InterfaceDocDetailVO;
+import com.feiting.feiapi.interfaceplatform.documentation.model.vo.InterfaceDocParamVO;
 import com.feiting.feiapi.model.vo.InterfacePublishCheckVO;
 import com.feiting.feiapi.model.vo.InterfacePublishIssueVO;
-import com.feiting.feiapi.service.InterfaceDocErrorCodeService;
-import com.feiting.feiapi.service.InterfaceDocParamService;
-import com.feiting.feiapi.service.InterfaceDocService;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.InterfacePublishCheckService;
 import com.feiting.feiapi.service.InterfaceQuotaConfigService;
@@ -141,17 +142,7 @@ public class InterfacePublishCheckServiceImpl implements InterfacePublishCheckSe
     /**
      * 接口文档服务。
      */
-    private final InterfaceDocService interfaceDocService;
-
-    /**
-     * 接口文档参数服务。
-     */
-    private final InterfaceDocParamService interfaceDocParamService;
-
-    /**
-     * 接口文档错误码服务。
-     */
-    private final InterfaceDocErrorCodeService interfaceDocErrorCodeService;
+    private final InterfaceDocPublishReader interfaceDocPublishReader;
 
     /**
      * 接口配额配置服务。
@@ -213,9 +204,7 @@ public class InterfacePublishCheckServiceImpl implements InterfacePublishCheckSe
      */
     public InterfacePublishCheckServiceImpl(InterfaceInfoService interfaceInfoService,
                                             InterfaceInfoMapper interfaceInfoMapper,
-                                            InterfaceDocService interfaceDocService,
-                                            InterfaceDocParamService interfaceDocParamService,
-                                            InterfaceDocErrorCodeService interfaceDocErrorCodeService,
+                                            InterfaceDocPublishReader interfaceDocPublishReader,
                                             InterfaceQuotaConfigService interfaceQuotaConfigService,
                                             UserService userService,
                                             SdkMethodRegistry sdkMethodRegistry,
@@ -229,9 +218,7 @@ public class InterfacePublishCheckServiceImpl implements InterfacePublishCheckSe
                                             InterfaceProbeRequestBuilder probeRequestBuilder) {
         this.interfaceInfoService = interfaceInfoService;
         this.interfaceInfoMapper = interfaceInfoMapper;
-        this.interfaceDocService = interfaceDocService;
-        this.interfaceDocParamService = interfaceDocParamService;
-        this.interfaceDocErrorCodeService = interfaceDocErrorCodeService;
+        this.interfaceDocPublishReader = interfaceDocPublishReader;
         this.interfaceQuotaConfigService = interfaceQuotaConfigService;
         this.userService = userService;
         this.sdkMethodRegistry = sdkMethodRegistry;
@@ -292,21 +279,107 @@ public class InterfacePublishCheckServiceImpl implements InterfacePublishCheckSe
     private InterfacePublishContext buildSnapshot(InterfaceInfo interfaceInfo) {
         InterfacePublishContext context = new InterfacePublishContext();
         context.setInterfaceInfo(interfaceInfo);
-        context.setInterfaceDoc(interfaceDocService.lambdaQuery()
-                .eq(InterfaceDoc::getInterfaceInfoId, interfaceInfo.getId())
-                .one());
-        context.setDocParams(interfaceDocParamService.lambdaQuery()
-                .eq(InterfaceDocParam::getInterfaceInfoId, interfaceInfo.getId())
-                .orderByAsc(InterfaceDocParam::getSortOrder)
-                .orderByAsc(InterfaceDocParam::getId)
-                .list());
-        context.setErrorCodes(interfaceDocErrorCodeService.lambdaQuery()
-                .eq(InterfaceDocErrorCode::getInterfaceInfoId, interfaceInfo.getId())
-                .orderByAsc(InterfaceDocErrorCode::getSortOrder)
-                .orderByAsc(InterfaceDocErrorCode::getId)
-                .list());
+        InterfaceDocPublishSnapshot docSnapshot = interfaceDocPublishReader.getPublishSnapshot(interfaceInfo.getId());
+        context.setInterfaceDoc(toInterfaceDoc(docSnapshot));
+        context.setDocParams(toInterfaceDocParams(docSnapshot));
+        context.setErrorCodes(toInterfaceDocErrorCodes(docSnapshot));
         context.setSdkMethod(sdkMethodRegistry.getMethodMap().get(StringUtils.trimToEmpty(interfaceInfo.getSdkMethodName())));
         return context;
+    }
+
+    /**
+     * 将文档发布快照转换为既有发布上下文文档实体。
+     *
+     * @param snapshot 文档发布快照
+     * @return 文档实体
+     */
+    private InterfaceDoc toInterfaceDoc(InterfaceDocPublishSnapshot snapshot) {
+        if (snapshot == null || snapshot.getDocId() == null) {
+            return null;
+        }
+        InterfaceDoc doc = new InterfaceDoc();
+        doc.setId(snapshot.getDocId());
+        doc.setInterfaceInfoId(snapshot.getInterfaceInfoId());
+        doc.setDocStatus(snapshot.getDocStatus());
+        doc.setDocVersion(snapshot.getDocVersion());
+        doc.setRequestContentType(snapshot.getRequestContentType());
+        doc.setResponseContentType(snapshot.getResponseContentType());
+        doc.setSuccessExample(snapshot.getSuccessExample());
+        doc.setFailExample(snapshot.getFailExample());
+        doc.setRemark(snapshot.getRemark());
+        return doc;
+    }
+
+    /**
+     * 将文档参数快照转换为既有发布上下文参数实体。
+     *
+     * @param snapshot 文档发布快照
+     * @return 文档参数实体列表
+     */
+    private List<InterfaceDocParam> toInterfaceDocParams(InterfaceDocPublishSnapshot snapshot) {
+        if (snapshot == null || snapshot.getDocParams() == null) {
+            return new ArrayList<>();
+        }
+        return snapshot.getDocParams().stream()
+                .map(this::toInterfaceDocParam)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 将文档错误码快照转换为既有发布上下文错误码实体。
+     *
+     * @param snapshot 文档发布快照
+     * @return 文档错误码实体列表
+     */
+    private List<InterfaceDocErrorCode> toInterfaceDocErrorCodes(InterfaceDocPublishSnapshot snapshot) {
+        if (snapshot == null || snapshot.getErrorCodes() == null) {
+            return new ArrayList<>();
+        }
+        return snapshot.getErrorCodes().stream()
+                .map(this::toInterfaceDocErrorCode)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 转换文档参数快照。
+     *
+     * @param snapshot 文档参数快照
+     * @return 文档参数实体
+     */
+    private InterfaceDocParam toInterfaceDocParam(InterfaceDocParamSnapshot snapshot) {
+        InterfaceDocParam param = new InterfaceDocParam();
+        param.setId(snapshot.getId());
+        param.setInterfaceInfoId(snapshot.getInterfaceInfoId());
+        param.setParamScene(snapshot.getParamScene());
+        param.setParentId(snapshot.getParentId());
+        param.setName(snapshot.getName());
+        param.setType(snapshot.getType());
+        param.setRequired(snapshot.getRequired());
+        param.setNullable(snapshot.getNullable());
+        param.setDefaultValue(snapshot.getDefaultValue());
+        param.setExampleValue(snapshot.getExampleValue());
+        param.setDescription(snapshot.getDescription());
+        param.setValidationRule(snapshot.getValidationRule());
+        param.setSortOrder(snapshot.getSortOrder());
+        return param;
+    }
+
+    /**
+     * 转换错误码快照。
+     *
+     * @param snapshot 错误码快照
+     * @return 错误码实体
+     */
+    private InterfaceDocErrorCode toInterfaceDocErrorCode(InterfaceDocErrorCodeSnapshot snapshot) {
+        InterfaceDocErrorCode errorCode = new InterfaceDocErrorCode();
+        errorCode.setId(snapshot.getId());
+        errorCode.setInterfaceInfoId(snapshot.getInterfaceInfoId());
+        errorCode.setErrorCode(snapshot.getErrorCode());
+        errorCode.setErrorMessage(snapshot.getErrorMessage());
+        errorCode.setDescription(snapshot.getDescription());
+        errorCode.setSolution(snapshot.getSolution());
+        errorCode.setSortOrder(snapshot.getSortOrder());
+        return errorCode;
     }
 
     /**
@@ -1006,7 +1079,7 @@ public class InterfacePublishCheckServiceImpl implements InterfacePublishCheckSe
     private InterfaceDocDetailVO toDetailVO(InterfacePublishContext context) {
         InterfaceDocDetailVO detailVO = new InterfaceDocDetailVO();
         detailVO.setRequestParams(toRequestParamVOs(context.getDocParams()));
-        detailVO.setDoc(new com.feiting.feiapi.model.vo.InterfaceDocVO());
+        detailVO.setDoc(new com.feiting.feiapi.interfaceplatform.documentation.model.vo.InterfaceDocVO());
         if (context.getInterfaceDoc() != null) {
             detailVO.getDoc().setRequestContentType(context.getInterfaceDoc().getRequestContentType());
             detailVO.getDoc().setResponseContentType(context.getInterfaceDoc().getResponseContentType());
