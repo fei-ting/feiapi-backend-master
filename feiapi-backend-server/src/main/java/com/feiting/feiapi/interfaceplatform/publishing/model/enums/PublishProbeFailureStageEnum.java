@@ -1,4 +1,4 @@
-package com.feiting.feiapi.model.enums;
+package com.feiting.feiapi.interfaceplatform.publishing.model.enums;
 
 /**
  * 发布探测失败阶段枚举。

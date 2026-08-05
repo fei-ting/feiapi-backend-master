@@ -1,4 +1,4 @@
-package com.feiting.feiapi.model.enums;
+package com.feiting.feiapi.interfaceplatform.publishing.model.enums;
 
 /**
  * 接口发布前检查问题分类枚举。

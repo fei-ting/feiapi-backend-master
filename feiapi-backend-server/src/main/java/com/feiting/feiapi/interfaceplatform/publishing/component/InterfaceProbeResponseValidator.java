@@ -1,11 +1,11 @@
-package com.feiting.feiapi.component;
+package com.feiting.feiapi.interfaceplatform.publishing.component;
 
-import com.feiting.feiapi.exception.InterfacePublishProbeException;
-import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDoc;
-import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocParam;
+import com.feiting.feiapi.interfaceplatform.publishing.exception.InterfacePublishProbeException;
 import com.feiting.feiapi.interfaceplatform.documentation.model.enums.InterfaceDocParamSceneEnum;
-import com.feiting.feiapi.model.enums.PublishProbeFailureStageEnum;
-import com.feiting.feiapi.model.publish.InterfacePublishContext;
+import com.feiting.feiapi.interfaceplatform.documentation.model.snapshot.InterfaceDocParamSnapshot;
+import com.feiting.feiapi.interfaceplatform.documentation.model.snapshot.InterfaceDocPublishSnapshot;
+import com.feiting.feiapi.interfaceplatform.publishing.model.enums.PublishProbeFailureStageEnum;
+import com.feiting.feiapi.interfaceplatform.publishing.model.context.InterfacePublishContext;
 import com.feiting.feiapiclientsdk.model.ProbeInvocationResult;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -47,7 +47,7 @@ public class InterfaceProbeResponseValidator {
         if (statusCode == null || statusCode < 200 || statusCode >= 300) {
             throw probeException(PublishProbeFailureStageEnum.DOWNSTREAM_STATUS, "下游返回非 2xx 状态");
         }
-        InterfaceDoc doc = publishContext.getInterfaceDoc();
+        InterfaceDocPublishSnapshot doc = publishContext.getInterfaceDoc();
         String expectedContentType = doc == null ? null : doc.getResponseContentType();
         validateContentType(expectedContentType, result.getContentType());
         if (!isJsonContentType(expectedContentType)) {
@@ -59,7 +59,7 @@ public class InterfaceProbeResponseValidator {
         if (!jsonRootType(responseJson).equals(jsonRootType(successExample))) {
             throw probeException(PublishProbeFailureStageEnum.RESPONSE_FORMAT, "响应 JSON 根类型与成功示例不一致");
         }
-        List<InterfaceDocParam> responseParams = publishContext.getDocParams().stream()
+        List<InterfaceDocParamSnapshot> responseParams = publishContext.getDocParams().stream()
                 .filter(param -> InterfaceDocParamSceneEnum.RESPONSE.getValue().equals(param.getParamScene()))
                 .sorted(Comparator.comparing(param -> Objects.requireNonNullElse(param.getSortOrder(), Integer.MAX_VALUE)))
                 .collect(Collectors.toList());
@@ -97,7 +97,7 @@ public class InterfaceProbeResponseValidator {
      * @param body          响应体
      * @param docParams     文档参数
      */
-    private void validateNonJsonBody(InterfaceDoc doc, String body, List<InterfaceDocParam> docParams) {
+    private void validateNonJsonBody(InterfaceDocPublishSnapshot doc, String body, List<InterfaceDocParamSnapshot> docParams) {
         boolean hasResponseParams = docParams.stream()
                 .anyMatch(param -> InterfaceDocParamSceneEnum.RESPONSE.getValue().equals(param.getParamScene()));
         if (StringUtils.isNotBlank(doc.getSuccessExample()) && StringUtils.isBlank(body)) {
@@ -128,13 +128,13 @@ public class InterfaceProbeResponseValidator {
      * @param responseJson   响应 JSON
      * @param responseParams 响应字段
      */
-    private void validateRootFields(JsonElement responseJson, List<InterfaceDocParam> responseParams) {
-        List<InterfaceDocParam> rootParams = responseParams.stream()
+    private void validateRootFields(JsonElement responseJson, List<InterfaceDocParamSnapshot> responseParams) {
+        List<InterfaceDocParamSnapshot> rootParams = responseParams.stream()
                 .filter(param -> param.getParentId() == null || param.getParentId() <= 0)
                 .collect(Collectors.toList());
-        Map<Long, List<InterfaceDocParam>> childrenMap = responseParams.stream()
+        Map<Long, List<InterfaceDocParamSnapshot>> childrenMap = responseParams.stream()
                 .filter(param -> param.getParentId() != null && param.getParentId() > 0)
-                .collect(Collectors.groupingBy(InterfaceDocParam::getParentId));
+                .collect(Collectors.groupingBy(InterfaceDocParamSnapshot::getParentId));
         if (responseJson.isJsonObject()) {
             validateObjectFields(responseJson.getAsJsonObject(), rootParams, childrenMap);
             return;
@@ -152,8 +152,8 @@ public class InterfaceProbeResponseValidator {
      * @param childrenMap 子字段映射
      */
     private void validateObjectFields(JsonObject object,
-                                      List<InterfaceDocParam> params,
-                                      Map<Long, List<InterfaceDocParam>> childrenMap) {
+                                      List<InterfaceDocParamSnapshot> params,
+                                      Map<Long, List<InterfaceDocParamSnapshot>> childrenMap) {
         params.forEach(param -> {
             JsonElement value = object.get(param.getName());
             boolean nullable = Objects.equals(param.getNullable(), 1);
@@ -177,8 +177,8 @@ public class InterfaceProbeResponseValidator {
      * @param fieldPath   字段路径
      */
     private void validateArrayElements(JsonArray array,
-                                       List<InterfaceDocParam> params,
-                                       Map<Long, List<InterfaceDocParam>> childrenMap,
+                                       List<InterfaceDocParamSnapshot> params,
+                                       Map<Long, List<InterfaceDocParamSnapshot>> childrenMap,
                                        String fieldPath) {
         if (params.isEmpty()) {
             return;
@@ -199,10 +199,10 @@ public class InterfaceProbeResponseValidator {
      * @param value      实际 JSON 值
      * @param childParams 子字段定义
      */
-    private void validateFieldType(InterfaceDocParam param,
+    private void validateFieldType(InterfaceDocParamSnapshot param,
                                    JsonElement value,
-                                   List<InterfaceDocParam> childParams,
-                                   Map<Long, List<InterfaceDocParam>> childrenMap) {
+                                   List<InterfaceDocParamSnapshot> childParams,
+                                   Map<Long, List<InterfaceDocParamSnapshot>> childrenMap) {
         String type = StringUtils.lowerCase(StringUtils.trimToEmpty(param.getType()), Locale.ROOT);
         boolean matched = switch (type) {
             case "string" -> value.isJsonPrimitive() && value.getAsJsonPrimitive().isString();

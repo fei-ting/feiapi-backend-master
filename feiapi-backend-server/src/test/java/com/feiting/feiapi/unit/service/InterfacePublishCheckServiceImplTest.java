@@ -3,13 +3,14 @@ package com.feiting.feiapi.unit.service;
 import com.feiting.feiapi.interfaceplatform.documentation.component.InterfaceDocBoundaryValidator;
 import com.feiting.feiapi.interfaceplatform.documentation.component.InterfaceDocContentSecurityValidator;
 import com.feiting.feiapi.interfaceplatform.definition.component.RuntimeRequestParamTemplateValidator;
-import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDoc;
-import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocParam;
 import com.feiting.feiapi.interfaceplatform.documentation.model.enums.InterfaceDocParamSceneEnum;
 import com.feiting.feiapi.interfaceplatform.documentation.model.enums.InterfaceDocStatusEnum;
-import com.feiting.feiapi.model.publish.InterfacePublishContext;
-import com.feiting.feiapi.model.vo.InterfacePublishIssueVO;
-import com.feiting.feiapi.service.impl.InterfacePublishCheckServiceImpl;
+import com.feiting.feiapi.interfaceplatform.documentation.model.snapshot.InterfaceDocParamSnapshot;
+import com.feiting.feiapi.interfaceplatform.documentation.model.snapshot.InterfaceDocPublishSnapshot;
+import com.feiting.feiapi.interfaceplatform.documentation.service.impl.InterfaceDocPublicationValidatorImpl;
+import com.feiting.feiapi.interfaceplatform.publishing.model.context.InterfacePublishContext;
+import com.feiting.feiapi.interfaceplatform.publishing.model.vo.InterfacePublishIssueVO;
+import com.feiting.feiapi.interfaceplatform.publishing.service.impl.InterfacePublishCheckServiceImpl;
 import com.feiting.feiapi.service.UserService;
 import com.feiting.feiapiclientsdk.FeiapiClientProperties;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
@@ -417,7 +418,8 @@ class InterfacePublishCheckServiceImplTest {
         return new InterfacePublishCheckServiceImpl(
                 null, null, null, null, null, null,
                 null, new com.feiting.feiapi.config.InterfaceTargetHostProperties(),
-                runtimeValidator, boundaryValidator, contentSecurityValidator,
+                runtimeValidator, contentSecurityValidator,
+                new InterfaceDocPublicationValidatorImpl(boundaryValidator, contentSecurityValidator),
                 null, null, null);
     }
 
@@ -453,7 +455,8 @@ class InterfacePublishCheckServiceImplTest {
      * @param docParams     结构化文档参数
      * @return 发布上下文
      */
-    private InterfacePublishContext buildContext(String method, String requestParams, List<InterfaceDocParam> docParams) {
+    private InterfacePublishContext buildContext(String method, String requestParams,
+                                                 List<InterfaceDocParamSnapshot> docParams) {
         InterfaceInfo interfaceInfo = new InterfaceInfo();
         interfaceInfo.setMethod(method);
         interfaceInfo.setRequestParams(requestParams);
@@ -493,15 +496,19 @@ class InterfacePublishCheckServiceImplTest {
      * @param docVersion 文档版本
      * @return 文档主记录
      */
-    private InterfaceDoc buildDoc(String docVersion) {
-        InterfaceDoc doc = new InterfaceDoc();
-        doc.setDocStatus(InterfaceDocStatusEnum.READY.getValue());
-        doc.setDocVersion(docVersion);
-        doc.setRequestContentType("application/json");
-        doc.setResponseContentType("application/json");
-        doc.setSuccessExample("{}");
-        doc.setFailExample("{}");
-        return doc;
+    private InterfaceDocPublishSnapshot buildDoc(String docVersion) {
+        return InterfaceDocPublishSnapshot.builder()
+                .docId(1L)
+                .interfaceInfoId(1L)
+                .docStatus(InterfaceDocStatusEnum.READY.getValue())
+                .docVersion(docVersion)
+                .requestContentType("application/json")
+                .responseContentType("application/json")
+                .successExample("{}")
+                .failExample("{}")
+                .docParams(List.of())
+                .errorCodes(List.of())
+                .build();
     }
 
     /**
@@ -513,13 +520,13 @@ class InterfacePublishCheckServiceImplTest {
      * @param required   是否必填，1 表示必填
      * @return 结构化请求参数
      */
-    private InterfaceDocParam buildRequestParam(String name, String paramScene, String type, int required) {
-        InterfaceDocParam param = new InterfaceDocParam();
-        param.setName(name);
-        param.setParamScene(paramScene);
-        param.setType(type);
-        param.setRequired(required);
-        return param;
+    private InterfaceDocParamSnapshot buildRequestParam(String name, String paramScene, String type, int required) {
+        return InterfaceDocParamSnapshot.builder()
+                .name(name)
+                .paramScene(paramScene)
+                .type(type)
+                .required(required)
+                .build();
     }
 
     /**

@@ -1,8 +1,8 @@
-package com.feiting.feiapi.model.publish;
+package com.feiting.feiapi.interfaceplatform.publishing.model.context;
 
-import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDoc;
-import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocErrorCode;
-import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocParam;
+import com.feiting.feiapi.interfaceplatform.documentation.model.snapshot.InterfaceDocErrorCodeSnapshot;
+import com.feiting.feiapi.interfaceplatform.documentation.model.snapshot.InterfaceDocParamSnapshot;
+import com.feiting.feiapi.interfaceplatform.documentation.model.snapshot.InterfaceDocPublishSnapshot;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import lombok.Data;
 
@@ -26,17 +26,17 @@ public class InterfacePublishContext {
     /**
      * 文档主记录快照。
      */
-    private InterfaceDoc interfaceDoc;
+    private InterfaceDocPublishSnapshot interfaceDoc;
 
     /**
      * 文档参数快照。
      */
-    private List<InterfaceDocParam> docParams = new ArrayList<>();
+    private List<InterfaceDocParamSnapshot> docParams = new ArrayList<>();
 
     /**
      * 文档错误码快照。
      */
-    private List<InterfaceDocErrorCode> errorCodes = new ArrayList<>();
+    private List<InterfaceDocErrorCodeSnapshot> errorCodes = new ArrayList<>();
 
     /**
      * SDK 反射方法。
