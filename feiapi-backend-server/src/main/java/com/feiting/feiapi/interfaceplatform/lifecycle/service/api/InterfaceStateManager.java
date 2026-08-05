@@ -25,6 +25,28 @@ public interface InterfaceStateManager {
     void assertOffline(LockedInterfaceSnapshot interfaceInfo);
 
     /**
+     * 断言接口处于上线状态。
+     *
+     * @param interfaceInfo 已锁定接口快照
+     */
+    void assertOnline(LockedInterfaceSnapshot interfaceInfo);
+
+    /**
+     * 断言接口允许删除。
+     *
+     * @param interfaceInfo 已锁定接口快照
+     */
+    void assertDeletableOffline(LockedInterfaceSnapshot interfaceInfo);
+
+    /**
+     * 在持有行锁时恢复超时的发布中状态。
+     *
+     * @param interfaceInfo 已锁定接口快照
+     * @return 恢复后的接口快照
+     */
+    LockedInterfaceSnapshot recoverExpiredPublishingStatus(LockedInterfaceSnapshot interfaceInfo);
+
+    /**
      * 将接口标记为发布中状态。
      *
      * @param interfaceInfoId 接口信息 ID
@@ -44,4 +66,18 @@ public interface InterfaceStateManager {
      * @param interfaceInfoId 接口信息 ID
      */
     void rollbackToOffline(Long interfaceInfoId);
+
+    /**
+     * 将接口从上线状态切换为下线状态。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     */
+    void markOffline(Long interfaceInfoId);
+
+    /**
+     * 逻辑删除下线接口主记录。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     */
+    void deleteOffline(Long interfaceInfoId);
 }

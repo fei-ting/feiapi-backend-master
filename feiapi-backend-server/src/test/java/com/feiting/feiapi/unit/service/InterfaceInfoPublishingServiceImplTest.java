@@ -3,8 +3,8 @@ package com.feiting.feiapi.unit.service;
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.interfaceplatform.publishing.model.context.InterfacePublishContext;
-import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
 import com.feiting.feiapi.interfaceplatform.publishing.service.api.InterfacePublishProbeService;
+import com.feiting.feiapi.interfaceplatform.publishing.service.api.InterfacePublishingLifecycleService;
 import com.feiting.feiapi.interfaceplatform.publishing.service.impl.InterfaceInfoPublishingServiceImpl;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,8 +28,8 @@ class InterfaceInfoPublishingServiceImplTest {
     /** 接口信息 ID。 */
     private static final long INTERFACE_INFO_ID = 1L;
 
-    /** 接口生命周期服务。 */
-    private InterfaceInfoLifecycleService interfaceInfoLifecycleService;
+    /** 接口发布生命周期协作服务。 */
+    private InterfacePublishingLifecycleService publishingLifecycleService;
 
     /** 发布探测执行服务。 */
     private InterfacePublishProbeService interfacePublishProbeService;
@@ -42,10 +42,10 @@ class InterfaceInfoPublishingServiceImplTest {
      */
     @BeforeEach
     void setUp() {
-        interfaceInfoLifecycleService = mock(InterfaceInfoLifecycleService.class);
+        publishingLifecycleService = mock(InterfacePublishingLifecycleService.class);
         interfacePublishProbeService = mock(InterfacePublishProbeService.class);
         publishingService = new InterfaceInfoPublishingServiceImpl(
-                interfaceInfoLifecycleService,
+                publishingLifecycleService,
                 interfacePublishProbeService);
     }
 
@@ -56,14 +56,14 @@ class InterfaceInfoPublishingServiceImplTest {
     @DisplayName("探测成功完成发布")
     void shouldCompletePublishingWhenProbeSucceeds() {
         InterfacePublishContext publishContext = buildPublishingContext();
-        when(interfaceInfoLifecycleService.startPublishingWithContext(INTERFACE_INFO_ID)).thenReturn(publishContext);
+        when(publishingLifecycleService.startPublishingWithContext(INTERFACE_INFO_ID)).thenReturn(publishContext);
 
         boolean result = publishingService.publish(INTERFACE_INFO_ID);
 
         assertThat(result).isTrue();
         verify(interfacePublishProbeService).probe(publishContext);
-        verify(interfaceInfoLifecycleService).completePublishing(INTERFACE_INFO_ID);
-        verify(interfaceInfoLifecycleService, never()).rollbackPublishing(INTERFACE_INFO_ID);
+        verify(publishingLifecycleService).completePublishing(INTERFACE_INFO_ID);
+        verify(publishingLifecycleService, never()).rollbackPublishing(INTERFACE_INFO_ID);
     }
 
     /**
@@ -75,13 +75,13 @@ class InterfaceInfoPublishingServiceImplTest {
         BusinessException startException = new BusinessException(
                 ErrorCode.OPERATION_ERROR,
                 "接口正在发布验证中，请稍后重试");
-        when(interfaceInfoLifecycleService.startPublishingWithContext(INTERFACE_INFO_ID)).thenThrow(startException);
+        when(publishingLifecycleService.startPublishingWithContext(INTERFACE_INFO_ID)).thenThrow(startException);
 
         assertThatThrownBy(() -> publishingService.publish(INTERFACE_INFO_ID))
                 .isSameAs(startException);
 
-        verify(interfaceInfoLifecycleService, never()).rollbackPublishing(INTERFACE_INFO_ID);
-        verify(interfaceInfoLifecycleService, never()).completePublishing(INTERFACE_INFO_ID);
+        verify(publishingLifecycleService, never()).rollbackPublishing(INTERFACE_INFO_ID);
+        verify(publishingLifecycleService, never()).completePublishing(INTERFACE_INFO_ID);
         verifyNoInteractions(interfacePublishProbeService);
     }
 
@@ -93,14 +93,14 @@ class InterfaceInfoPublishingServiceImplTest {
     void shouldRollbackAndKeepBusinessExceptionWhenProbeFails() {
         InterfacePublishContext publishContext = buildPublishingContext();
         BusinessException probeException = new BusinessException(ErrorCode.SYSTEM_ERROR, "下游拒绝探测");
-        when(interfaceInfoLifecycleService.startPublishingWithContext(INTERFACE_INFO_ID)).thenReturn(publishContext);
+        when(publishingLifecycleService.startPublishingWithContext(INTERFACE_INFO_ID)).thenReturn(publishContext);
         org.mockito.Mockito.doThrow(probeException).when(interfacePublishProbeService).probe(publishContext);
 
         assertThatThrownBy(() -> publishingService.publish(INTERFACE_INFO_ID))
                 .isSameAs(probeException);
 
-        verify(interfaceInfoLifecycleService).rollbackPublishing(INTERFACE_INFO_ID);
-        verify(interfaceInfoLifecycleService, never()).completePublishing(INTERFACE_INFO_ID);
+        verify(publishingLifecycleService).rollbackPublishing(INTERFACE_INFO_ID);
+        verify(publishingLifecycleService, never()).completePublishing(INTERFACE_INFO_ID);
     }
 
     /**
@@ -111,13 +111,13 @@ class InterfaceInfoPublishingServiceImplTest {
     void shouldRollbackWhenProbeReturnsNull() {
         InterfacePublishContext publishContext = buildPublishingContext();
         BusinessException probeException = new BusinessException(ErrorCode.OPERATION_ERROR, "SDK 未返回探测响应元数据");
-        when(interfaceInfoLifecycleService.startPublishingWithContext(INTERFACE_INFO_ID)).thenReturn(publishContext);
+        when(publishingLifecycleService.startPublishingWithContext(INTERFACE_INFO_ID)).thenReturn(publishContext);
         org.mockito.Mockito.doThrow(probeException).when(interfacePublishProbeService).probe(publishContext);
 
         assertThatThrownBy(() -> publishingService.publish(INTERFACE_INFO_ID))
                 .isSameAs(probeException);
 
-        verify(interfaceInfoLifecycleService).rollbackPublishing(INTERFACE_INFO_ID);
+        verify(publishingLifecycleService).rollbackPublishing(INTERFACE_INFO_ID);
     }
 
     /**
@@ -127,7 +127,7 @@ class InterfaceInfoPublishingServiceImplTest {
     @DisplayName("未知探测异常转换后回滚发布状态")
     void shouldWrapUnexpectedProbeExceptionAndRollback() {
         InterfacePublishContext publishContext = buildPublishingContext();
-        when(interfaceInfoLifecycleService.startPublishingWithContext(INTERFACE_INFO_ID)).thenReturn(publishContext);
+        when(publishingLifecycleService.startPublishingWithContext(INTERFACE_INFO_ID)).thenReturn(publishContext);
         org.mockito.Mockito.doThrow(new IllegalStateException("连接中断"))
                 .when(interfacePublishProbeService).probe(publishContext);
 
@@ -135,7 +135,7 @@ class InterfaceInfoPublishingServiceImplTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("接口验证失败：连接中断");
 
-        verify(interfaceInfoLifecycleService).rollbackPublishing(INTERFACE_INFO_ID);
+        verify(publishingLifecycleService).rollbackPublishing(INTERFACE_INFO_ID);
     }
 
     /**
