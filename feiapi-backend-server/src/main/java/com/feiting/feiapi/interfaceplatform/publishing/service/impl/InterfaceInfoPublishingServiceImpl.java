@@ -3,9 +3,9 @@ package com.feiting.feiapi.interfaceplatform.publishing.service.impl;
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.interfaceplatform.publishing.model.context.InterfacePublishContext;
-import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
 import com.feiting.feiapi.interfaceplatform.publishing.service.api.InterfaceInfoPublishingService;
 import com.feiting.feiapi.interfaceplatform.publishing.service.api.InterfacePublishProbeService;
+import com.feiting.feiapi.interfaceplatform.publishing.service.api.InterfacePublishingLifecycleService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -17,9 +17,9 @@ import org.springframework.stereotype.Service;
 public class InterfaceInfoPublishingServiceImpl implements InterfaceInfoPublishingService {
 
     /**
-     * 接口生命周期服务。
+     * 接口发布生命周期协作服务。
      */
-    private final InterfaceInfoLifecycleService interfaceInfoLifecycleService;
+    private final InterfacePublishingLifecycleService publishingLifecycleService;
 
     /**
      * 发布探测执行服务。
@@ -29,13 +29,12 @@ public class InterfaceInfoPublishingServiceImpl implements InterfaceInfoPublishi
     /**
      * 创建接口发布编排服务。
      *
-     * @param interfaceInfoLifecycleService 接口生命周期服务
-     * @param feiApiClient                  平台 SDK 客户端
-     * @param sdkMethodRegistry             SDK 方法注册器
+     * @param publishingLifecycleService 接口发布生命周期协作服务
+     * @param interfacePublishProbeService 发布探测执行服务
      */
-    public InterfaceInfoPublishingServiceImpl(InterfaceInfoLifecycleService interfaceInfoLifecycleService,
+    public InterfaceInfoPublishingServiceImpl(InterfacePublishingLifecycleService publishingLifecycleService,
                                               InterfacePublishProbeService interfacePublishProbeService) {
-        this.interfaceInfoLifecycleService = interfaceInfoLifecycleService;
+        this.publishingLifecycleService = publishingLifecycleService;
         this.interfacePublishProbeService = interfacePublishProbeService;
     }
 
@@ -47,10 +46,10 @@ public class InterfaceInfoPublishingServiceImpl implements InterfaceInfoPublishi
      */
     @Override
     public boolean publish(Long interfaceInfoId) {
-        InterfacePublishContext publishContext = interfaceInfoLifecycleService.startPublishingWithContext(interfaceInfoId);
+        InterfacePublishContext publishContext = publishingLifecycleService.startPublishingWithContext(interfaceInfoId);
         try {
             interfacePublishProbeService.probe(publishContext);
-            interfaceInfoLifecycleService.completePublishing(interfaceInfoId);
+            publishingLifecycleService.completePublishing(interfaceInfoId);
             return true;
         } catch (Exception e) {
             rollbackPublishingStatus(interfaceInfoId);
@@ -68,7 +67,7 @@ public class InterfaceInfoPublishingServiceImpl implements InterfaceInfoPublishi
      */
     private void rollbackPublishingStatus(Long interfaceInfoId) {
         try {
-            interfaceInfoLifecycleService.rollbackPublishing(interfaceInfoId);
+            publishingLifecycleService.rollbackPublishing(interfaceInfoId);
         } catch (Exception rollbackException) {
             log.error("接口发布验证失败后回滚状态失败，interfaceInfoId={}", interfaceInfoId, rollbackException);
         }

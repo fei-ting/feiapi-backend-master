@@ -194,6 +194,22 @@ public class InterfacePublishCheckServiceImpl implements InterfacePublishCheckSe
     }
 
     /**
+     * 基于接口 ID 构造发布上下文并校验静态门禁。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     * @return 发布上下文
+     */
+    @Override
+    public InterfacePublishContext buildContextForPublish(Long interfaceInfoId) {
+        validateInterfaceInfoId(interfaceInfoId);
+        InterfaceInfo interfaceInfo = interfaceInfoMapper.selectById(interfaceInfoId);
+        if (interfaceInfo == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+        }
+        return buildContextForPublish(interfaceInfo);
+    }
+
+    /**
      * 基于已锁定的接口快照构造发布上下文并校验静态门禁。
      *
      * @param lockedInterfaceInfo 已在事务中锁定的接口主记录

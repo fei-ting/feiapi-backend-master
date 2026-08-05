@@ -1,11 +1,11 @@
 package com.feiting.feiapi.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.feiting.feiapi.common.*;
 import com.feiting.feiapi.component.InterfaceRequestParamValidator;
 import com.feiting.feiapi.component.UserSessionManager;
+import com.feiting.feiapi.interfaceplatform.facade.service.api.InterfaceInfoApplicationService;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoQueryRequest;
@@ -18,7 +18,6 @@ import com.feiting.feiapi.annotation.AuthCheck;
 import com.feiting.feiapi.constant.CommonConstant;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.service.InterfaceInfoService;
-import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
 import com.feiting.feiapi.interfaceplatform.publishing.service.api.InterfaceInfoPublishingService;
 import com.feiting.feiapi.interfaceplatform.publishing.service.api.InterfacePublishCheckService;
 import com.feiting.feiapi.interfaceplatform.documentation.service.api.InterfaceDocQueryService;
@@ -68,7 +67,7 @@ public class InterfaceInfoController {
     private InterfaceInfoService interfaceInfoService;
 
     @Resource
-    private InterfaceInfoLifecycleService interfaceInfoLifecycleService;
+    private InterfaceInfoApplicationService interfaceInfoApplicationService;
 
     /**
      * 接口发布编排服务。
@@ -134,7 +133,7 @@ public class InterfaceInfoController {
         interfaceInfoService.validInterfaceInfo(interfaceInfo, true);
         User loginUser = getCurrentLoginUser(request);
         interfaceInfo.setUserId(loginUser.getId());
-        long newInterfaceInfoId = interfaceInfoLifecycleService.addInterfaceInfoWithDoc(interfaceInfo);
+        long newInterfaceInfoId = interfaceInfoApplicationService.addInterfaceInfoWithDoc(interfaceInfo);
         return ResultUtils.success(newInterfaceInfoId);
     }
 
@@ -152,7 +151,7 @@ public class InterfaceInfoController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         long id = idRequest.getId();
-        return ResultUtils.success(interfaceInfoLifecycleService.deleteOfflineInterfaceInfo(id));
+        return ResultUtils.success(interfaceInfoApplicationService.deleteOfflineInterfaceInfo(id));
     }
 
     /**
@@ -182,7 +181,7 @@ public class InterfaceInfoController {
         }
         completeUpdateDisplayUrl(interfaceInfo, oldInterfaceInfo);
         normalizeInterfaceInfo(interfaceInfo, false);
-        boolean result = interfaceInfoLifecycleService.updateInterfaceInfoWithDoc(interfaceInfo);
+        boolean result = interfaceInfoApplicationService.updateInterfaceInfoWithDoc(interfaceInfo);
         return ResultUtils.success(result);
     }
 
@@ -316,23 +315,7 @@ public class InterfaceInfoController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
 
-        long id = idRequest.getId();
-
-        //检查接口是否存在
-        InterfaceInfo oldInterfaceInfo = interfaceInfoService.getById(id);
-        if (oldInterfaceInfo == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
-        }
-
-        if (oldInterfaceInfo.getStatus() != InterfaceInfoStatusEnum.ONLINE.getValue()) {
-            throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口仅支持从上线状态下线");
-        }
-
-        updateInterfaceStatus(id,
-                InterfaceInfoStatusEnum.ONLINE.getValue(),
-                InterfaceInfoStatusEnum.OFFLINE.getValue(),
-                "接口下线状态已变化，请刷新后重试");
-        return ResultUtils.success(true);
+        return ResultUtils.success(interfaceInfoApplicationService.offlineInterfaceInfo(idRequest.getId()));
     }
 
 
@@ -615,27 +598,6 @@ public class InterfaceInfoController {
                 return false;
             }
             throw e;
-        }
-    }
-
-    /**
-     * 按期望状态条件更新接口状态。
-     *
-     * @param id             接口 ID
-     * @param expectedStatus 期望状态
-     * @param targetStatus   目标状态
-     * @param errorMessage   更新失败提示
-     */
-    private void updateInterfaceStatus(long id, int expectedStatus, int targetStatus, String errorMessage) {
-        InterfaceInfo interfaceInfo = new InterfaceInfo();
-        interfaceInfo.setId(id);
-        interfaceInfo.setStatus(targetStatus);
-        UpdateWrapper<InterfaceInfo> updateWrapper = new UpdateWrapper<>();
-        updateWrapper.eq("id", id);
-        updateWrapper.eq("status", expectedStatus);
-        boolean result = interfaceInfoService.update(interfaceInfo, updateWrapper);
-        if (!result) {
-            throw new BusinessException(ErrorCode.OPERATION_ERROR, errorMessage);
         }
     }
 
