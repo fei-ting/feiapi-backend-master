@@ -1,4 +1,4 @@
-package com.feiting.feiapi.component;
+package com.feiting.feiapi.interfaceplatform.definition.component;
 
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.exception.BusinessException;

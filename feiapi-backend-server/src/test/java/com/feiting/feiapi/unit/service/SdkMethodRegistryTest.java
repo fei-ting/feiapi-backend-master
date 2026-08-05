@@ -1,6 +1,6 @@
 package com.feiting.feiapi.unit.service;
 
-import com.feiting.feiapi.component.SdkMethodRegistry;
+import com.feiting.feiapi.interfaceplatform.definition.component.SdkMethodRegistry;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapiclientsdk.client.FeiApiClient;
 import org.junit.jupiter.api.BeforeEach;

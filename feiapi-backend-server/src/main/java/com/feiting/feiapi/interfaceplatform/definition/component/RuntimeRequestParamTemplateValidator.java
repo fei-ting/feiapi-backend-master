@@ -1,7 +1,8 @@
-package com.feiting.feiapi.component;
+package com.feiting.feiapi.interfaceplatform.definition.component;
 
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.exception.BusinessException;
+import com.feiting.feiapi.interfaceplatform.definition.model.policy.InterfaceRequestLimits;
 import com.feiting.feiapi.utils.TextSizeUtils;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -23,24 +24,9 @@ import java.util.Set;
 @Component
 public class RuntimeRequestParamTemplateValidator {
 
-    /** 运行时模板作为签名请求体时允许的最大 UTF-8 字节数。 */
-    private static final int MAX_RUNTIME_REQUEST_BODY_BYTES = 65535;
-
     /** 运行时模板允许的类型标记。 */
     private static final Set<String> SUPPORTED_TYPE_MARKERS = Set.of(
             "string", "number", "boolean", "object", "array");
-
-    /** 接口文档边界校验器。 */
-    private final InterfaceDocBoundaryValidator boundaryValidator;
-
-    /**
-     * 创建运行时请求参数模板校验器。
-     *
-     * @param boundaryValidator 接口文档边界校验器
-     */
-    public RuntimeRequestParamTemplateValidator(InterfaceDocBoundaryValidator boundaryValidator) {
-        this.boundaryValidator = boundaryValidator;
-    }
 
     /**
      * 校验运行时请求参数模板。
@@ -51,16 +37,16 @@ public class RuntimeRequestParamTemplateValidator {
         if (StringUtils.isBlank(requestParams)) {
             return;
         }
-        if (TextSizeUtils.utf8ByteLength(requestParams) > MAX_RUNTIME_REQUEST_BODY_BYTES) {
+        if (TextSizeUtils.utf8ByteLength(requestParams) > InterfaceRequestLimits.MAX_RUNTIME_REQUEST_BODY_BYTES) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数模板不能超过 65535 个 UTF-8 字节");
         }
         JsonObject requestParamObject = parseRequestParamObject(requestParams);
-        if (requestParamObject.size() > InterfaceDocBoundaryValidator.MAX_REQUEST_PARAM_COUNT) {
+        if (requestParamObject.size() > InterfaceRequestLimits.MAX_REQUEST_PARAM_COUNT) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数数量不能超过 100");
         }
         requestParamObject.entrySet().forEach(entry -> {
             validateParamName(entry.getKey());
-            boundaryValidator.validateRuntimeExampleValue(resolveTemplateExampleValue(entry.getValue()));
+            validateRuntimeExampleValue(resolveTemplateExampleValue(entry.getValue()));
         });
     }
 
@@ -99,7 +85,29 @@ public class RuntimeRequestParamTemplateValidator {
             String escapedName = new JsonPrimitive(name).toString();
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数名称不能包含首尾空白：" + escapedName);
         }
-        boundaryValidator.validateRuntimeParamName(name);
+        validateRuntimeParamName(name);
+    }
+
+    /**
+     * 校验自动生成的运行时参数示例值长度。
+     *
+     * @param exampleValue 示例值
+     */
+    private void validateRuntimeExampleValue(String exampleValue) {
+        if (TextSizeUtils.unicodeLengthAfterStrip(exampleValue) > InterfaceRequestLimits.MAX_PARAM_EXAMPLE_VALUE_LENGTH) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数示例值长度不能超过 1024 个字符");
+        }
+    }
+
+    /**
+     * 校验运行时参数名称长度。
+     *
+     * @param name 参数名称
+     */
+    private void validateRuntimeParamName(String name) {
+        if (TextSizeUtils.unicodeLengthAfterStrip(name) > InterfaceRequestLimits.MAX_PARAM_NAME_LENGTH) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数名称长度不能超过 128 个字符");
+        }
     }
 
     /**

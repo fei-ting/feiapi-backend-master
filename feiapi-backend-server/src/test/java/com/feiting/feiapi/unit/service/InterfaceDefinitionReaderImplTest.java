@@ -1,7 +1,7 @@
 package com.feiting.feiapi.unit.service;
 
 import com.feiting.feiapi.common.ErrorCode;
-import com.feiting.feiapi.component.SdkMethodRegistry;
+import com.feiting.feiapi.interfaceplatform.definition.component.SdkMethodRegistry;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.interfaceplatform.definition.model.snapshot.InterfaceDefinitionSnapshot;
 import com.feiting.feiapi.interfaceplatform.definition.model.snapshot.RuntimeRequestTemplate;

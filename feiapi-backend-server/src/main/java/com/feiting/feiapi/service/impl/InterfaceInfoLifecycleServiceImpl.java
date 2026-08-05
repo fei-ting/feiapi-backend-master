@@ -1,8 +1,9 @@
 package com.feiting.feiapi.service.impl;
 
 import com.feiting.feiapi.common.ErrorCode;
-import com.feiting.feiapi.component.SdkMethodRegistry;
 import com.feiting.feiapi.exception.BusinessException;
+import com.feiting.feiapi.interfaceplatform.definition.component.InterfaceDefinitionChangeDetector;
+import com.feiting.feiapi.interfaceplatform.definition.component.SdkMethodRegistry;
 import com.feiting.feiapi.mapper.InterfaceInfoMapper;
 import com.feiting.feiapi.model.entity.InterfaceDoc;
 import com.feiting.feiapi.model.entity.InterfaceDocErrorCode;
@@ -18,7 +19,6 @@ import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
 import java.util.Date;
 import java.util.Objects;
-import java.util.stream.Stream;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -65,6 +65,11 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
     private final SdkMethodRegistry sdkMethodRegistry;
 
     /**
+     * 接口定义变更检测器。
+     */
+    private final InterfaceDefinitionChangeDetector definitionChangeDetector;
+
+    /**
      * 发布前静态检查服务。
      */
     private final InterfacePublishCheckService interfacePublishCheckService;
@@ -78,6 +83,7 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
      * @param interfaceDocParamService     接口文档参数服务
      * @param interfaceDocErrorCodeService 接口文档错误码服务
      * @param sdkMethodRegistry            SDK 方法注册器
+     * @param definitionChangeDetector     接口定义变更检测器
      */
     public InterfaceInfoLifecycleServiceImpl(InterfaceInfoService interfaceInfoService,
                                              InterfaceInfoMapper interfaceInfoMapper,
@@ -85,6 +91,7 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
                                              InterfaceDocParamService interfaceDocParamService,
                                              InterfaceDocErrorCodeService interfaceDocErrorCodeService,
                                              SdkMethodRegistry sdkMethodRegistry,
+                                             InterfaceDefinitionChangeDetector definitionChangeDetector,
                                              InterfacePublishCheckService interfacePublishCheckService) {
         this.interfaceInfoService = interfaceInfoService;
         this.interfaceInfoMapper = interfaceInfoMapper;
@@ -92,6 +99,7 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
         this.interfaceDocParamService = interfaceDocParamService;
         this.interfaceDocErrorCodeService = interfaceDocErrorCodeService;
         this.sdkMethodRegistry = sdkMethodRegistry;
+        this.definitionChangeDetector = definitionChangeDetector;
         this.interfacePublishCheckService = interfacePublishCheckService;
     }
 
@@ -141,8 +149,8 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
         if (latestInterfaceInfo == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
-        boolean controlledConfigChanged = controlledConfigChanged(oldInterfaceInfo, latestInterfaceInfo);
-        if (requestDocTemplateChanged(oldInterfaceInfo, latestInterfaceInfo)) {
+        boolean controlledConfigChanged = definitionChangeDetector.controlledConfigChanged(oldInterfaceInfo, latestInterfaceInfo);
+        if (definitionChangeDetector.requestDocTemplateChanged(oldInterfaceInfo, latestInterfaceInfo)) {
             interfaceDocService.syncRequestDocFromInterfaceInfo(latestInterfaceInfo);
         }
         if (controlledConfigChanged) {
@@ -343,39 +351,4 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
         throw new BusinessException(ErrorCode.OPERATION_ERROR, "接口状态异常，不能删除");
     }
 
-    /**
-     * 判断运行时请求参数模板是否变化。
-     * 方法和请求参数变化在此处负责触发请求文档对账同步，同时也属于受控配置变化并触发文档降级。
-     *
-     * @param oldInterfaceInfo    更新前接口信息
-     * @param latestInterfaceInfo 更新后接口信息
-     * @return 请求文档模板是否变化
-     */
-    private boolean requestDocTemplateChanged(InterfaceInfo oldInterfaceInfo, InterfaceInfo latestInterfaceInfo) {
-        return !Objects.equals(oldInterfaceInfo.getRequestParams(), latestInterfaceInfo.getRequestParams())
-                || !Objects.equals(oldInterfaceInfo.getMethod(), latestInterfaceInfo.getMethod());
-    }
-
-    /**
-     * 判断管理员维护的受控接口配置是否发生有效变化。
-     * 方法和请求参数与模板变化判断有意重叠，此处只负责决定是否将已维护文档降为草稿。
-     *
-     * @param oldInterfaceInfo    更新前接口信息
-     * @param latestInterfaceInfo 更新后的数据库最终值
-     * @return 是否发生有效变化
-     */
-    private boolean controlledConfigChanged(InterfaceInfo oldInterfaceInfo,
-                                            InterfaceInfo latestInterfaceInfo) {
-        return Stream.of(
-                        !Objects.equals(oldInterfaceInfo.getName(), latestInterfaceInfo.getName()),
-                        !Objects.equals(oldInterfaceInfo.getDescription(), latestInterfaceInfo.getDescription()),
-                        !Objects.equals(oldInterfaceInfo.getMethod(), latestInterfaceInfo.getMethod()),
-                        !Objects.equals(oldInterfaceInfo.getPath(), latestInterfaceInfo.getPath()),
-                        !Objects.equals(oldInterfaceInfo.getTargetHost(), latestInterfaceInfo.getTargetHost()),
-                        !Objects.equals(oldInterfaceInfo.getUrl(), latestInterfaceInfo.getUrl()),
-                        !Objects.equals(oldInterfaceInfo.getQuotaType(), latestInterfaceInfo.getQuotaType()),
-                        !Objects.equals(oldInterfaceInfo.getSdkMethodName(), latestInterfaceInfo.getSdkMethodName()),
-                        !Objects.equals(oldInterfaceInfo.getRequestParams(), latestInterfaceInfo.getRequestParams()))
-                .anyMatch(Boolean.TRUE::equals);
-    }
 }

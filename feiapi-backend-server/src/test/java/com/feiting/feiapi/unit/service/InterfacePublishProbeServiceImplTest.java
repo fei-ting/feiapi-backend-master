@@ -1,7 +1,7 @@
 package com.feiting.feiapi.unit.service;
 
 import com.feiting.feiapi.component.InterfaceProbeResponseValidator;
-import com.feiting.feiapi.component.SdkMethodRegistry;
+import com.feiting.feiapi.interfaceplatform.definition.component.SdkMethodRegistry;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.exception.InterfacePublishProbeException;
 import com.feiting.feiapi.model.enums.PublishProbeFailureStageEnum;

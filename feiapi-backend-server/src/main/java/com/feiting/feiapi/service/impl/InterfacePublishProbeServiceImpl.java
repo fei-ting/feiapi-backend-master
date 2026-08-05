@@ -5,7 +5,7 @@ import com.feiting.feiapi.exception.InterfacePublishProbeException;
 import com.feiting.feiapi.model.enums.PublishProbeFailureStageEnum;
 import com.feiting.feiapi.model.publish.InterfacePublishContext;
 import com.feiting.feiapi.service.InterfacePublishProbeService;
-import com.feiting.feiapi.component.SdkMethodRegistry;
+import com.feiting.feiapi.interfaceplatform.definition.component.SdkMethodRegistry;
 import com.feiting.feiapiclientsdk.client.FeiApiClient;
 import com.feiting.feiapiclientsdk.exception.ProbeResponseTooLargeException;
 import com.feiting.feiapiclientsdk.model.ProbeInvocationResult;

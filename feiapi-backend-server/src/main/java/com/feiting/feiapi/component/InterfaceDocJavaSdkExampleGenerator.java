@@ -2,6 +2,7 @@ package com.feiting.feiapi.component;
 
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.exception.BusinessException;
+import com.feiting.feiapi.interfaceplatform.definition.component.SdkMethodRegistry;
 import com.feiting.feiapi.model.enums.InterfaceDocParamSceneEnum;
 import com.feiting.feiapi.model.vo.InterfaceDocParamVO;
 import com.feiting.feiapiclientsdk.annotation.SdkInvoke;

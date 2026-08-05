@@ -6,7 +6,7 @@ import com.feiting.feiapi.component.InterfaceDocContentSecurityValidator;
 import com.feiting.feiapi.component.InterfaceDocBoundaryValidator;
 import com.feiting.feiapi.component.InterfaceDocCurlExampleGenerator;
 import com.feiting.feiapi.component.InterfaceDocJavaSdkExampleGenerator;
-import com.feiting.feiapi.component.RuntimeRequestParamTemplateValidator;
+import com.feiting.feiapi.interfaceplatform.definition.component.RuntimeRequestParamTemplateValidator;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.mapper.InterfaceDocMapper;
 import com.feiting.feiapi.mapper.InterfaceInfoMapper;

@@ -108,7 +108,7 @@ public class InterfaceDocBoundaryValidator {
     /**
      * 校验请求参数、响应字段及合计数量。
      * <p>
-     * 此方法仅用于运行时参数同步场景（{@link RuntimeRequestParamTemplateValidator}），
+     * 此方法仅用于运行时参数同步场景，
      * 该场景只涉及请求参数，不涉及错误码，因此 {@code errorCodeCount} 固定传 0。
      * 聚合保存和发布前校验应使用 {@link #validateSaveRequest} 或 {@link #validatePersistedDoc}，
      * 它们会同时校验错误码数量。

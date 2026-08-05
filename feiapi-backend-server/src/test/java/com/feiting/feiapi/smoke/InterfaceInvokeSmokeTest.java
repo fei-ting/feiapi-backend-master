@@ -3,7 +3,7 @@ package com.feiting.feiapi.smoke;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.feiting.feiapi.common.ErrorCode;
-import com.feiting.feiapi.component.SdkMethodRegistry;
+import com.feiting.feiapi.interfaceplatform.definition.component.SdkMethodRegistry;
 import com.feiting.feiapi.exception.InterfacePublishProbeException;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
