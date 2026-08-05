@@ -1,7 +1,7 @@
 package com.feiting.feiapi.service;
 
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
-import com.feiting.feiapi.model.publish.InterfacePublishContext;
+import com.feiting.feiapi.interfaceplatform.publishing.model.context.InterfacePublishContext;
 
 /**
  * 接口信息生命周期服务。

@@ -2,10 +2,10 @@ package com.feiting.feiapi.unit.service;
 
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.exception.BusinessException;
-import com.feiting.feiapi.model.publish.InterfacePublishContext;
+import com.feiting.feiapi.interfaceplatform.publishing.model.context.InterfacePublishContext;
 import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
-import com.feiting.feiapi.service.InterfacePublishProbeService;
-import com.feiting.feiapi.service.impl.InterfaceInfoPublishingServiceImpl;
+import com.feiting.feiapi.interfaceplatform.publishing.service.api.InterfacePublishProbeService;
+import com.feiting.feiapi.interfaceplatform.publishing.service.impl.InterfaceInfoPublishingServiceImpl;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

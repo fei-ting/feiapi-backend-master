@@ -1,10 +1,10 @@
-package com.feiting.feiapi.component;
+package com.feiting.feiapi.interfaceplatform.publishing.component;
 
-import com.feiting.feiapi.exception.InterfacePublishProbeException;
-import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocParam;
+import com.feiting.feiapi.interfaceplatform.publishing.exception.InterfacePublishProbeException;
 import com.feiting.feiapi.interfaceplatform.documentation.model.enums.InterfaceDocParamSceneEnum;
-import com.feiting.feiapi.model.enums.PublishProbeFailureStageEnum;
-import com.feiting.feiapi.model.publish.InterfacePublishContext;
+import com.feiting.feiapi.interfaceplatform.documentation.model.snapshot.InterfaceDocParamSnapshot;
+import com.feiting.feiapi.interfaceplatform.publishing.model.enums.PublishProbeFailureStageEnum;
+import com.feiting.feiapi.interfaceplatform.publishing.model.context.InterfacePublishContext;
 import com.feiting.feiapi.utils.TextSizeUtils;
 import com.feiting.feiapiclientsdk.annotation.SdkInvoke;
 import com.google.gson.JsonElement;
@@ -52,11 +52,11 @@ public class InterfaceProbeRequestBuilder {
             return "";
         }
         JsonObject runtimeTemplate = parseRuntimeTemplate(publishContext);
-        Map<String, InterfaceDocParam> requestParamMap = requestParamMap(publishContext.getDocParams());
+        Map<String, InterfaceDocParamSnapshot> requestParamMap = requestParamMap(publishContext.getDocParams());
         JsonObject probeRequest = new JsonObject();
         runtimeTemplate.entrySet().forEach(entry -> {
             String paramName = entry.getKey();
-            InterfaceDocParam docParam = requestParamMap.get(paramName);
+            InterfaceDocParamSnapshot docParam = requestParamMap.get(paramName);
             if (docParam == null) {
                 throw probePrepareException("运行时参数缺少结构化文档：" + paramName);
             }
@@ -94,13 +94,13 @@ public class InterfaceProbeRequestBuilder {
      * @param docParams 文档参数
      * @return 请求参数映射
      */
-    private Map<String, InterfaceDocParam> requestParamMap(List<InterfaceDocParam> docParams) {
+    private Map<String, InterfaceDocParamSnapshot> requestParamMap(List<InterfaceDocParamSnapshot> docParams) {
         return docParams.stream()
                 .filter(Objects::nonNull)
                 .filter(param -> InterfaceDocParamSceneEnum.QUERY.getValue().equals(param.getParamScene())
                         || InterfaceDocParamSceneEnum.BODY.getValue().equals(param.getParamScene()))
                 .sorted(Comparator.comparing(param -> Objects.requireNonNullElse(param.getSortOrder(), Integer.MAX_VALUE)))
-                .collect(Collectors.toMap(InterfaceDocParam::getName, param -> param, (first, second) -> first,
+                .collect(Collectors.toMap(InterfaceDocParamSnapshot::getName, param -> param, (first, second) -> first,
                         LinkedHashMap::new));
     }
 
@@ -112,7 +112,7 @@ public class InterfaceProbeRequestBuilder {
      * @param templateValue 模板值
      * @return 标准化 JSON 值
      */
-    private JsonElement normalizeValue(String paramName, InterfaceDocParam docParam, JsonElement templateValue) {
+    private JsonElement normalizeValue(String paramName, InterfaceDocParamSnapshot docParam, JsonElement templateValue) {
         String type = StringUtils.lowerCase(StringUtils.trimToEmpty(docParam.getType()), Locale.ROOT);
         String rawValue = StringUtils.trimToNull(docParam.getExampleValue());
         boolean usingTemplateValue = rawValue == null;

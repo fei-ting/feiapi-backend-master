@@ -1,11 +1,11 @@
-package com.feiting.feiapi.service.impl;
+package com.feiting.feiapi.interfaceplatform.publishing.service.impl;
 
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.exception.BusinessException;
-import com.feiting.feiapi.model.publish.InterfacePublishContext;
+import com.feiting.feiapi.interfaceplatform.publishing.model.context.InterfacePublishContext;
 import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
-import com.feiting.feiapi.service.InterfaceInfoPublishingService;
-import com.feiting.feiapi.service.InterfacePublishProbeService;
+import com.feiting.feiapi.interfaceplatform.publishing.service.api.InterfaceInfoPublishingService;
+import com.feiting.feiapi.interfaceplatform.publishing.service.api.InterfacePublishProbeService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 

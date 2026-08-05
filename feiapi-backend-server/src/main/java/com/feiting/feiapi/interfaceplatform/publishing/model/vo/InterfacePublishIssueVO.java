@@ -1,4 +1,4 @@
-package com.feiting.feiapi.model.vo;
+package com.feiting.feiapi.interfaceplatform.publishing.model.vo;
 
 import lombok.Data;
 

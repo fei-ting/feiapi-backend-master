@@ -1,22 +1,14 @@
 package com.feiting.feiapi.exception;
 
-import com.feiting.feiapi.common.ErrorCode;
-import com.feiting.feiapi.model.enums.PublishProbeFailureStageEnum;
+import com.feiting.feiapi.interfaceplatform.publishing.model.enums.PublishProbeFailureStageEnum;
 
 /**
- * 接口发布探测失败异常。
+ * 接口发布探测失败异常兼容类型。
+ *
+ * <p>实际异常已迁移至发布治理域，本类型保留给历史测试和调用方直接引用。</p>
  */
-public class InterfacePublishProbeException extends BusinessException {
-
-    /**
-     * 探测失败阶段。
-     */
-    private final PublishProbeFailureStageEnum stage;
-
-    /**
-     * 安全公开失败原因。
-     */
-    private final String reason;
+public class InterfacePublishProbeException
+        extends com.feiting.feiapi.interfaceplatform.publishing.exception.InterfacePublishProbeException {
 
     /**
      * 创建发布探测失败异常。
@@ -25,26 +17,6 @@ public class InterfacePublishProbeException extends BusinessException {
      * @param reason 安全公开原因
      */
     public InterfacePublishProbeException(PublishProbeFailureStageEnum stage, String reason) {
-        super(ErrorCode.PUBLISH_PROBE_FAILED, "发布探测失败[" + stage.name() + "]：" + reason);
-        this.stage = stage;
-        this.reason = reason;
-    }
-
-    /**
-     * 获取探测失败阶段。
-     *
-     * @return 探测失败阶段
-     */
-    public PublishProbeFailureStageEnum getStage() {
-        return stage;
-    }
-
-    /**
-     * 获取安全公开失败原因。
-     *
-     * @return 安全公开失败原因
-     */
-    public String getReason() {
-        return reason;
+        super(stage, reason);
     }
 }
