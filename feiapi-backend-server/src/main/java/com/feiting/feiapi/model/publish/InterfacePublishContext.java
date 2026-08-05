@@ -1,8 +1,8 @@
 package com.feiting.feiapi.model.publish;
 
-import com.feiting.feiapi.model.entity.InterfaceDoc;
-import com.feiting.feiapi.model.entity.InterfaceDocErrorCode;
-import com.feiting.feiapi.model.entity.InterfaceDocParam;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDoc;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocErrorCode;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocParam;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import lombok.Data;
 

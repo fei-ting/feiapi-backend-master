@@ -1,8 +1,8 @@
 package com.feiting.feiapi.unit.component;
 
-import com.feiting.feiapi.component.InterfaceDocContentSecurityValidator;
+import com.feiting.feiapi.interfaceplatform.documentation.component.InterfaceDocContentSecurityValidator;
 import com.feiting.feiapi.exception.BusinessException;
-import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocSaveRequest;
+import com.feiting.feiapi.interfaceplatform.documentation.model.dto.interfaceDoc.InterfaceDocSaveRequest;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import org.junit.jupiter.api.DisplayName;

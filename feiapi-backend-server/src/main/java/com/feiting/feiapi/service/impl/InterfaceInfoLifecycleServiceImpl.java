@@ -4,14 +4,10 @@ import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.interfaceplatform.definition.component.InterfaceDefinitionChangeDetector;
 import com.feiting.feiapi.interfaceplatform.definition.component.SdkMethodRegistry;
+import com.feiting.feiapi.interfaceplatform.definition.model.snapshot.InterfaceDefinitionSnapshot;
+import com.feiting.feiapi.interfaceplatform.documentation.service.api.InterfaceDocLifecycleService;
 import com.feiting.feiapi.mapper.InterfaceInfoMapper;
-import com.feiting.feiapi.model.entity.InterfaceDoc;
-import com.feiting.feiapi.model.entity.InterfaceDocErrorCode;
-import com.feiting.feiapi.model.entity.InterfaceDocParam;
 import com.feiting.feiapi.model.publish.InterfacePublishContext;
-import com.feiting.feiapi.service.InterfaceDocErrorCodeService;
-import com.feiting.feiapi.service.InterfaceDocParamService;
-import com.feiting.feiapi.service.InterfaceDocService;
 import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.InterfacePublishCheckService;
@@ -47,17 +43,7 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
     /**
      * 接口文档服务。
      */
-    private final InterfaceDocService interfaceDocService;
-
-    /**
-     * 接口文档参数服务。
-     */
-    private final InterfaceDocParamService interfaceDocParamService;
-
-    /**
-     * 接口文档错误码服务。
-     */
-    private final InterfaceDocErrorCodeService interfaceDocErrorCodeService;
+    private final InterfaceDocLifecycleService interfaceDocLifecycleService;
 
     /**
      * SDK 方法注册器。
@@ -79,25 +65,19 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
      *
      * @param interfaceInfoService 接口信息服务
      * @param interfaceInfoMapper  接口信息数据访问对象
-     * @param interfaceDocService          接口文档服务
-     * @param interfaceDocParamService     接口文档参数服务
-     * @param interfaceDocErrorCodeService 接口文档错误码服务
+     * @param interfaceDocLifecycleService 文档生命周期协作服务
      * @param sdkMethodRegistry            SDK 方法注册器
      * @param definitionChangeDetector     接口定义变更检测器
      */
     public InterfaceInfoLifecycleServiceImpl(InterfaceInfoService interfaceInfoService,
                                              InterfaceInfoMapper interfaceInfoMapper,
-                                             InterfaceDocService interfaceDocService,
-                                             InterfaceDocParamService interfaceDocParamService,
-                                             InterfaceDocErrorCodeService interfaceDocErrorCodeService,
+                                             InterfaceDocLifecycleService interfaceDocLifecycleService,
                                              SdkMethodRegistry sdkMethodRegistry,
                                              InterfaceDefinitionChangeDetector definitionChangeDetector,
                                              InterfacePublishCheckService interfacePublishCheckService) {
         this.interfaceInfoService = interfaceInfoService;
         this.interfaceInfoMapper = interfaceInfoMapper;
-        this.interfaceDocService = interfaceDocService;
-        this.interfaceDocParamService = interfaceDocParamService;
-        this.interfaceDocErrorCodeService = interfaceDocErrorCodeService;
+        this.interfaceDocLifecycleService = interfaceDocLifecycleService;
         this.sdkMethodRegistry = sdkMethodRegistry;
         this.definitionChangeDetector = definitionChangeDetector;
         this.interfacePublishCheckService = interfacePublishCheckService;
@@ -116,7 +96,7 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
         if (!result) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR);
         }
-        interfaceDocService.syncRequestDocFromInterfaceInfo(interfaceInfo);
+        interfaceDocLifecycleService.initializeFromDefinition(toDefinitionSnapshot(interfaceInfo));
         return interfaceInfo.getId();
     }
 
@@ -151,10 +131,10 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
         }
         boolean controlledConfigChanged = definitionChangeDetector.controlledConfigChanged(oldInterfaceInfo, latestInterfaceInfo);
         if (definitionChangeDetector.requestDocTemplateChanged(oldInterfaceInfo, latestInterfaceInfo)) {
-            interfaceDocService.syncRequestDocFromInterfaceInfo(latestInterfaceInfo);
+            interfaceDocLifecycleService.synchronizeRequestParams(toDefinitionSnapshot(latestInterfaceInfo));
         }
         if (controlledConfigChanged) {
-            interfaceDocService.downgradeToDraft(latestInterfaceInfo.getId());
+            interfaceDocLifecycleService.downgradeToDraft(latestInterfaceInfo.getId());
         }
         return true;
     }
@@ -174,15 +154,7 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
         assertDeletableOffline(interfaceInfo);
-        interfaceDocParamService.lambdaUpdate()
-                .eq(InterfaceDocParam::getInterfaceInfoId, interfaceInfoId)
-                .remove();
-        interfaceDocErrorCodeService.lambdaUpdate()
-                .eq(InterfaceDocErrorCode::getInterfaceInfoId, interfaceInfoId)
-                .remove();
-        interfaceDocService.lambdaUpdate()
-                .eq(InterfaceDoc::getInterfaceInfoId, interfaceInfoId)
-                .remove();
+        interfaceDocLifecycleService.deleteAllByInterfaceInfoId(interfaceInfoId);
         int deletedRows = interfaceInfoMapper.logicDeleteOfflineById(
                 interfaceInfoId,
                 InterfaceInfoStatusEnum.OFFLINE.getValue()
@@ -308,6 +280,33 @@ public class InterfaceInfoLifecycleServiceImpl implements InterfaceInfoLifecycle
                 InterfaceInfoStatusEnum.OFFLINE.getValue(),
                 "接口发布验证状态恢复失败，请刷新后重试");
         interfaceInfo.setStatus(InterfaceInfoStatusEnum.OFFLINE.getValue());
+    }
+
+    /**
+     * 将接口信息转换为文档域使用的定义快照。
+     *
+     * @param interfaceInfo 接口信息
+     * @return 接口定义快照
+     */
+    private InterfaceDefinitionSnapshot toDefinitionSnapshot(InterfaceInfo interfaceInfo) {
+        return InterfaceDefinitionSnapshot.builder()
+                .interfaceInfoId(interfaceInfo.getId())
+                .name(interfaceInfo.getName())
+                .sdkMethodName(interfaceInfo.getSdkMethodName())
+                .description(interfaceInfo.getDescription())
+                .url(interfaceInfo.getUrl())
+                .path(interfaceInfo.getPath())
+                .targetHost(interfaceInfo.getTargetHost())
+                .requestParams(interfaceInfo.getRequestParams())
+                .requestHeader(interfaceInfo.getRequestHeader())
+                .responseHeader(interfaceInfo.getResponseHeader())
+                .status(interfaceInfo.getStatus())
+                .method(interfaceInfo.getMethod())
+                .quotaType(interfaceInfo.getQuotaType())
+                .userId(interfaceInfo.getUserId())
+                .createTime(interfaceInfo.getCreateTime())
+                .updateTime(interfaceInfo.getUpdateTime())
+                .build();
     }
 
     /**

@@ -13,7 +13,10 @@ import org.springframework.context.annotation.Configuration;
  * @author feiting
  */
 @Configuration
-@MapperScan("com.feiting.feiapi.mapper")
+@MapperScan({
+        "com.feiting.feiapi.mapper",
+        "com.feiting.feiapi.interfaceplatform.documentation.mapper"
+})
 public class MyBatisPlusConfig {
 
     /**

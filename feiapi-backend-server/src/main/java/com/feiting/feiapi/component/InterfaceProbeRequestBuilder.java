@@ -1,8 +1,8 @@
 package com.feiting.feiapi.component;
 
 import com.feiting.feiapi.exception.InterfacePublishProbeException;
-import com.feiting.feiapi.model.entity.InterfaceDocParam;
-import com.feiting.feiapi.model.enums.InterfaceDocParamSceneEnum;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocParam;
+import com.feiting.feiapi.interfaceplatform.documentation.model.enums.InterfaceDocParamSceneEnum;
 import com.feiting.feiapi.model.enums.PublishProbeFailureStageEnum;
 import com.feiting.feiapi.model.publish.InterfacePublishContext;
 import com.feiting.feiapi.utils.TextSizeUtils;

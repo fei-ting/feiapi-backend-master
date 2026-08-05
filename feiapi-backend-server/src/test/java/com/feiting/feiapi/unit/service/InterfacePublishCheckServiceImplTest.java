@@ -1,12 +1,12 @@
 package com.feiting.feiapi.unit.service;
 
-import com.feiting.feiapi.component.InterfaceDocBoundaryValidator;
-import com.feiting.feiapi.component.InterfaceDocContentSecurityValidator;
+import com.feiting.feiapi.interfaceplatform.documentation.component.InterfaceDocBoundaryValidator;
+import com.feiting.feiapi.interfaceplatform.documentation.component.InterfaceDocContentSecurityValidator;
 import com.feiting.feiapi.interfaceplatform.definition.component.RuntimeRequestParamTemplateValidator;
-import com.feiting.feiapi.model.entity.InterfaceDoc;
-import com.feiting.feiapi.model.entity.InterfaceDocParam;
-import com.feiting.feiapi.model.enums.InterfaceDocParamSceneEnum;
-import com.feiting.feiapi.model.enums.InterfaceDocStatusEnum;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDoc;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocParam;
+import com.feiting.feiapi.interfaceplatform.documentation.model.enums.InterfaceDocParamSceneEnum;
+import com.feiting.feiapi.interfaceplatform.documentation.model.enums.InterfaceDocStatusEnum;
 import com.feiting.feiapi.model.publish.InterfacePublishContext;
 import com.feiting.feiapi.model.vo.InterfacePublishIssueVO;
 import com.feiting.feiapi.service.impl.InterfacePublishCheckServiceImpl;
@@ -39,7 +39,7 @@ class InterfacePublishCheckServiceImplTest {
      */
     private final InterfacePublishCheckServiceImpl checkService = new InterfacePublishCheckServiceImpl(
             null, null, null, null, null, null, null, null,
-            null, null, null, null, null, null, null, null);
+            null, null, null, null, null, null);
 
     /**
      * 带真实边界、内容安全和运行时模板校验器的发布检查服务。
@@ -415,7 +415,7 @@ class InterfacePublishCheckServiceImplTest {
         RuntimeRequestParamTemplateValidator runtimeValidator =
                 new RuntimeRequestParamTemplateValidator();
         return new InterfacePublishCheckServiceImpl(
-                null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null,
                 null, new com.feiting.feiapi.config.InterfaceTargetHostProperties(),
                 runtimeValidator, boundaryValidator, contentSecurityValidator,
                 null, null, null);
@@ -441,7 +441,7 @@ class InterfacePublishCheckServiceImplTest {
     private InterfacePublishCheckServiceImpl buildCredentialCheckService(FeiapiClientProperties clientProperties,
                                                                           UserService userService) {
         return new InterfacePublishCheckServiceImpl(
-                null, null, null, null, null, null, userService, null,
+                null, null, null, null, userService, null,
                 clientProperties, null, null, null, null, null, null, null);
     }
 
