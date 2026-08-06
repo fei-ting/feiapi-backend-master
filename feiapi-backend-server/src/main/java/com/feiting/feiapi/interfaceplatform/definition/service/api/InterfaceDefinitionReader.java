@@ -4,6 +4,8 @@ import com.feiting.feiapi.interfaceplatform.definition.model.snapshot.InterfaceD
 import com.feiting.feiapi.interfaceplatform.definition.model.snapshot.RuntimeRequestTemplate;
 import com.feiting.feiapi.interfaceplatform.definition.model.snapshot.SdkContractSnapshot;
 
+import java.util.List;
+
 /**
  * 接口定义域只读服务。
  *
@@ -34,4 +36,11 @@ public interface InterfaceDefinitionReader {
      * @return SDK 方法契约快照
      */
     SdkContractSnapshot getSdkContract(String sdkMethodName);
+
+    /**
+     * 获取全部已注册 SDK 方法契约快照。
+     *
+     * @return 按 SDK 方法名排序的契约快照列表
+     */
+    List<SdkContractSnapshot> listSdkContracts();
 }

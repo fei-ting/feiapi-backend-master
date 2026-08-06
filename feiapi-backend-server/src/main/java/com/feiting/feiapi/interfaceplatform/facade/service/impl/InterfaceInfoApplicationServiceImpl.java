@@ -3,6 +3,7 @@ package com.feiting.feiapi.interfaceplatform.facade.service.impl;
 import com.feiting.feiapi.common.ErrorCode;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.interfaceplatform.definition.model.snapshot.InterfaceDefinitionSnapshot;
+import com.feiting.feiapi.interfaceplatform.definition.model.snapshot.SdkContractSnapshot;
 import com.feiting.feiapi.interfaceplatform.definition.service.api.InterfaceDefinitionChangeService;
 import com.feiting.feiapi.interfaceplatform.definition.service.api.InterfaceDefinitionCommandService;
 import com.feiting.feiapi.interfaceplatform.definition.service.api.InterfaceDefinitionReader;
@@ -75,9 +76,25 @@ public class InterfaceInfoApplicationServiceImpl implements InterfaceInfoApplica
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long addInterfaceInfoWithDoc(InterfaceInfo interfaceInfo) {
+        validateRegisteredSdkMethod(interfaceInfo);
         Long interfaceInfoId = definitionCommandService.save(interfaceInfo);
         docLifecycleService.initializeFromDefinition(definitionReader.getRequiredSnapshot(interfaceInfoId));
         return interfaceInfoId;
+    }
+
+    /**
+     * 校验新增接口绑定的 SDK 方法已经注册。
+     *
+     * @param interfaceInfo 待新增接口信息
+     */
+    private void validateRegisteredSdkMethod(InterfaceInfo interfaceInfo) {
+        if (interfaceInfo == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        SdkContractSnapshot sdkContract = definitionReader.getSdkContract(interfaceInfo.getSdkMethodName());
+        if (sdkContract == null || !sdkContract.isSupported()) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "SDK 方法不存在或未注册");
+        }
     }
 
     /**

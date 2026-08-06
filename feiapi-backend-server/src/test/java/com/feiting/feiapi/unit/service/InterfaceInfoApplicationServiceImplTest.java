@@ -1,6 +1,7 @@
 package com.feiting.feiapi.unit.service;
 
 import com.feiting.feiapi.interfaceplatform.definition.model.snapshot.InterfaceDefinitionSnapshot;
+import com.feiting.feiapi.interfaceplatform.definition.model.snapshot.SdkContractSnapshot;
 import com.feiting.feiapi.interfaceplatform.definition.service.api.InterfaceDefinitionChangeService;
 import com.feiting.feiapi.interfaceplatform.definition.service.api.InterfaceDefinitionCommandService;
 import com.feiting.feiapi.interfaceplatform.definition.service.api.InterfaceDefinitionReader;
@@ -16,8 +17,11 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
@@ -73,7 +77,9 @@ class InterfaceInfoApplicationServiceImplTest {
     @DisplayName("新增接口后初始化文档")
     void shouldInitializeDocAfterAddingInterface() {
         InterfaceInfo interfaceInfo = new InterfaceInfo();
+        interfaceInfo.setSdkMethodName("getLoveWords");
         InterfaceDefinitionSnapshot snapshot = buildDefinitionSnapshot("POST", "{}");
+        when(definitionReader.getSdkContract("getLoveWords")).thenReturn(supportedSdkContract("getLoveWords"));
         when(definitionCommandService.save(interfaceInfo)).thenReturn(INTERFACE_INFO_ID);
         when(definitionReader.getRequiredSnapshot(INTERFACE_INFO_ID)).thenReturn(snapshot);
 
@@ -81,9 +87,28 @@ class InterfaceInfoApplicationServiceImplTest {
 
         assertThat(result).isEqualTo(INTERFACE_INFO_ID);
         InOrder inOrder = inOrder(definitionCommandService, definitionReader, docLifecycleService);
+        inOrder.verify(definitionReader).getSdkContract("getLoveWords");
         inOrder.verify(definitionCommandService).save(interfaceInfo);
         inOrder.verify(definitionReader).getRequiredSnapshot(INTERFACE_INFO_ID);
         inOrder.verify(docLifecycleService).initializeFromDefinition(snapshot);
+    }
+
+    /**
+     * 新增接口绑定未注册 SDK 方法时应在保存前拒绝。
+     */
+    @Test
+    @DisplayName("未注册 SDK 方法禁止新增接口")
+    void shouldRejectUnregisteredSdkMethodBeforeSaving() {
+        InterfaceInfo interfaceInfo = new InterfaceInfo();
+        interfaceInfo.setSdkMethodName("missingMethod");
+        when(definitionReader.getSdkContract("missingMethod")).thenReturn(unsupportedSdkContract("missingMethod"));
+
+        assertThatThrownBy(() -> applicationService.addInterfaceInfoWithDoc(interfaceInfo))
+                .isInstanceOf(com.feiting.feiapi.exception.BusinessException.class)
+                .hasMessageContaining("SDK 方法不存在或未注册");
+
+        verify(definitionCommandService, never()).save(interfaceInfo);
+        verifyNoMoreInteractions(docLifecycleService);
     }
 
     /**
@@ -182,6 +207,32 @@ class InterfaceInfoApplicationServiceImplTest {
                 .interfaceInfoId(INTERFACE_INFO_ID)
                 .name("测试接口")
                 .status(status)
+                .build();
+    }
+
+    /**
+     * 构造已注册 SDK 方法契约。
+     *
+     * @param sdkMethodName SDK 方法名
+     * @return 已注册 SDK 方法契约
+     */
+    private SdkContractSnapshot supportedSdkContract(String sdkMethodName) {
+        return SdkContractSnapshot.builder()
+                .sdkMethodName(sdkMethodName)
+                .supported(true)
+                .build();
+    }
+
+    /**
+     * 构造未注册 SDK 方法契约。
+     *
+     * @param sdkMethodName SDK 方法名
+     * @return 未注册 SDK 方法契约
+     */
+    private SdkContractSnapshot unsupportedSdkContract(String sdkMethodName) {
+        return SdkContractSnapshot.builder()
+                .sdkMethodName(sdkMethodName)
+                .supported(false)
                 .build();
     }
 }

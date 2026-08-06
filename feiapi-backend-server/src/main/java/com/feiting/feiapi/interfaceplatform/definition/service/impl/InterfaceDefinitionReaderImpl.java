@@ -14,6 +14,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
 import java.lang.reflect.Method;
+import java.util.Comparator;
+import java.util.List;
 
 /**
  * 接口定义域只读服务适配实现。
@@ -92,9 +94,32 @@ public class InterfaceDefinitionReaderImpl implements InterfaceDefinitionReader 
                     .returnTypeName("")
                     .build();
         }
+        return toSdkContractSnapshot(method);
+    }
+
+    /**
+     * 获取全部已注册 SDK 方法契约快照。
+     *
+     * @return 按 SDK 方法名排序的契约快照列表
+     */
+    @Override
+    public List<SdkContractSnapshot> listSdkContracts() {
+        return sdkMethodRegistry.getMethodMap().values().stream()
+                .map(this::toSdkContractSnapshot)
+                .sorted(Comparator.comparing(SdkContractSnapshot::getSdkMethodName))
+                .toList();
+    }
+
+    /**
+     * 将已注册 SDK 方法转换为契约快照。
+     *
+     * @param method SDK 反射方法
+     * @return SDK 方法契约快照
+     */
+    private SdkContractSnapshot toSdkContractSnapshot(Method method) {
         SdkInvoke sdkInvoke = method.getAnnotation(SdkInvoke.class);
         return SdkContractSnapshot.builder()
-                .sdkMethodName(normalizedMethodName)
+                .sdkMethodName(method.getName())
                 .supported(true)
                 .needParams(sdkInvoke != null && sdkInvoke.needParams())
                 .parameterCount(method.getParameterCount())

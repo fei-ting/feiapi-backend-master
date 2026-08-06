@@ -56,3 +56,50 @@ create table if not exists feiapi.`interface_doc_error_code`
     unique key `uk_interface_doc_error_code` (`interface_info_id`, `error_code`, `is_delete`),
     key `idx_interface_doc_error_info` (`interface_info_id`, `is_delete`, `sort_order`)
 ) comment '接口文档错误码';
+
+-- 初始化测试接口草稿文档主信息
+insert into feiapi.interface_doc (`interface_info_id`, `doc_status`, `doc_version`, `request_content_type`, `response_content_type`)
+select interface_info.id,
+       'DRAFT',
+       'v1',
+       'application/json',
+       'application/json'
+from feiapi.interface_info interface_info
+where interface_info.`path` = '/api/name/user'
+  and interface_info.`method` = 'POST'
+  and interface_info.`is_delete` = 0
+  and not exists (
+      select 1
+      from feiapi.interface_doc interface_doc
+      where interface_doc.`interface_info_id` = interface_info.`id`
+        and interface_doc.`is_delete` = 0
+  );
+
+-- 初始化测试接口结构化请求参数
+insert into feiapi.interface_doc_param (`interface_info_id`, `param_scene`, `parent_id`, `name`, `type`, `required`,
+                                        `nullable`, `default_value`, `example_value`, `description`, `validation_rule`,
+                                        `sort_order`)
+select interface_info.id,
+       'BODY',
+       null,
+       'username',
+       'string',
+       1,
+       0,
+       '',
+       '',
+       '由接口运行时参数模板自动生成',
+       '',
+       1
+from feiapi.interface_info interface_info
+where interface_info.`path` = '/api/name/user'
+  and interface_info.`method` = 'POST'
+  and interface_info.`is_delete` = 0
+  and not exists (
+      select 1
+      from feiapi.interface_doc_param interface_doc_param
+      where interface_doc_param.`interface_info_id` = interface_info.`id`
+        and interface_doc_param.`param_scene` = 'BODY'
+        and interface_doc_param.`name` = 'username'
+        and interface_doc_param.`is_delete` = 0
+  );

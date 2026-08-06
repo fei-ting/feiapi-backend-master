@@ -5,6 +5,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.feiting.feiapi.common.*;
 import com.feiting.feiapi.component.InterfaceRequestParamValidator;
 import com.feiting.feiapi.component.UserSessionManager;
+import com.feiting.feiapi.interfaceplatform.definition.model.snapshot.SdkContractSnapshot;
+import com.feiting.feiapi.interfaceplatform.definition.model.vo.SdkMethodOptionVO;
+import com.feiting.feiapi.interfaceplatform.definition.service.api.InterfaceDefinitionReader;
 import com.feiting.feiapi.interfaceplatform.facade.service.api.InterfaceInfoApplicationService;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
@@ -70,6 +73,12 @@ public class InterfaceInfoController {
     private InterfaceInfoApplicationService interfaceInfoApplicationService;
 
     /**
+     * 接口定义只读服务。
+     */
+    @Resource
+    private InterfaceDefinitionReader interfaceDefinitionReader;
+
+    /**
      * 接口发布编排服务。
      */
     @Resource
@@ -112,6 +121,20 @@ public class InterfaceInfoController {
     private String gatewayHost;
 
     // region 增删改查
+
+    /**
+     * 查询管理员新增接口时可选择的 SDK 方法。
+     *
+     * @return 已注册 SDK 方法选项
+     */
+    @GetMapping("/sdk-method/list")
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
+    public BaseResponse<List<SdkMethodOptionVO>> listSdkMethodOptions() {
+        List<SdkMethodOptionVO> options = interfaceDefinitionReader.listSdkContracts().stream()
+                .map(this::toSdkMethodOptionVO)
+                .collect(Collectors.toList());
+        return ResultUtils.success(options);
+    }
 
     /**
      * 创建
@@ -601,4 +624,16 @@ public class InterfaceInfoController {
         }
     }
 
+    /**
+     * 将 SDK 方法契约快照转换为前端选项。
+     *
+     * @param snapshot SDK 方法契约快照
+     * @return SDK 方法选项
+     */
+    private SdkMethodOptionVO toSdkMethodOptionVO(SdkContractSnapshot snapshot) {
+        SdkMethodOptionVO optionVO = new SdkMethodOptionVO();
+        optionVO.setSdkMethodName(snapshot.getSdkMethodName());
+        optionVO.setNeedParams(snapshot.isNeedParams());
+        return optionVO;
+    }
 }

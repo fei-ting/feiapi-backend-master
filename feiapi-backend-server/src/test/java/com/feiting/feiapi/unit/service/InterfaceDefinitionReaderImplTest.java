@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -168,6 +169,29 @@ class InterfaceDefinitionReaderImplTest {
         assertThat(snapshot.isNeedParams()).isFalse();
         assertThat(snapshot.getParameterCount()).isZero();
         assertThat(snapshot.getReturnTypeName()).isEmpty();
+    }
+
+    /**
+     * 已注册 SDK 方法列表应按方法名排序并返回参数契约。
+     *
+     * @throws NoSuchMethodException 反射方法不存在时抛出
+     */
+    @Test
+    @DisplayName("SDK 方法列表按方法名排序")
+    void shouldListSdkContractsInMethodNameOrder() throws NoSuchMethodException {
+        Method usernameMethod = FeiApiClient.class.getDeclaredMethod("getUsernameByPost", String.class);
+        Method loveWordsMethod = FeiApiClient.class.getDeclaredMethod("getLoveWords");
+        when(sdkMethodRegistry.getMethodMap()).thenReturn(Map.of(
+                "getUsernameByPost", usernameMethod,
+                "getLoveWords", loveWordsMethod));
+
+        List<SdkContractSnapshot> contracts = reader.listSdkContracts();
+
+        assertThat(contracts)
+                .extracting(SdkContractSnapshot::getSdkMethodName)
+                .containsExactly("getLoveWords", "getUsernameByPost");
+        assertThat(contracts.get(0).isNeedParams()).isFalse();
+        assertThat(contracts.get(1).isNeedParams()).isTrue();
     }
 
     /**
