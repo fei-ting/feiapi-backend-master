@@ -1,11 +1,11 @@
 package com.feiting.feiapi.unit.service;
 
-import com.feiting.feiapi.component.InterfaceProbeResponseValidator;
-import com.feiting.feiapi.component.SdkMethodRegistry;
+import com.feiting.feiapi.interfaceplatform.publishing.component.InterfaceProbeResponseValidator;
+import com.feiting.feiapi.interfaceplatform.definition.component.SdkMethodRegistry;
 import com.feiting.feiapi.exception.BusinessException;
-import com.feiting.feiapi.exception.InterfacePublishProbeException;
-import com.feiting.feiapi.model.enums.PublishProbeFailureStageEnum;
-import com.feiting.feiapi.service.impl.InterfacePublishProbeServiceImpl;
+import com.feiting.feiapi.interfaceplatform.publishing.exception.InterfacePublishProbeException;
+import com.feiting.feiapi.interfaceplatform.publishing.model.enums.PublishProbeFailureStageEnum;
+import com.feiting.feiapi.interfaceplatform.publishing.service.impl.InterfacePublishProbeServiceImpl;
 import com.feiting.feiapiclientsdk.client.FeiApiClient;
 import com.feiting.feiapiclientsdk.exception.ProbeResponseTooLargeException;
 import org.junit.jupiter.api.DisplayName;

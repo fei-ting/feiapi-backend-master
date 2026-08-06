@@ -1,12 +1,12 @@
 package com.feiting.feiapi.unit.component;
 
-import com.feiting.feiapi.component.InterfaceProbeResponseValidator;
-import com.feiting.feiapi.exception.InterfacePublishProbeException;
-import com.feiting.feiapi.model.entity.InterfaceDoc;
-import com.feiting.feiapi.model.entity.InterfaceDocParam;
-import com.feiting.feiapi.model.enums.InterfaceDocParamSceneEnum;
-import com.feiting.feiapi.model.enums.PublishProbeFailureStageEnum;
-import com.feiting.feiapi.model.publish.InterfacePublishContext;
+import com.feiting.feiapi.interfaceplatform.publishing.component.InterfaceProbeResponseValidator;
+import com.feiting.feiapi.interfaceplatform.publishing.exception.InterfacePublishProbeException;
+import com.feiting.feiapi.interfaceplatform.documentation.model.enums.InterfaceDocParamSceneEnum;
+import com.feiting.feiapi.interfaceplatform.documentation.model.snapshot.InterfaceDocParamSnapshot;
+import com.feiting.feiapi.interfaceplatform.documentation.model.snapshot.InterfaceDocPublishSnapshot;
+import com.feiting.feiapi.interfaceplatform.publishing.model.enums.PublishProbeFailureStageEnum;
+import com.feiting.feiapi.interfaceplatform.publishing.model.context.InterfacePublishContext;
 import com.feiting.feiapiclientsdk.model.ProbeInvocationResult;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -171,8 +171,7 @@ class InterfaceProbeResponseValidatorTest {
     @Test
     @DisplayName("可空响应字段允许缺失")
     void shouldAllowMissingNullableResponseField() {
-        InterfaceDocParam nullableParam = buildResponseParam(1L, "remark", "string");
-        nullableParam.setNullable(1);
+        InterfaceDocParamSnapshot nullableParam = buildResponseParam(1L, null, "remark", "string", 1);
         InterfacePublishContext context = buildContext(buildJsonDoc(), List.of(nullableParam));
         ProbeInvocationResult result = buildResult(200, "application/json", "{}");
 
@@ -185,9 +184,8 @@ class InterfaceProbeResponseValidatorTest {
     @Test
     @DisplayName("嵌套响应字段类型错误时失败")
     void shouldRejectNestedResponseFieldTypeMismatch() {
-        InterfaceDocParam profile = buildResponseParam(1L, "profile", "object");
-        InterfaceDocParam age = buildResponseParam(2L, "age", "number");
-        age.setParentId(1L);
+        InterfaceDocParamSnapshot profile = buildResponseParam(1L, "profile", "object");
+        InterfaceDocParamSnapshot age = buildResponseParam(2L, 1L, "age", "number", 0);
         InterfacePublishContext context = buildContext(
                 buildJsonDoc("{\"profile\":{\"age\":18}}"), List.of(profile, age));
         ProbeInvocationResult result = buildResult(
@@ -203,7 +201,7 @@ class InterfaceProbeResponseValidatorTest {
      *
      * @return 文档主记录
      */
-    private InterfaceDoc buildJsonDoc() {
+    private InterfaceDocPublishSnapshot buildJsonDoc() {
         return buildJsonDoc("{\"name\":\"张三\"}");
     }
 
@@ -213,11 +211,11 @@ class InterfaceProbeResponseValidatorTest {
      * @param successExample 成功示例
      * @return 文档主记录
      */
-    private InterfaceDoc buildJsonDoc(String successExample) {
-        InterfaceDoc doc = new InterfaceDoc();
-        doc.setResponseContentType("application/json");
-        doc.setSuccessExample(successExample);
-        return doc;
+    private InterfaceDocPublishSnapshot buildJsonDoc(String successExample) {
+        return InterfaceDocPublishSnapshot.builder()
+                .responseContentType("application/json")
+                .successExample(successExample)
+                .build();
     }
 
     /**
@@ -227,7 +225,8 @@ class InterfaceProbeResponseValidatorTest {
      * @param docParams 文档参数
      * @return 发布上下文
      */
-    private InterfacePublishContext buildContext(InterfaceDoc doc, List<InterfaceDocParam> docParams) {
+    private InterfacePublishContext buildContext(InterfaceDocPublishSnapshot doc,
+                                                 List<InterfaceDocParamSnapshot> docParams) {
         InterfacePublishContext context = new InterfacePublishContext();
         context.setInterfaceDoc(doc);
         context.setDocParams(docParams);
@@ -258,13 +257,28 @@ class InterfaceProbeResponseValidatorTest {
      * @param type 字段类型
      * @return 响应字段
      */
-    private InterfaceDocParam buildResponseParam(Long id, String name, String type) {
-        InterfaceDocParam param = new InterfaceDocParam();
-        param.setId(id);
-        param.setName(name);
-        param.setType(type);
-        param.setNullable(0);
-        param.setParamScene(InterfaceDocParamSceneEnum.RESPONSE.getValue());
-        return param;
+    private InterfaceDocParamSnapshot buildResponseParam(Long id, String name, String type) {
+        return buildResponseParam(id, null, name, type, 0);
+    }
+
+    /**
+     * 构造指定父字段和可空性的响应字段。
+     *
+     * @param id       字段 ID
+     * @param parentId 父字段 ID
+     * @param name     字段名称
+     * @param type     字段类型
+     * @param nullable 是否允许为空，1 表示允许
+     * @return 响应字段
+     */
+    private InterfaceDocParamSnapshot buildResponseParam(Long id, Long parentId, String name, String type, int nullable) {
+        return InterfaceDocParamSnapshot.builder()
+                .id(id)
+                .parentId(parentId)
+                .name(name)
+                .type(type)
+                .nullable(nullable)
+                .paramScene(InterfaceDocParamSceneEnum.RESPONSE.getValue())
+                .build();
     }
 }

@@ -1,12 +1,13 @@
 package com.feiting.feiapi.integration.service;
 
 import com.feiting.feiapi.exception.BusinessException;
-import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocSaveRequest;
-import com.feiting.feiapi.model.entity.InterfaceDoc;
+import com.feiting.feiapi.interfaceplatform.documentation.model.dto.interfaceDoc.InterfaceDocSaveRequest;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDoc;
+import com.feiting.feiapi.interfaceplatform.facade.service.api.InterfaceInfoApplicationService;
+import com.feiting.feiapi.interfaceplatform.publishing.service.api.InterfacePublishingLifecycleService;
 import com.feiting.feiapi.service.InterfaceDocErrorCodeService;
 import com.feiting.feiapi.service.InterfaceDocParamService;
 import com.feiting.feiapi.service.InterfaceDocService;
-import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
@@ -56,9 +57,13 @@ class InterfaceInfoLifecycleConcurrencyTest {
     @Resource
     private InterfaceInfoService interfaceInfoService;
 
-    /** 接口生命周期服务。 */
+    /** 接口信息应用协调服务。 */
     @Resource
-    private InterfaceInfoLifecycleService interfaceInfoLifecycleService;
+    private InterfaceInfoApplicationService interfaceInfoApplicationService;
+
+    /** 接口发布生命周期协作服务。 */
+    @Resource
+    private InterfacePublishingLifecycleService interfacePublishingLifecycleService;
 
     /** 接口文档服务。 */
     @Resource
@@ -105,11 +110,11 @@ class InterfaceInfoLifecycleConcurrencyTest {
         createdInterfaceIds.stream()
                 .forEach(interfaceInfoId -> {
                     interfaceDocErrorCodeService.lambdaUpdate()
-                            .eq(com.feiting.feiapi.model.entity.InterfaceDocErrorCode::getInterfaceInfoId,
+                            .eq(com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocErrorCode::getInterfaceInfoId,
                                     interfaceInfoId)
                             .remove();
                     interfaceDocParamService.lambdaUpdate()
-                            .eq(com.feiting.feiapi.model.entity.InterfaceDocParam::getInterfaceInfoId,
+                            .eq(com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocParam::getInterfaceInfoId,
                                     interfaceInfoId)
                             .remove();
                     interfaceDocService.lambdaUpdate()
@@ -172,7 +177,7 @@ class InterfaceInfoLifecycleConcurrencyTest {
             updateRequest.setId(interfaceInfoId);
             updateRequest.setDescription("并发更新后的接口说明");
             Future<Boolean> updateFuture = executorService.submit(
-                    () -> interfaceInfoLifecycleService.updateInterfaceInfoWithDoc(updateRequest));
+                    () -> interfaceInfoApplicationService.updateInterfaceInfoWithDoc(updateRequest));
 
             assertThatThrownBy(() -> updateFuture.get(300, TimeUnit.MILLISECONDS))
                     .isInstanceOf(TimeoutException.class);
@@ -203,7 +208,7 @@ class InterfaceInfoLifecycleConcurrencyTest {
             assertThat(lockAcquired.await(3, TimeUnit.SECONDS)).isTrue();
 
             Future<InterfaceInfo> publishingFuture = executorService.submit(
-                    () -> interfaceInfoLifecycleService.startPublishing(interfaceInfoId));
+                    () -> startPublishing(interfaceInfoId));
 
             assertThatThrownBy(() -> publishingFuture.get(300, TimeUnit.MILLISECONDS))
                     .isInstanceOf(TimeoutException.class);
@@ -264,7 +269,7 @@ class InterfaceInfoLifecycleConcurrencyTest {
     @DisplayName("发布开始后拒绝保存文档")
     void shouldRejectDocSaveAfterPublishingStarted() {
         long interfaceInfoId = createOfflineInterfaceWithReadyDoc();
-        interfaceInfoLifecycleService.startPublishing(interfaceInfoId);
+        startPublishing(interfaceInfoId);
 
         InterfaceDocSaveRequest saveRequest = buildDraftSaveRequest(interfaceInfoId);
 
@@ -334,7 +339,17 @@ class InterfaceInfoLifecycleConcurrencyTest {
     private InterfaceInfo startPublishingAfterSignal(long interfaceInfoId,
                                                       CountDownLatch startSignal) throws InterruptedException {
         startSignal.await();
-        return interfaceInfoLifecycleService.startPublishing(interfaceInfoId);
+        return startPublishing(interfaceInfoId);
+    }
+
+    /**
+     * 通过发布域生命周期协作服务开始发布，并返回接口快照。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     * @return 发布中的接口快照
+     */
+    private InterfaceInfo startPublishing(long interfaceInfoId) {
+        return interfacePublishingLifecycleService.startPublishingWithContext(interfaceInfoId).getInterfaceInfo();
     }
 
     /**

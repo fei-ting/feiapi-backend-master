@@ -2,24 +2,24 @@ package com.feiting.feiapi.unit.service;
 
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
-import com.feiting.feiapi.component.InterfaceDocContentSecurityValidator;
-import com.feiting.feiapi.component.InterfaceDocBoundaryValidator;
-import com.feiting.feiapi.component.InterfaceDocCurlExampleGenerator;
-import com.feiting.feiapi.component.InterfaceDocJavaSdkExampleGenerator;
-import com.feiting.feiapi.component.RuntimeRequestParamTemplateValidator;
+import com.feiting.feiapi.interfaceplatform.documentation.component.InterfaceDocContentSecurityValidator;
+import com.feiting.feiapi.interfaceplatform.documentation.component.InterfaceDocBoundaryValidator;
+import com.feiting.feiapi.interfaceplatform.documentation.component.InterfaceDocCurlExampleGenerator;
+import com.feiting.feiapi.interfaceplatform.documentation.component.InterfaceDocJavaSdkExampleGenerator;
+import com.feiting.feiapi.interfaceplatform.definition.component.RuntimeRequestParamTemplateValidator;
 import com.feiting.feiapi.exception.BusinessException;
-import com.feiting.feiapi.mapper.InterfaceDocMapper;
+import com.feiting.feiapi.interfaceplatform.documentation.mapper.InterfaceDocMapper;
 import com.feiting.feiapi.mapper.InterfaceInfoMapper;
-import com.feiting.feiapi.model.entity.InterfaceDocErrorCode;
-import com.feiting.feiapi.model.entity.InterfaceDoc;
-import com.feiting.feiapi.model.entity.InterfaceDocParam;
-import com.feiting.feiapi.model.vo.InterfaceDocDetailVO;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocErrorCode;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDoc;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocParam;
+import com.feiting.feiapi.interfaceplatform.documentation.model.vo.InterfaceDocDetailVO;
 import com.feiting.feiapi.service.InterfaceDocErrorCodeService;
 import com.feiting.feiapi.service.InterfaceDocParamService;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.InterfaceQuotaConfigService;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
-import com.feiting.feiapi.service.impl.InterfaceDocServiceImpl;
+import com.feiting.feiapi.interfaceplatform.documentation.service.impl.InterfaceDocFacadeServiceImpl;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -79,7 +79,7 @@ class InterfaceDocServiceImplTest {
     private InterfaceDocBoundaryValidator boundaryValidator;
 
     /** 被测服务。 */
-    private InterfaceDocServiceImpl docService;
+    private InterfaceDocFacadeServiceImpl docService;
 
     /** 初始化被测服务及其依赖。 */
     @BeforeEach
@@ -95,7 +95,7 @@ class InterfaceDocServiceImplTest {
         javaSdkExampleGenerator = mock(InterfaceDocJavaSdkExampleGenerator.class);
         runtimeRequestParamTemplateValidator = mock(RuntimeRequestParamTemplateValidator.class);
         boundaryValidator = mock(InterfaceDocBoundaryValidator.class);
-        docService = spy(new InterfaceDocServiceImpl(
+        docService = spy(new InterfaceDocFacadeServiceImpl(
                 interfaceInfoService,
                 interfaceInfoMapper,
                 interfaceDocParamService,

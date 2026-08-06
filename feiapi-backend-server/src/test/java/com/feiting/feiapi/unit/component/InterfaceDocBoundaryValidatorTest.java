@@ -1,10 +1,10 @@
 package com.feiting.feiapi.unit.component;
 
-import com.feiting.feiapi.component.InterfaceDocBoundaryValidator;
+import com.feiting.feiapi.interfaceplatform.documentation.component.InterfaceDocBoundaryValidator;
 import com.feiting.feiapi.exception.BusinessException;
-import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocErrorCodeSaveRequest;
-import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocParamSaveRequest;
-import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocSaveRequest;
+import com.feiting.feiapi.interfaceplatform.documentation.model.dto.interfaceDoc.InterfaceDocErrorCodeSaveRequest;
+import com.feiting.feiapi.interfaceplatform.documentation.model.dto.interfaceDoc.InterfaceDocParamSaveRequest;
+import com.feiting.feiapi.interfaceplatform.documentation.model.dto.interfaceDoc.InterfaceDocSaveRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

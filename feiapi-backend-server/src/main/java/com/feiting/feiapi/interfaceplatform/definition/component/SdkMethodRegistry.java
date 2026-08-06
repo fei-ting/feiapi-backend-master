@@ -1,0 +1,96 @@
+package com.feiting.feiapi.interfaceplatform.definition.component;
+
+import com.feiting.feiapi.common.ErrorCode;
+import com.feiting.feiapi.exception.BusinessException;
+import com.feiting.feiapiclientsdk.annotation.SdkInvoke;
+import com.feiting.feiapiclientsdk.client.FeiApiClient;
+import org.springframework.stereotype.Component;
+
+import jakarta.annotation.PostConstruct;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * SDK 方法注册器。
+ *
+ * 只收录带 {@link SdkInvoke} 注解的方法，避免通过方法名反射调用任意公开方法。
+ */
+@Component
+public class SdkMethodRegistry {
+
+    /**
+     * SDK 方法名与反射方法的映射。
+     */
+    private final Map<String, Method> methodMap = new HashMap<>();
+
+    /**
+     * 初始化允许调用的 SDK 方法映射。
+     */
+    @PostConstruct
+    public void init() {
+        for (Method method : FeiApiClient.class.getDeclaredMethods()) {
+            SdkInvoke sdkInvoke = method.getAnnotation(SdkInvoke.class);
+            if (sdkInvoke == null) {
+                continue;
+            }
+            method.setAccessible(true);
+            methodMap.put(method.getName(), method);
+        }
+    }
+
+    /**
+     * 调用已注册的 SDK 方法。
+     *
+     * @param client        SDK 客户端
+     * @param methodName    SDK 方法名
+     * @param requestParams 请求参数
+     * @return SDK 方法调用结果
+     */
+    public Object invoke(FeiApiClient client, String methodName, String requestParams) {
+        Method method = methodMap.get(methodName);
+        if (method == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的接口方法：" + methodName);
+        }
+
+        SdkInvoke sdkInvoke = method.getAnnotation(SdkInvoke.class);
+        boolean needParams = sdkInvoke != null && sdkInvoke.needParams();
+        try {
+            if (needParams) {
+                if (requestParams == null || requestParams.trim().isEmpty()) {
+                    throw new BusinessException(ErrorCode.PARAMS_ERROR, "接口方法参数不能为空：" + methodName);
+                }
+                return method.invoke(client, requestParams);
+            }
+
+            if (requestParams != null && !requestParams.trim().isEmpty()) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "接口方法不需要参数：" + methodName);
+            }
+            return method.invoke(client);
+        } catch (IllegalAccessException | InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "SDK 方法调用失败", cause == null ? e : cause);
+        }
+    }
+
+    /**
+     * 判断 SDK 方法是否已注册。
+     *
+     * @param methodName SDK 方法名
+     * @return 是否支持该方法
+     */
+    public boolean supports(String methodName) {
+        return methodMap.containsKey(methodName);
+    }
+
+    /**
+     * 获取不可修改的 SDK 方法映射。
+     *
+     * @return SDK 方法映射
+     */
+    public Map<String, Method> getMethodMap() {
+        return Collections.unmodifiableMap(methodMap);
+    }
+}

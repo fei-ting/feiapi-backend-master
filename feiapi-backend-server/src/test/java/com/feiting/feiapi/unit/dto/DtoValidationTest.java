@@ -2,7 +2,7 @@ package com.feiting.feiapi.unit.dto;
 
 import com.feiting.feiapi.common.IdRequest;
 import com.feiting.feiapi.common.PageRequest;
-import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocSaveRequest;
+import com.feiting.feiapi.interfaceplatform.documentation.model.dto.interfaceDoc.InterfaceDocSaveRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
 import com.feiting.feiapi.model.dto.user.CurrentUserPasswordUpdateRequest;

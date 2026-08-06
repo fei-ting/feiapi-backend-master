@@ -1,9 +1,9 @@
 package com.feiting.feiapi.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
-import com.feiting.feiapi.model.entity.InterfaceDoc;
-import com.feiting.feiapi.model.dto.interfaceDoc.InterfaceDocSaveRequest;
-import com.feiting.feiapi.model.vo.InterfaceDocDetailVO;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDoc;
+import com.feiting.feiapi.interfaceplatform.documentation.model.dto.interfaceDoc.InterfaceDocSaveRequest;
+import com.feiting.feiapi.interfaceplatform.documentation.model.vo.InterfaceDocDetailVO;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 
 import java.util.List;

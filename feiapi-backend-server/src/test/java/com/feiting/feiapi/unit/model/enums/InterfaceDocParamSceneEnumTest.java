@@ -1,6 +1,6 @@
 package com.feiting.feiapi.unit.model.enums;
 
-import com.feiting.feiapi.model.enums.InterfaceDocParamSceneEnum;
+import com.feiting.feiapi.interfaceplatform.documentation.model.enums.InterfaceDocParamSceneEnum;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;

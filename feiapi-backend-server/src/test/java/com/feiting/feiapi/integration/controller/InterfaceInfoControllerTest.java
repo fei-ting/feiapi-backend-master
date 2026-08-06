@@ -11,13 +11,13 @@ import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoQueryRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoUpdateRequest;
 import com.feiting.feiapi.model.vo.InterfaceInfoVO;
 import com.feiting.feiapi.model.dto.user.UserLoginRequest;
-import com.feiting.feiapi.model.entity.InterfaceDoc;
-import com.feiting.feiapi.model.entity.InterfaceDocErrorCode;
-import com.feiting.feiapi.model.entity.InterfaceDocParam;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDoc;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocErrorCode;
+import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocParam;
+import com.feiting.feiapi.interfaceplatform.facade.service.api.InterfaceInfoApplicationService;
 import com.feiting.feiapi.service.InterfaceDocErrorCodeService;
 import com.feiting.feiapi.service.InterfaceDocService;
 import com.feiting.feiapi.service.InterfaceDocParamService;
-import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapi.service.UserService;
@@ -113,10 +113,10 @@ class InterfaceInfoControllerTest {
     private InterfaceDocErrorCodeService interfaceDocErrorCodeService;
 
     /**
-     * 接口信息生命周期服务。
+     * 接口信息应用协调服务。
      */
     @Resource
-    private InterfaceInfoLifecycleService interfaceInfoLifecycleService;
+    private InterfaceInfoApplicationService interfaceInfoApplicationService;
 
     @Resource
     private UserInterfaceInfoService userInterfaceInfoService;
@@ -346,6 +346,25 @@ class InterfaceInfoControllerTest {
     @DisplayName("POST /interfaceInfo/add 创建接口")
     class AddTests {
 
+        /**
+         * 管理员应能查询按名称排序的已注册 SDK 方法列表。
+         */
+        @Test
+        @DisplayName("管理员查询已注册 SDK 方法列表成功")
+        void shouldListRegisteredSdkMethodsForAdmin() throws Exception {
+            MockHttpSession session = loginAsAdmin();
+
+            mockMvc.perform(get("/interfaceInfo/sdk-method/list").session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data[0].sdkMethodName").value("generateQrCode"))
+                    .andExpect(jsonPath("$.data[0].needParams").value(true))
+                    .andExpect(jsonPath("$.data[1].sdkMethodName").value("getLoveWords"))
+                    .andExpect(jsonPath("$.data[1].needParams").value(false))
+                    .andExpect(jsonPath("$.data[2].sdkMethodName").value("getUsernameByPost"))
+                    .andExpect(jsonPath("$.data[2].needParams").value(true));
+        }
+
         @Test
         @DisplayName("管理员创建接口成功，数据库可查")
         void shouldAddInterfaceInfo() throws Exception {
@@ -377,6 +396,30 @@ class InterfaceInfoControllerTest {
                 .one();
         assertNotNull(doc);
         assertEquals("DRAFT", doc.getDocStatus());
+        }
+
+        /**
+         * 未注册 SDK 方法应在接口记录写入前被拒绝。
+         */
+        @Test
+        @DisplayName("未注册 SDK 方法禁止创建接口")
+        void shouldRejectUnregisteredSdkMethod() throws Exception {
+            MockHttpSession session = loginAsAdmin();
+            InterfaceInfoAddRequest request = buildAddRequest("missingSdkApi", "/api/missing_sdk", "GET");
+            request.setSdkMethodName("missingMethod");
+
+            mockMvc.perform(post("/interfaceInfo/add")
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request))
+                            .session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40000))
+                    .andExpect(jsonPath("$.message").value("SDK 方法不存在或未注册"));
+
+            assertEquals(0, interfaceInfoService.lambdaQuery()
+                    .eq(InterfaceInfo::getPath, "/api/missing_sdk")
+                    .count());
         }
 
         @Test
@@ -687,7 +730,7 @@ class InterfaceInfoControllerTest {
             updateRequest.setId(id);
             mutation.accept(updateRequest);
 
-            assertTrue(interfaceInfoLifecycleService.updateInterfaceInfoWithDoc(updateRequest),
+            assertTrue(interfaceInfoApplicationService.updateInterfaceInfoWithDoc(updateRequest),
                     fieldName + "有效变化应更新成功");
 
             InterfaceDoc doc = interfaceDocService.lambdaQuery()

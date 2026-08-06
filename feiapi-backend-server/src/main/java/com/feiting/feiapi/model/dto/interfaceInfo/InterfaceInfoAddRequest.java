@@ -22,6 +22,7 @@ public class InterfaceInfoAddRequest implements Serializable {
     /**
      * SDK 方法名
      */
+    @NotBlank(message = "SDK 方法名不能为空")
     @Size(max = 128, message = "SDK 方法名长度不能超过 128")
     private String sdkMethodName;
 

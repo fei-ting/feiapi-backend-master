@@ -1,11 +1,11 @@
 package com.feiting.feiapi.unit.component;
 
-import com.feiting.feiapi.component.InterfaceProbeRequestBuilder;
-import com.feiting.feiapi.exception.InterfacePublishProbeException;
-import com.feiting.feiapi.model.entity.InterfaceDocParam;
-import com.feiting.feiapi.model.enums.InterfaceDocParamSceneEnum;
-import com.feiting.feiapi.model.enums.PublishProbeFailureStageEnum;
-import com.feiting.feiapi.model.publish.InterfacePublishContext;
+import com.feiting.feiapi.interfaceplatform.publishing.component.InterfaceProbeRequestBuilder;
+import com.feiting.feiapi.interfaceplatform.publishing.exception.InterfacePublishProbeException;
+import com.feiting.feiapi.interfaceplatform.documentation.model.enums.InterfaceDocParamSceneEnum;
+import com.feiting.feiapi.interfaceplatform.documentation.model.snapshot.InterfaceDocParamSnapshot;
+import com.feiting.feiapi.interfaceplatform.publishing.model.enums.PublishProbeFailureStageEnum;
+import com.feiting.feiapi.interfaceplatform.publishing.model.context.InterfacePublishContext;
 import com.feiting.feiapiclientsdk.client.FeiApiClient;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.google.gson.JsonObject;
@@ -175,7 +175,7 @@ class InterfaceProbeRequestBuilderTest {
      * @return 发布上下文
      * @throws Exception 反射异常
      */
-    private InterfacePublishContext buildPostContext(String requestParams, List<InterfaceDocParam> docParams)
+    private InterfacePublishContext buildPostContext(String requestParams, List<InterfaceDocParamSnapshot> docParams)
             throws Exception {
         InterfaceInfo interfaceInfo = new InterfaceInfo();
         interfaceInfo.setRequestParams(requestParams);
@@ -206,12 +206,12 @@ class InterfaceProbeRequestBuilderTest {
      * @param exampleValue 示例值
      * @return 文档参数
      */
-    private InterfaceDocParam buildRequestParam(String name, String type, String exampleValue) {
-        InterfaceDocParam param = new InterfaceDocParam();
-        param.setName(name);
-        param.setType(type);
-        param.setParamScene(InterfaceDocParamSceneEnum.BODY.getValue());
-        param.setExampleValue(exampleValue);
-        return param;
+    private InterfaceDocParamSnapshot buildRequestParam(String name, String type, String exampleValue) {
+        return InterfaceDocParamSnapshot.builder()
+                .name(name)
+                .type(type)
+                .paramScene(InterfaceDocParamSceneEnum.BODY.getValue())
+                .exampleValue(exampleValue)
+                .build();
     }
 }

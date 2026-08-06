@@ -1,9 +1,9 @@
 package com.feiting.feiapi.unit.component;
 
-import com.feiting.feiapi.component.InterfaceDocJavaSdkExampleGenerator;
-import com.feiting.feiapi.component.SdkMethodRegistry;
+import com.feiting.feiapi.interfaceplatform.documentation.component.InterfaceDocJavaSdkExampleGenerator;
+import com.feiting.feiapi.interfaceplatform.definition.component.SdkMethodRegistry;
 import com.feiting.feiapi.exception.BusinessException;
-import com.feiting.feiapi.model.vo.InterfaceDocParamVO;
+import com.feiting.feiapi.interfaceplatform.documentation.model.vo.InterfaceDocParamVO;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
