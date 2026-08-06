@@ -19,7 +19,7 @@ import com.feiting.feiapi.service.InterfaceDocParamService;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.InterfaceQuotaConfigService;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
-import com.feiting.feiapi.service.impl.InterfaceDocServiceImpl;
+import com.feiting.feiapi.interfaceplatform.documentation.service.impl.InterfaceDocFacadeServiceImpl;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -79,7 +79,7 @@ class InterfaceDocServiceImplTest {
     private InterfaceDocBoundaryValidator boundaryValidator;
 
     /** 被测服务。 */
-    private InterfaceDocServiceImpl docService;
+    private InterfaceDocFacadeServiceImpl docService;
 
     /** 初始化被测服务及其依赖。 */
     @BeforeEach
@@ -95,7 +95,7 @@ class InterfaceDocServiceImplTest {
         javaSdkExampleGenerator = mock(InterfaceDocJavaSdkExampleGenerator.class);
         runtimeRequestParamTemplateValidator = mock(RuntimeRequestParamTemplateValidator.class);
         boundaryValidator = mock(InterfaceDocBoundaryValidator.class);
-        docService = spy(new InterfaceDocServiceImpl(
+        docService = spy(new InterfaceDocFacadeServiceImpl(
                 interfaceInfoService,
                 interfaceInfoMapper,
                 interfaceDocParamService,

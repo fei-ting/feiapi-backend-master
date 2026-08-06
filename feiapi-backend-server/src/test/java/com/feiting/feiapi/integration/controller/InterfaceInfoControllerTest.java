@@ -14,10 +14,10 @@ import com.feiting.feiapi.model.dto.user.UserLoginRequest;
 import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDoc;
 import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocErrorCode;
 import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocParam;
+import com.feiting.feiapi.interfaceplatform.facade.service.api.InterfaceInfoApplicationService;
 import com.feiting.feiapi.service.InterfaceDocErrorCodeService;
 import com.feiting.feiapi.service.InterfaceDocService;
 import com.feiting.feiapi.service.InterfaceDocParamService;
-import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
 import com.feiting.feiapi.service.UserService;
@@ -113,10 +113,10 @@ class InterfaceInfoControllerTest {
     private InterfaceDocErrorCodeService interfaceDocErrorCodeService;
 
     /**
-     * 接口信息生命周期服务。
+     * 接口信息应用协调服务。
      */
     @Resource
-    private InterfaceInfoLifecycleService interfaceInfoLifecycleService;
+    private InterfaceInfoApplicationService interfaceInfoApplicationService;
 
     @Resource
     private UserInterfaceInfoService userInterfaceInfoService;
@@ -687,7 +687,7 @@ class InterfaceInfoControllerTest {
             updateRequest.setId(id);
             mutation.accept(updateRequest);
 
-            assertTrue(interfaceInfoLifecycleService.updateInterfaceInfoWithDoc(updateRequest),
+            assertTrue(interfaceInfoApplicationService.updateInterfaceInfoWithDoc(updateRequest),
                     fieldName + "有效变化应更新成功");
 
             InterfaceDoc doc = interfaceDocService.lambdaQuery()

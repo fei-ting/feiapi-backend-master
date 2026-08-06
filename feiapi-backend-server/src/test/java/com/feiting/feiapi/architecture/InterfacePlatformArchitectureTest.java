@@ -10,7 +10,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 /**
  * 接口平台能力域架构约束测试。
  *
- * <p>当前仅约束新建的接口平台能力域包，避免历史全局包在阶段 1 被迫一次性迁移。</p>
+ * <p>当前仅约束接口平台能力域包，避免历史全局包被迫一次性迁移。</p>
  */
 @AnalyzeClasses(packages = "com.feiting.feiapi.interfaceplatform", importOptions = ImportOption.DoNotIncludeTests.class)
 class InterfacePlatformArchitectureTest {
@@ -35,6 +35,17 @@ class InterfacePlatformArchitectureTest {
                     .should().dependOnClassesThat().resideInAPackage("..interfaceplatform.publishing..");
 
     /**
+     * 文档域不得依赖生命周期域或协调层。
+     */
+    @ArchTest
+    static final ArchRule documentation_should_not_depend_on_lifecycle_or_facade =
+            noClasses()
+                    .that().resideInAPackage("..interfaceplatform.documentation..")
+                    .should().dependOnClassesThat().resideInAnyPackage(
+                            "..interfaceplatform.lifecycle..",
+                            "..interfaceplatform.facade..");
+
+    /**
      * 定义域不得依赖文档域、发布域或生命周期域。
      */
     @ArchTest
@@ -56,6 +67,17 @@ class InterfacePlatformArchitectureTest {
                     .should().dependOnClassesThat().resideInAnyPackage(
                             "..interfaceplatform.documentation..",
                             "..interfaceplatform.publishing..");
+
+    /**
+     * 生命周期域不得依赖定义域或协调层。
+     */
+    @ArchTest
+    static final ArchRule lifecycle_should_not_depend_on_definition_or_facade =
+            noClasses()
+                    .that().resideInAPackage("..interfaceplatform.lifecycle..")
+                    .should().dependOnClassesThat().resideInAnyPackage(
+                            "..interfaceplatform.definition..",
+                            "..interfaceplatform.facade..");
 
     /**
      * 发布域不得依赖其他能力域的 Mapper、实体或内部实现。
