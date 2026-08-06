@@ -2,9 +2,9 @@ package com.feiting.feiapi.integration.service;
 
 import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocErrorCode;
 import com.feiting.feiapi.interfaceplatform.documentation.model.entity.InterfaceDocParam;
+import com.feiting.feiapi.interfaceplatform.facade.service.api.InterfaceInfoApplicationService;
 import com.feiting.feiapi.service.InterfaceDocErrorCodeService;
 import com.feiting.feiapi.service.InterfaceDocParamService;
-import com.feiting.feiapi.service.InterfaceInfoLifecycleService;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.InterfaceInvokeLogService;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
@@ -37,10 +37,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class InterfaceInfoDeleteLifecycleTest {
 
     /**
-     * 接口生命周期服务。
+     * 接口信息应用协调服务。
      */
     @Resource
-    private InterfaceInfoLifecycleService interfaceInfoLifecycleService;
+    private InterfaceInfoApplicationService interfaceInfoApplicationService;
 
     /**
      * 接口信息服务。
@@ -107,7 +107,7 @@ class InterfaceInfoDeleteLifecycleTest {
     void shouldDeleteWhenAllDocumentRecordsAreMissing() {
         InterfaceInfo interfaceInfo = createOfflineInterface("all_doc_missing");
 
-        Boolean result = interfaceInfoLifecycleService.deleteOfflineInterfaceInfo(interfaceInfo.getId());
+        Boolean result = interfaceInfoApplicationService.deleteOfflineInterfaceInfo(interfaceInfo.getId());
 
         assertThat(result).isTrue();
         assertThat(queryDeleteFlag("interface_info", interfaceInfo.getId())).isEqualTo(interfaceInfo.getId());
@@ -122,7 +122,7 @@ class InterfaceInfoDeleteLifecycleTest {
         InterfaceInfo interfaceInfo = createOfflineInterface("partial_doc_missing");
         InterfaceDocParam param = createDocumentParam(interfaceInfo.getId(), "partialField");
 
-        Boolean result = interfaceInfoLifecycleService.deleteOfflineInterfaceInfo(interfaceInfo.getId());
+        Boolean result = interfaceInfoApplicationService.deleteOfflineInterfaceInfo(interfaceInfo.getId());
 
         assertThat(result).isTrue();
         assertThat(queryDeleteFlag("interface_info", interfaceInfo.getId())).isEqualTo(interfaceInfo.getId());
@@ -154,7 +154,7 @@ class InterfaceInfoDeleteLifecycleTest {
                 interfaceInfo.getId()
         );
 
-        interfaceInfoLifecycleService.deleteOfflineInterfaceInfo(interfaceInfo.getId());
+        interfaceInfoApplicationService.deleteOfflineInterfaceInfo(interfaceInfo.getId());
 
         assertThat(queryDeleteFlag("user_interface_info", relation.getId())).isZero();
         assertThat(queryInteger("select left_num from user_interface_info where id = ?", relation.getId())).isEqualTo(9);
@@ -185,7 +185,7 @@ class InterfaceInfoDeleteLifecycleTest {
                 activeErrorCode.getId()
         );
 
-        assertThatThrownBy(() -> interfaceInfoLifecycleService.deleteOfflineInterfaceInfo(interfaceInfo.getId()))
+        assertThatThrownBy(() -> interfaceInfoApplicationService.deleteOfflineInterfaceInfo(interfaceInfo.getId()))
                 .isInstanceOf(DataIntegrityViolationException.class);
 
         assertThat(queryDeleteFlag("interface_info", interfaceInfo.getId())).isZero();
