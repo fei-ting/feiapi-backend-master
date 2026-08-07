@@ -20,7 +20,7 @@
 
 ## 2. 当前问题
 
-1. “填充示例”按钮存在，但页面加载时已经自动填充参数；当示例值为空时按钮仍可能显示，用户感知为按钮无效。
+1. “填充示例”按钮已经存在，但页面加载时请求参数输入框保持为空，仅展示“请输入 username”等占位提示，并未自动填充实际示例值；“填充示例”功能仍需完善，使其能够将结构化参数中的有效示例值写入表单。
 2. 在线调用返回值只有下游响应正文，未提供 HTTP 状态、响应媒体类型和响应耗时。
 3. `FeiApiClient` 遇到下游非 2xx 会保留状态和正文构造异常，但反射注册器将其包装为通用 SDK 调用失败，在线页面无法展示真实下游响应。
 4. 在线文档 compact 模式固定展示 curl，未展示 Java SDK 示例，也没有把文档示例复制事件传递到页面。
@@ -65,9 +65,9 @@
 
 示例填充调整为显式操作：
 
-- 页面加载时不使用示例值覆盖用户输入；默认值仍可作为初始字段值。
+- 页面加载时请求参数输入框保持为空，只展示字段占位提示；示例值和默认值都不在初始化阶段写入表单。
 - 只有存在有效 `exampleValue` 或 `defaultValue` 的字段时才显示可用的“填充示例”按钮。
-- 点击后按示例值优先、默认值兜底的规则填充全部字段，并重新生成请求 Body。
+- 点击后按示例值优先、默认值兜底的规则填充具有有效示例的字段，并重新生成请求 Body。
 - 示例值为空、仅为类型占位标记或无法转换为声明类型时，按钮禁用并给出明确提示。
 
 请求区域增加只读 Body 预览，内容来自当前字段序列化结果；请求地址、方法和协议 Header 继续使用现有文档/接口定义展示，不开放用户编辑。
@@ -91,11 +91,10 @@
 后端：
 
 - `feiapi-client-sdk/src/main/java/com/feiting/feiapiclientsdk/client/FeiApiClient.java`
-- `feiapi-client-sdk/src/main/java/com/feiting/feiapiclientsdk/model/` 下新增在线调用结果模型
-- `feiapi-backend-server/src/main/java/com/feiting/feiapi/interfaceplatform/definition/component/SdkMethodRegistry.java`
+- `feiapi-client-sdk/src/main/java/com/feiting/feiapiclientsdk/model/OnlineDebugInvocationResult.java`
 - `feiapi-backend-server/src/main/java/com/feiting/feiapi/controller/InterfaceInfoController.java`
-- `feiapi-backend-server/src/main/java/com/feiting/feiapi/service/` 下新增在线调用 Service 及实现
-- `feiapi-backend-server/src/main/java/com/feiting/feiapi/model/vo/` 下新增在线调用结果 VO
+- `feiapi-backend-server/src/main/java/com/feiting/feiapi/interfaceplatform/invocation/service/` 下新增在线调用 Service 及实现
+- `feiapi-backend-server/src/main/java/com/feiting/feiapi/interfaceplatform/invocation/model/vo/InterfaceInvokeResultVO.java`
 - 对应 SDK、Service、Controller 和调用链测试
 
 前端：

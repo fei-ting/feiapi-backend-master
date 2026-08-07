@@ -1,6 +1,7 @@
 package com.feiting.feiapiclientsdk.client;
 
 import com.sun.net.httpserver.HttpServer;
+import com.feiting.feiapiclientsdk.model.OnlineDebugInvocationResult;
 import com.feiting.feiapiclientsdk.model.ProbeInvocationResult;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -13,6 +14,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("FeiApiClient 客户端测试")
@@ -240,6 +242,88 @@ class FeiApiClientTest {
                         "消息应包含'发布探测密钥不能为空'，实际: " + ex.getCause().getMessage());
             } finally {
                 client.disableProbeMode();
+            }
+        }
+    }
+
+    @Nested
+    @DisplayName("onlineDebugMode 在线调试模式")
+    class OnlineDebugModeTests {
+
+        /**
+         * 验证在线调试模式会捕获成功响应元数据。
+         *
+         * @throws Exception 本地测试服务启动失败时抛出
+         */
+        @Test
+        @DisplayName("成功响应应捕获状态、媒体类型、正文和耗时")
+        void shouldCaptureSuccessfulResponseMetadata() throws Exception {
+            HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+            server.createContext("/api/love_words", exchange -> {
+                exchange.getResponseHeaders().set("Content-Type", "application/json; charset=UTF-8");
+                byte[] responseBytes = "{\"message\":\"ok\"}".getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, responseBytes.length);
+                try (OutputStream outputStream = exchange.getResponseBody()) {
+                    outputStream.write(responseBytes);
+                }
+            });
+            server.start();
+            FeiApiClient client = new FeiApiClient("ak", "sk",
+                    "http://127.0.0.1:" + server.getAddress().getPort());
+            client.enableOnlineDebugMode();
+
+            try {
+                assertThat(client.getLoveWords()).isEqualTo("{\"message\":\"ok\"}");
+
+                OnlineDebugInvocationResult result = client.getOnlineDebugInvocationResult();
+                assertThat(result).isNotNull();
+                assertThat(result.getStatusCode()).isEqualTo(200);
+                assertThat(result.getContentType()).contains("application/json");
+                assertThat(result.getBody()).isEqualTo("{\"message\":\"ok\"}");
+                assertThat(result.getDurationMs()).isNotNegative();
+            } finally {
+                client.disableOnlineDebugMode();
+                server.stop(0);
+            }
+
+            assertThat(client.getOnlineDebugInvocationResult()).isNull();
+        }
+
+        /**
+         * 验证在线调试模式保留非成功响应，而普通调用仍抛出异常。
+         *
+         * @throws Exception 本地测试服务启动失败时抛出
+         */
+        @Test
+        @DisplayName("非 2xx 响应应被捕获且不改变普通调用异常语义")
+        void shouldCaptureFailedResponseWithoutChangingNormalMode() throws Exception {
+            HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+            server.createContext("/api/love_words", exchange -> {
+                exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=UTF-8");
+                byte[] responseBytes = "参数错误".getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(422, responseBytes.length);
+                try (OutputStream outputStream = exchange.getResponseBody()) {
+                    outputStream.write(responseBytes);
+                }
+            });
+            server.start();
+            FeiApiClient client = new FeiApiClient("ak", "sk",
+                    "http://127.0.0.1:" + server.getAddress().getPort());
+
+            try {
+                client.enableOnlineDebugMode();
+                assertThat(client.getLoveWords()).isEqualTo("参数错误");
+                assertThat(client.getOnlineDebugInvocationResult().getStatusCode()).isEqualTo(422);
+                assertThat(client.getOnlineDebugInvocationResult().getBody()).isEqualTo("参数错误");
+                client.disableOnlineDebugMode();
+
+                assertThatThrownBy(client::getLoveWords)
+                        .isInstanceOf(RuntimeException.class)
+                        .hasMessageContaining("响应状态码：422")
+                        .hasMessageContaining("参数错误");
+            } finally {
+                client.disableOnlineDebugMode();
+                server.stop(0);
             }
         }
     }
