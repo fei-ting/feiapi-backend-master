@@ -138,6 +138,15 @@ CREATE TABLE IF NOT EXISTS `interface_invoke_log` (
     `is_delete` TINYINT NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS `interface_change_log` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `interface_info_id` BIGINT NOT NULL,
+    `interface_name` VARCHAR(50) NOT NULL,
+    `change_type` VARCHAR(32) NOT NULL,
+    `event_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS `user_role_change_log` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
     `operator_id` BIGINT NOT NULL,

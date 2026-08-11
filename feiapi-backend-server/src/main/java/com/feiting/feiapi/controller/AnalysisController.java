@@ -8,7 +8,12 @@ import com.feiting.feiapi.common.ResultUtils;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.model.enums.UserRoleEnum;
 import com.feiting.feiapi.model.vo.HomeStatsVO;
+import com.feiting.feiapi.model.vo.dashboard.DashboardAlertVO;
+import com.feiting.feiapi.model.vo.dashboard.DashboardChangeVO;
+import com.feiting.feiapi.model.vo.dashboard.DashboardOverviewVO;
+import com.feiting.feiapi.model.vo.dashboard.DashboardTrendsVO;
 import com.feiting.feiapi.model.vo.InterfaceInfoVO;
+import com.feiting.feiapi.service.DashboardService;
 import com.feiting.feiapi.service.InterfaceInfoService;
 import com.feiting.feiapi.service.InterfaceInvokeLogService;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
@@ -45,6 +50,10 @@ public class AnalysisController {
     @Resource
     private InterfaceInvokeLogService interfaceInvokeLogService;
 
+    /** 管理员工作台统计服务。 */
+    @Resource
+    private DashboardService dashboardService;
+
     /**
      * 获取首页公开统计数据。
      *
@@ -53,6 +62,50 @@ public class AnalysisController {
     @GetMapping("/home/stats")
     public BaseResponse<HomeStatsVO> getHomeStats() {
         return ResultUtils.success(interfaceInvokeLogService.getHomeStats());
+    }
+
+    /**
+     * 获取管理员工作台概览统计。
+     *
+     * @return 工作台概览
+     */
+    @GetMapping("/dashboard/overview")
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
+    public BaseResponse<DashboardOverviewVO> getDashboardOverview() {
+        return ResultUtils.success(dashboardService.getOverview());
+    }
+
+    /**
+     * 获取管理员工作台运行趋势。
+     *
+     * @return 工作台趋势
+     */
+    @GetMapping("/dashboard/trends")
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
+    public BaseResponse<DashboardTrendsVO> getDashboardTrends() {
+        return ResultUtils.success(dashboardService.getTrends());
+    }
+
+    /**
+     * 获取管理员工作台重点关注接口。
+     *
+     * @return 重点关注列表
+     */
+    @GetMapping("/dashboard/alerts")
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
+    public BaseResponse<List<DashboardAlertVO>> getDashboardAlerts() {
+        return ResultUtils.success(dashboardService.getAlerts());
+    }
+
+    /**
+     * 获取管理员工作台最近变更。
+     *
+     * @return 最近变更列表
+     */
+    @GetMapping("/dashboard/changes")
+    @AuthCheck(mustRole = UserRoleEnum.ADMIN)
+    public BaseResponse<List<DashboardChangeVO>> getDashboardChanges() {
+        return ResultUtils.success(dashboardService.getChanges());
     }
 
     @GetMapping("/top/interface/invoke")

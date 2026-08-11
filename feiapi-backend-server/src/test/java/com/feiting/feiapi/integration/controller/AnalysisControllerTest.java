@@ -192,6 +192,56 @@ class AnalysisControllerTest {
         }
     }
 
+    /**
+     * 管理员工作台接口测试。
+     */
+    @Nested
+    @DisplayName("管理员工作台接口")
+    class DashboardTests {
+
+        /** 未登录用户不能访问工作台统计。 */
+        @Test
+        @DisplayName("未登录访问工作台返回未登录错误")
+        void shouldRejectDashboardWhenNotLoggedIn() throws Exception {
+            mockMvc.perform(get("/analysis/dashboard/overview"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40100));
+        }
+
+        /** 管理员可以读取四个工作台真实数据区块。 */
+        @Test
+        @DisplayName("管理员读取工作台真实数据")
+        void shouldReturnDashboardDataForAdmin() throws Exception {
+            MockHttpSession session = loginWithRole("dash01", "admin");
+            insertInterfaceInfo(1301L, "dashboard_api", "/api/dashboard");
+            insertInterfaceInvokeLog(1301L, 200, true, 120L, new Date());
+            insertInterfaceInvokeLog(1301L, 500, false, 1500L, new Date());
+
+            mockMvc.perform(get("/analysis/dashboard/overview").session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.totalInterfaces").isNumber())
+                    .andExpect(jsonPath("$.data.todayInvocations").isNumber())
+                    .andExpect(jsonPath("$.data.todayErrors").isNumber());
+            mockMvc.perform(get("/analysis/dashboard/trends").session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.successRate").isArray())
+                    .andExpect(jsonPath("$.data.successRate.length()").value(8))
+                    .andExpect(jsonPath("$.data.invocationCount[7].value").value(2))
+                    .andExpect(jsonPath("$.data.successRate[0].time").isString())
+                    .andExpect(jsonPath("$.data.successRate[0].label").doesNotExist());
+            mockMvc.perform(get("/analysis/dashboard/alerts").session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data").isArray());
+            mockMvc.perform(get("/analysis/dashboard/changes").session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data").isArray());
+        }
+    }
+
     @Nested
     @DisplayName("GET /analysis/top/interface/invoke")
     class TopInvokeTests {

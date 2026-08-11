@@ -7,6 +7,9 @@ import com.feiting.feiapi.interfaceplatform.lifecycle.service.api.InterfaceState
 import com.feiting.feiapi.interfaceplatform.publishing.model.context.InterfacePublishContext;
 import com.feiting.feiapi.interfaceplatform.publishing.service.api.InterfacePublishCheckService;
 import com.feiting.feiapi.interfaceplatform.publishing.service.api.InterfacePublishingLifecycleService;
+import com.feiting.feiapi.mapper.InterfaceInfoMapper;
+import com.feiting.feiapi.model.enums.InterfaceChangeTypeEnum;
+import com.feiting.feiapi.service.InterfaceChangeAuditService;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
 import org.springframework.stereotype.Service;
@@ -30,16 +33,28 @@ public class InterfacePublishingLifecycleServiceImpl implements InterfacePublish
      */
     private final InterfacePublishCheckService publishCheckService;
 
+    /** 接口主记录 Mapper。 */
+    private final InterfaceInfoMapper interfaceInfoMapper;
+
+    /** 接口变更审计服务。 */
+    private final InterfaceChangeAuditService interfaceChangeAuditService;
+
     /**
      * 创建接口发布生命周期协作服务实现。
      *
      * @param stateManager       接口状态管理服务
      * @param publishCheckService 发布前静态检查服务
+     * @param interfaceInfoMapper 接口主记录 Mapper
+     * @param interfaceChangeAuditService 接口变更审计服务
      */
     public InterfacePublishingLifecycleServiceImpl(InterfaceStateManager stateManager,
-                                                   InterfacePublishCheckService publishCheckService) {
+                                                   InterfacePublishCheckService publishCheckService,
+                                                   InterfaceInfoMapper interfaceInfoMapper,
+                                                   InterfaceChangeAuditService interfaceChangeAuditService) {
         this.stateManager = stateManager;
         this.publishCheckService = publishCheckService;
+        this.interfaceInfoMapper = interfaceInfoMapper;
+        this.interfaceChangeAuditService = interfaceChangeAuditService;
     }
 
     /**
@@ -72,6 +87,12 @@ public class InterfacePublishingLifecycleServiceImpl implements InterfacePublish
     @Transactional(rollbackFor = Exception.class)
     public void completePublishing(Long interfaceInfoId) {
         stateManager.markOnline(interfaceInfoId);
+        InterfaceInfo interfaceInfo = interfaceInfoMapper.selectById(interfaceInfoId);
+        if (interfaceInfo == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "接口上线后读取接口信息失败");
+        }
+        interfaceChangeAuditService.recordChange(
+                interfaceInfoId, interfaceInfo.getName(), InterfaceChangeTypeEnum.ONLINE);
     }
 
     /**
