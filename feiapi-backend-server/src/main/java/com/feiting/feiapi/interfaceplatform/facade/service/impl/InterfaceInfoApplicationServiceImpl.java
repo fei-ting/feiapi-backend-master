@@ -11,6 +11,8 @@ import com.feiting.feiapi.interfaceplatform.documentation.service.api.InterfaceD
 import com.feiting.feiapi.interfaceplatform.facade.service.api.InterfaceInfoApplicationService;
 import com.feiting.feiapi.interfaceplatform.lifecycle.model.snapshot.LockedInterfaceSnapshot;
 import com.feiting.feiapi.interfaceplatform.lifecycle.service.api.InterfaceStateManager;
+import com.feiting.feiapi.model.enums.InterfaceChangeTypeEnum;
+import com.feiting.feiapi.service.InterfaceChangeAuditService;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +48,9 @@ public class InterfaceInfoApplicationServiceImpl implements InterfaceInfoApplica
      */
     private final InterfaceStateManager stateManager;
 
+    /** 接口变更审计服务。 */
+    private final InterfaceChangeAuditService interfaceChangeAuditService;
+
     /**
      * 创建接口信息应用协调服务实现。
      *
@@ -54,17 +59,20 @@ public class InterfaceInfoApplicationServiceImpl implements InterfaceInfoApplica
      * @param definitionChangeService  接口定义变更判断服务
      * @param docLifecycleService      接口文档生命周期协作服务
      * @param stateManager             接口状态管理服务
+     * @param interfaceChangeAuditService 接口变更审计服务
      */
     public InterfaceInfoApplicationServiceImpl(InterfaceDefinitionCommandService definitionCommandService,
                                                InterfaceDefinitionReader definitionReader,
                                                InterfaceDefinitionChangeService definitionChangeService,
                                                InterfaceDocLifecycleService docLifecycleService,
-                                               InterfaceStateManager stateManager) {
+                                               InterfaceStateManager stateManager,
+                                               InterfaceChangeAuditService interfaceChangeAuditService) {
         this.definitionCommandService = definitionCommandService;
         this.definitionReader = definitionReader;
         this.definitionChangeService = definitionChangeService;
         this.docLifecycleService = docLifecycleService;
         this.stateManager = stateManager;
+        this.interfaceChangeAuditService = interfaceChangeAuditService;
     }
 
     /**
@@ -79,6 +87,8 @@ public class InterfaceInfoApplicationServiceImpl implements InterfaceInfoApplica
         validateRegisteredSdkMethod(interfaceInfo);
         Long interfaceInfoId = definitionCommandService.save(interfaceInfo);
         docLifecycleService.initializeFromDefinition(definitionReader.getRequiredSnapshot(interfaceInfoId));
+        interfaceChangeAuditService.recordChange(
+                interfaceInfoId, interfaceInfo.getName(), InterfaceChangeTypeEnum.CREATED);
         return interfaceInfoId;
     }
 
@@ -122,6 +132,8 @@ public class InterfaceInfoApplicationServiceImpl implements InterfaceInfoApplica
         if (controlledConfigChanged) {
             docLifecycleService.downgradeToDraft(latestDefinition.getInterfaceInfoId());
         }
+        interfaceChangeAuditService.recordChange(interfaceInfo.getId(), interfaceInfo.getName() == null
+                ? lockedInterface.getName() : interfaceInfo.getName(), InterfaceChangeTypeEnum.UPDATED);
         return true;
     }
 
@@ -155,6 +167,8 @@ public class InterfaceInfoApplicationServiceImpl implements InterfaceInfoApplica
         LockedInterfaceSnapshot lockedInterface = stateManager.lockForUpdate(interfaceInfoId);
         stateManager.assertOnline(lockedInterface);
         stateManager.markOffline(interfaceInfoId);
+        interfaceChangeAuditService.recordChange(
+                interfaceInfoId, lockedInterface.getName(), InterfaceChangeTypeEnum.OFFLINE);
         return true;
     }
 

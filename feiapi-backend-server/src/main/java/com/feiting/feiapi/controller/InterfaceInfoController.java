@@ -3,12 +3,13 @@ package com.feiting.feiapi.controller;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.feiting.feiapi.common.*;
-import com.feiting.feiapi.component.InterfaceRequestParamValidator;
 import com.feiting.feiapi.component.UserSessionManager;
 import com.feiting.feiapi.interfaceplatform.definition.model.snapshot.SdkContractSnapshot;
 import com.feiting.feiapi.interfaceplatform.definition.model.vo.SdkMethodOptionVO;
 import com.feiting.feiapi.interfaceplatform.definition.service.api.InterfaceDefinitionReader;
 import com.feiting.feiapi.interfaceplatform.facade.service.api.InterfaceInfoApplicationService;
+import com.feiting.feiapi.interfaceplatform.invocation.model.vo.InterfaceInvokeResultVO;
+import com.feiting.feiapi.interfaceplatform.invocation.service.api.InterfaceInvokeService;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoAddRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoInvokeRequest;
 import com.feiting.feiapi.model.dto.interfaceInfo.InterfaceInfoQueryRequest;
@@ -26,9 +27,7 @@ import com.feiting.feiapi.interfaceplatform.publishing.service.api.InterfacePubl
 import com.feiting.feiapi.interfaceplatform.documentation.service.api.InterfaceDocQueryService;
 import com.feiting.feiapi.service.InterfaceQuotaConfigService;
 import com.feiting.feiapi.service.UserInterfaceInfoService;
-import com.feiting.feiapi.interfaceplatform.definition.component.SdkMethodRegistry;
 import com.feiting.feiapi.utils.SortFieldUtils;
-import com.feiting.feiapiclientsdk.client.FeiApiClient;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.entity.User;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoMethodEnum;
@@ -36,7 +35,6 @@ import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
 import com.feiting.feiapicommon.model.enums.InterfaceQuotaTypeEnum;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
@@ -106,19 +104,10 @@ public class InterfaceInfoController {
     private UserSessionManager userSessionManager;
 
     @Resource
-    private FeiApiClient feiApiClient;
-
-    @Resource
-    private SdkMethodRegistry sdkMethodRegistry;
-
-    @Resource
     private UserInterfaceInfoService userInterfaceInfoService;
 
     @Resource
-    private InterfaceRequestParamValidator interfaceRequestParamValidator;
-
-    @Value("${feiapi.client.gateway-host}")
-    private String gatewayHost;
+    private InterfaceInvokeService interfaceInvokeService;
 
     // region 增删改查
 
@@ -349,47 +338,18 @@ public class InterfaceInfoController {
      * @return
      */
     @PostMapping("/invoke")
-    public BaseResponse<Object> invokeInterfaceInfo(@Valid @RequestBody InterfaceInfoInvokeRequest interfaceInfoInvokeRequest,
-                                                     HttpServletRequest request) {
+    public BaseResponse<InterfaceInvokeResultVO> invokeInterfaceInfo(
+            @Valid @RequestBody InterfaceInfoInvokeRequest interfaceInfoInvokeRequest,
+            HttpServletRequest request) {
         //参数校验
         if(interfaceInfoInvokeRequest == null || interfaceInfoInvokeRequest.getId() <= 0){
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-
-        long id = interfaceInfoInvokeRequest.getId();
-        String userRequestParams = interfaceInfoInvokeRequest.getUserRequestParams();
-
-        //检查接口是否存在
-        InterfaceInfo oldInterfaceInfo = interfaceInfoService.getById(id);
-        if (oldInterfaceInfo == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
-        }
-        if(oldInterfaceInfo.getStatus() != InterfaceInfoStatusEnum.ONLINE.getValue()){
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"接口未上线或正在发布验证中");
-        }
-        interfaceRequestParamValidator.validate(oldInterfaceInfo.getRequestParams(), userRequestParams);
-
         User loginUser = getCurrentLoginUser(request);
-        String accessKey = loginUser.getAccessKey();
-        String secretKey = loginUser.getSecretKey();
-
-        //调用模拟接口
-        FeiApiClient tempClient = new FeiApiClient(accessKey, secretKey, gatewayHost);
-        Object invoke = sdkMethodRegistry.invoke(tempClient, getRequiredSdkMethodName(oldInterfaceInfo), userRequestParams);
-        return ResultUtils.success(invoke);
-    }
-
-    /**
-     * 获取接口绑定的 SDK 方法名。
-     *
-     * @param interfaceInfo 接口信息
-     * @return SDK 方法名
-     */
-    private String getRequiredSdkMethodName(InterfaceInfo interfaceInfo) {
-        if (interfaceInfo == null || StringUtils.isBlank(interfaceInfo.getSdkMethodName())) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "接口未配置 SDK 方法名");
-        }
-        return interfaceInfo.getSdkMethodName().trim();
+        return ResultUtils.success(interfaceInvokeService.invoke(
+                interfaceInfoInvokeRequest.getId(),
+                interfaceInfoInvokeRequest.getUserRequestParams(),
+                loginUser));
     }
 
     private String toDatabaseSortField(String sortField) {

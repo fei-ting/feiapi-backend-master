@@ -5,6 +5,7 @@ import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONUtil;
 import com.feiting.feiapiclientsdk.annotation.SdkInvoke;
 import com.feiting.feiapiclientsdk.constant.ApiPayloadLimits;
+import com.feiting.feiapiclientsdk.model.OnlineDebugInvocationResult;
 import com.feiting.feiapiclientsdk.model.ProbeInvocationResult;
 import com.feiting.feiapiclientsdk.model.ProbeStrategy;
 import com.feiting.feiapiclientsdk.model.User;
@@ -17,6 +18,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 调用第三方接口的客户端
@@ -55,6 +57,19 @@ public class FeiApiClient {
      * 当前线程最近一次发布探测响应元数据。
      */
     private final ThreadLocal<ProbeInvocationResult> probeInvocationResult = new ThreadLocal<>();
+
+    /**
+     * 在线调试模式标记。
+     *
+     * <p>在线调试通过临时 SDK 客户端发起调用，但仍使用线程隔离状态，保证未来客户端复用时
+     * 不会发生不同请求之间的响应数据串扰。调用方必须使用 try/finally 成对开启和关闭模式。</p>
+     */
+    private final ThreadLocal<Boolean> onlineDebugMode = ThreadLocal.withInitial(() -> Boolean.FALSE);
+
+    /**
+     * 当前线程最近一次在线调试响应元数据。
+     */
+    private final ThreadLocal<OnlineDebugInvocationResult> onlineDebugInvocationResult = new ThreadLocal<>();
 
     public FeiApiClient() {
     }
@@ -98,6 +113,31 @@ public class FeiApiClient {
      */
     public ProbeInvocationResult getProbeInvocationResult() {
         return probeInvocationResult.get();
+    }
+
+    /**
+     * 开启当前线程的在线调试响应捕获模式。
+     */
+    public void enableOnlineDebugMode() {
+        onlineDebugInvocationResult.remove();
+        onlineDebugMode.set(Boolean.TRUE);
+    }
+
+    /**
+     * 关闭当前线程的在线调试响应捕获模式并清理响应元数据。
+     */
+    public void disableOnlineDebugMode() {
+        onlineDebugMode.remove();
+        onlineDebugInvocationResult.remove();
+    }
+
+    /**
+     * 获取当前线程最近一次在线调试响应元数据。
+     *
+     * @return 在线调试响应元数据；尚未收到 HTTP 响应时返回 null
+     */
+    public OnlineDebugInvocationResult getOnlineDebugInvocationResult() {
+        return onlineDebugInvocationResult.get();
     }
 
     /**
@@ -215,7 +255,8 @@ public class FeiApiClient {
      *
      * <p>普通调用遇到非 2xx 时继续抛出异常，避免把失败结果包装成成功响应。
      * 发布探测调用需要把状态码、响应体和网关失败阶段交给后端统一校验器分类，
-     * 因此探测模式不在 SDK 内提前抛出非 2xx 异常。</p>
+     * 在线调试调用需要把真实状态和正文交给页面展示，因此这两种模式都不会在 SDK 内
+     * 提前抛出非 2xx 异常。</p>
      *
      * @param request HTTP 请求
      * @return 响应体
@@ -237,13 +278,28 @@ public class FeiApiClient {
                 return body;
             }
         }
-        HttpResponse httpResponse = request.execute();
-        int status = httpResponse.getStatus();
-        String body = httpResponse.body();
-        if (status < 200 || status >= 300) {
-            throw new RuntimeException(buildErrorMessage(status, body));
+        if (Boolean.TRUE.equals(onlineDebugMode.get())) {
+            long startNanos = System.nanoTime();
+            try (HttpResponse httpResponse = request.executeAsync()) {
+                int status = httpResponse.getStatus();
+                String body = probeResponseBodyReader.read(httpResponse);
+                OnlineDebugInvocationResult result = new OnlineDebugInvocationResult();
+                result.setStatusCode(status);
+                result.setContentType(httpResponse.header("Content-Type"));
+                result.setBody(body);
+                result.setDurationMs(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos));
+                onlineDebugInvocationResult.set(result);
+                return body;
+            }
         }
-        return body;
+        try (HttpResponse httpResponse = request.execute()) {
+            int status = httpResponse.getStatus();
+            String body = httpResponse.body();
+            if (status < 200 || status >= 300) {
+                throw new RuntimeException(buildErrorMessage(status, body));
+            }
+            return body;
+        }
     }
 
     /**

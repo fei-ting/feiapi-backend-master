@@ -330,11 +330,11 @@ class InterfaceInvokeSmokeTest {
                     .andExpect(jsonPath("$.code").value(0))
                     .andReturn();
 
-            // 验证返回的 data 包含 mock 的内容
+            // 验证返回的结构化在线调试结果包含 mock 的响应正文
             JsonNode invokeData = objectMapper.readTree(invokeResult.getResponse().getContentAsString()).get("data");
             assertThat(invokeData).as("调用成功应返回 data").isNotNull();
-            // 验证返回内容包含 mock 设置的内容
-            assertThat(invokeData.asText()).contains("test_love_words");
+            assertThat(invokeData.get("successful").asBoolean()).isTrue();
+            assertThat(invokeData.get("body").asText()).contains("test_love_words");
 
             // ======== Step4: 下线接口，验证 ONLINE -> OFFLINE ========
             String offlineJson = "{\"id\":" + interfaceInfoId + "}";
