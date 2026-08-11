@@ -6,6 +6,9 @@ import com.feiting.feiapi.interfaceplatform.lifecycle.service.api.InterfaceState
 import com.feiting.feiapi.interfaceplatform.publishing.model.context.InterfacePublishContext;
 import com.feiting.feiapi.interfaceplatform.publishing.service.api.InterfacePublishCheckService;
 import com.feiting.feiapi.interfaceplatform.publishing.service.impl.InterfacePublishingLifecycleServiceImpl;
+import com.feiting.feiapi.mapper.InterfaceInfoMapper;
+import com.feiting.feiapi.model.enums.InterfaceChangeTypeEnum;
+import com.feiting.feiapi.service.InterfaceChangeAuditService;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +42,12 @@ class InterfacePublishingLifecycleServiceImplTest {
     /** 发布前静态检查服务。 */
     private InterfacePublishCheckService publishCheckService;
 
+    /** 接口主记录 Mapper。 */
+    private InterfaceInfoMapper interfaceInfoMapper;
+
+    /** 接口变更审计服务。 */
+    private InterfaceChangeAuditService interfaceChangeAuditService;
+
     /** 被测发布生命周期协作服务。 */
     private InterfacePublishingLifecycleServiceImpl publishingLifecycleService;
 
@@ -49,7 +58,14 @@ class InterfacePublishingLifecycleServiceImplTest {
     void setUp() {
         stateManager = mock(InterfaceStateManager.class);
         publishCheckService = mock(InterfacePublishCheckService.class);
-        publishingLifecycleService = new InterfacePublishingLifecycleServiceImpl(stateManager, publishCheckService);
+        interfaceInfoMapper = mock(InterfaceInfoMapper.class);
+        interfaceChangeAuditService = mock(InterfaceChangeAuditService.class);
+        InterfaceInfo interfaceInfo = new InterfaceInfo();
+        interfaceInfo.setId(INTERFACE_INFO_ID);
+        interfaceInfo.setName("测试接口");
+        when(interfaceInfoMapper.selectById(INTERFACE_INFO_ID)).thenReturn(interfaceInfo);
+        publishingLifecycleService = new InterfacePublishingLifecycleServiceImpl(
+                stateManager, publishCheckService, interfaceInfoMapper, interfaceChangeAuditService);
     }
 
     /**
@@ -120,6 +136,8 @@ class InterfacePublishingLifecycleServiceImplTest {
         publishingLifecycleService.completePublishing(INTERFACE_INFO_ID);
 
         verify(stateManager).markOnline(INTERFACE_INFO_ID);
+        verify(interfaceChangeAuditService).recordChange(
+                INTERFACE_INFO_ID, "测试接口", InterfaceChangeTypeEnum.ONLINE);
     }
 
     /**

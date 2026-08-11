@@ -47,6 +47,13 @@ feiapi:
     probe-secret: ${FEIAPI_PROBE_SECRET:}
   interface-target:
     allowed-hostnames: ${FEIAPI_INTERFACE_TARGET_ALLOWED_HOSTNAMES:feiapi-interface}
+  dashboard:
+    failure-rate-threshold: ${FEIAPI_DASHBOARD_FAILURE_RATE_THRESHOLD:0.05}
+    minimum-invocations: ${FEIAPI_DASHBOARD_MINIMUM_INVOCATIONS:5}
+    slow-response-threshold-ms: ${FEIAPI_DASHBOARD_SLOW_RESPONSE_THRESHOLD_MS:1000}
+    spike-multiplier: ${FEIAPI_DASHBOARD_SPIKE_MULTIPLIER:1.5}
+    unused-days: ${FEIAPI_DASHBOARD_UNUSED_DAYS:7}
+    alert-limit: ${FEIAPI_DASHBOARD_ALERT_LIMIT:10}
 
 dubbo:
   application:

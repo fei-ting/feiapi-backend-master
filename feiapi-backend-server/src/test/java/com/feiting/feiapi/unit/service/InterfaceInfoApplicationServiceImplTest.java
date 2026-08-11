@@ -9,6 +9,8 @@ import com.feiting.feiapi.interfaceplatform.documentation.service.api.InterfaceD
 import com.feiting.feiapi.interfaceplatform.facade.service.impl.InterfaceInfoApplicationServiceImpl;
 import com.feiting.feiapi.interfaceplatform.lifecycle.model.snapshot.LockedInterfaceSnapshot;
 import com.feiting.feiapi.interfaceplatform.lifecycle.service.api.InterfaceStateManager;
+import com.feiting.feiapi.model.enums.InterfaceChangeTypeEnum;
+import com.feiting.feiapi.service.InterfaceChangeAuditService;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
 import com.feiting.feiapicommon.model.enums.InterfaceInfoStatusEnum;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,6 +51,9 @@ class InterfaceInfoApplicationServiceImplTest {
     /** 接口状态管理服务。 */
     private InterfaceStateManager stateManager;
 
+    /** 接口变更审计服务。 */
+    private InterfaceChangeAuditService interfaceChangeAuditService;
+
     /** 被测应用协调服务。 */
     private InterfaceInfoApplicationServiceImpl applicationService;
 
@@ -62,12 +67,14 @@ class InterfaceInfoApplicationServiceImplTest {
         definitionChangeService = mock(InterfaceDefinitionChangeService.class);
         docLifecycleService = mock(InterfaceDocLifecycleService.class);
         stateManager = mock(InterfaceStateManager.class);
+        interfaceChangeAuditService = mock(InterfaceChangeAuditService.class);
         applicationService = new InterfaceInfoApplicationServiceImpl(
                 definitionCommandService,
                 definitionReader,
                 definitionChangeService,
                 docLifecycleService,
-                stateManager);
+                stateManager,
+                interfaceChangeAuditService);
     }
 
     /**
@@ -77,6 +84,7 @@ class InterfaceInfoApplicationServiceImplTest {
     @DisplayName("新增接口后初始化文档")
     void shouldInitializeDocAfterAddingInterface() {
         InterfaceInfo interfaceInfo = new InterfaceInfo();
+        interfaceInfo.setName("测试接口");
         interfaceInfo.setSdkMethodName("getLoveWords");
         InterfaceDefinitionSnapshot snapshot = buildDefinitionSnapshot("POST", "{}");
         when(definitionReader.getSdkContract("getLoveWords")).thenReturn(supportedSdkContract("getLoveWords"));
@@ -91,6 +99,8 @@ class InterfaceInfoApplicationServiceImplTest {
         inOrder.verify(definitionCommandService).save(interfaceInfo);
         inOrder.verify(definitionReader).getRequiredSnapshot(INTERFACE_INFO_ID);
         inOrder.verify(docLifecycleService).initializeFromDefinition(snapshot);
+        verify(interfaceChangeAuditService).recordChange(
+                INTERFACE_INFO_ID, "测试接口", InterfaceChangeTypeEnum.CREATED);
     }
 
     /**
@@ -141,6 +151,8 @@ class InterfaceInfoApplicationServiceImplTest {
         inOrder.verify(definitionChangeService).requestDocTemplateChanged(oldDefinition, latestDefinition);
         inOrder.verify(docLifecycleService).synchronizeRequestParams(latestDefinition);
         inOrder.verify(docLifecycleService).downgradeToDraft(INTERFACE_INFO_ID);
+        verify(interfaceChangeAuditService).recordChange(
+                INTERFACE_INFO_ID, "测试接口", InterfaceChangeTypeEnum.UPDATED);
     }
 
     /**
@@ -178,6 +190,8 @@ class InterfaceInfoApplicationServiceImplTest {
         inOrder.verify(stateManager).lockForUpdate(INTERFACE_INFO_ID);
         inOrder.verify(stateManager).assertOnline(lockedSnapshot);
         inOrder.verify(stateManager).markOffline(INTERFACE_INFO_ID);
+        verify(interfaceChangeAuditService).recordChange(
+                INTERFACE_INFO_ID, "测试接口", InterfaceChangeTypeEnum.OFFLINE);
         verifyNoMoreInteractions(docLifecycleService);
     }
 
