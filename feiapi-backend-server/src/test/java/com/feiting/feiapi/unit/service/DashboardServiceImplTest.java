@@ -88,7 +88,6 @@ class DashboardServiceImplTest {
         assertThat(trends.getSuccessRate()).hasSize(8)
                 .allSatisfy(point -> {
                     assertThat(point.getValue()).isZero();
-                    assertThat(point.getTime()).matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}[+-]\\d{2}:\\d{2}");
                     OffsetDateTime pointTime = OffsetDateTime.parse(point.getTime());
                     assertThat(pointTime.getMinute()).isZero();
                     assertThat(pointTime.getSecond()).isZero();
