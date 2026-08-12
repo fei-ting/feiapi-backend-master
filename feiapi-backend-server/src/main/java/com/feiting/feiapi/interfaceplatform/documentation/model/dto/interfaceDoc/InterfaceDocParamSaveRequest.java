@@ -47,10 +47,6 @@ public class InterfaceDocParamSaveRequest implements Serializable {
     /** 字段值是否允许为空，响应参数必须明确填写。 */
     private Boolean nullable;
 
-    /** 默认值。 */
-    @UnicodeLength(max = 512, message = "默认值长度不能超过 512 个字符")
-    private String defaultValue;
-
     /** 示例值。 */
     @UnicodeLength(max = 1024, message = "示例值长度不能超过 1024 个字符")
     private String exampleValue;

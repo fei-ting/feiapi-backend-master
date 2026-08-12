@@ -106,7 +106,6 @@ public class InterfaceDocPublishReaderImpl implements InterfaceDocPublishReader 
                 .type(param.getType())
                 .required(param.getRequired())
                 .nullable(param.getNullable())
-                .defaultValue(param.getDefaultValue())
                 .exampleValue(param.getExampleValue())
                 .description(param.getDescription())
                 .validationRule(param.getValidationRule())

@@ -36,9 +36,6 @@ public class InterfaceDocBoundaryValidator {
     /** 参数名称最大 Unicode 码点数量。 */
     public static final int MAX_PARAM_NAME_LENGTH = 128;
 
-    /** 参数默认值最大 Unicode 码点数量。 */
-    public static final int MAX_PARAM_DEFAULT_VALUE_LENGTH = 512;
-
     /** 参数示例值最大 Unicode 码点数量。 */
     public static final int MAX_PARAM_EXAMPLE_VALUE_LENGTH = 1024;
 
@@ -169,8 +166,6 @@ public class InterfaceDocBoundaryValidator {
      */
     private void validateParamRequest(InterfaceDocParamSaveRequest request) {
         assertUnicodeLength(request.getName(), MAX_PARAM_NAME_LENGTH, "参数名称长度不能超过 128 个字符");
-        assertUnicodeLength(request.getDefaultValue(), MAX_PARAM_DEFAULT_VALUE_LENGTH,
-                "参数默认值长度不能超过 512 个字符");
         assertUnicodeLength(request.getExampleValue(), MAX_PARAM_EXAMPLE_VALUE_LENGTH,
                 "参数示例值长度不能超过 1024 个字符");
         assertUnicodeLength(request.getDescription(), MAX_DESCRIPTION_LENGTH,
@@ -201,8 +196,6 @@ public class InterfaceDocBoundaryValidator {
      */
     private void validatePersistedParam(InterfaceDocParam param) {
         assertUnicodeLength(param.getName(), MAX_PARAM_NAME_LENGTH, "参数名称长度不能超过 128 个字符");
-        assertUnicodeLength(param.getDefaultValue(), MAX_PARAM_DEFAULT_VALUE_LENGTH,
-                "参数默认值长度不能超过 512 个字符");
         assertUnicodeLength(param.getExampleValue(), MAX_PARAM_EXAMPLE_VALUE_LENGTH,
                 "参数示例值长度不能超过 1024 个字符");
         assertUnicodeLength(param.getDescription(), MAX_DESCRIPTION_LENGTH,

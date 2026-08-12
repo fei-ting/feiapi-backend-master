@@ -64,7 +64,6 @@ CREATE TABLE IF NOT EXISTS `interface_doc_param` (
     `type` VARCHAR(64) NOT NULL,
     `required` TINYINT NOT NULL DEFAULT 0,
     `nullable` TINYINT NOT NULL DEFAULT 0,
-    `default_value` VARCHAR(512) DEFAULT NULL,
     `example_value` VARCHAR(1024) DEFAULT NULL,
     `description` VARCHAR(512) DEFAULT NULL,
     `validation_rule` VARCHAR(512) DEFAULT NULL,

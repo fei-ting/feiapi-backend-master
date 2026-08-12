@@ -191,7 +191,7 @@ public class InterfaceDocCurlExampleGenerator {
      */
     private JsonElement toTypedJsonElement(InterfaceDocParamVO param) {
         String type = firstText(param.getType(), "string").toLowerCase(Locale.ROOT);
-        String rawValue = firstText(param.getExampleValue(), param.getDefaultValue());
+        String rawValue = firstText(param.getExampleValue());
         switch (type) {
             case "number":
                 return toNumberElement(rawValue);

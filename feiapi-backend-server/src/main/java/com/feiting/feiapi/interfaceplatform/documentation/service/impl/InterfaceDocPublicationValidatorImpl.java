@@ -186,7 +186,6 @@ public class InterfaceDocPublicationValidatorImpl implements InterfaceDocPublica
             }
             captureRule(issues, "PARAM_TEXT_UNSAFE", "params[" + param.getName() + "]", () -> {
                 contentSecurityValidator.validateText(param.getName());
-                contentSecurityValidator.validateText(param.getDefaultValue());
                 contentSecurityValidator.validateText(param.getExampleValue());
                 contentSecurityValidator.validateText(param.getDescription());
                 contentSecurityValidator.validateValidationRule(param.getValidationRule());
@@ -409,7 +408,6 @@ public class InterfaceDocPublicationValidatorImpl implements InterfaceDocPublica
         param.setType(snapshot.getType());
         param.setRequired(snapshot.getRequired());
         param.setNullable(snapshot.getNullable());
-        param.setDefaultValue(snapshot.getDefaultValue());
         param.setExampleValue(snapshot.getExampleValue());
         param.setDescription(snapshot.getDescription());
         param.setValidationRule(snapshot.getValidationRule());

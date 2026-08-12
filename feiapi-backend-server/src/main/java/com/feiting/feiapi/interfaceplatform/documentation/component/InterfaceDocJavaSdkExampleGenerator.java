@@ -194,7 +194,7 @@ public class InterfaceDocJavaSdkExampleGenerator {
     private JsonElement buildParamValue(InterfaceDocParamVO param) {
         String name = requireParamName(param);
         String type = StringUtils.lowerCase(StringUtils.trimToEmpty(param.getType()), Locale.ROOT);
-        String documentValue = firstText(param.getExampleValue(), param.getDefaultValue());
+        String documentValue = firstText(param.getExampleValue());
         try {
             return switch (type) {
                 case "string" -> new JsonPrimitive(firstText(documentValue, DEFAULT_STRING_VALUE));
