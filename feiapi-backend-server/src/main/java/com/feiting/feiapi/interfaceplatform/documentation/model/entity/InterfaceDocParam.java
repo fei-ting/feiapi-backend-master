@@ -65,11 +65,6 @@ public class InterfaceDocParam implements Serializable {
     private Integer nullable;
 
     /**
-     * 默认值。
-     */
-    private String defaultValue;
-
-    /**
      * 示例值。
      */
     private String exampleValue;

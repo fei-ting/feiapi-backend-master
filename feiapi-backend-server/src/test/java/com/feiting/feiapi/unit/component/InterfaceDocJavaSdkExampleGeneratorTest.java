@@ -63,11 +63,11 @@ class InterfaceDocJavaSdkExampleGeneratorTest {
     @DisplayName("有参 SDK 方法按文档排序生成结构化 JSON")
     void shouldGenerateTypedRequestJsonInDocumentOrder() {
         List<InterfaceDocParamVO> params = Arrays.asList(
-                param("enabled", "boolean", "true", null, 3),
-                param("name", "string", "张三", null, 1),
-                param("age", "number", null, "18", 2),
-                param("metadata", "object", "{\"level\":1}", null, 4),
-                param("tags", "array", "[\"A\"]", null, 5));
+                param("enabled", "boolean", "true", 3),
+                param("name", "string", "张三", 1),
+                param("age", "number", "18", 2),
+                param("metadata", "object", "{\"level\":1}", 4),
+                param("tags", "array", "[\"A\"]", 5));
 
         String example = generator.generate(interfaceInfo("getUsernameByPost"), params);
 
@@ -79,17 +79,17 @@ class InterfaceDocJavaSdkExampleGeneratorTest {
     }
 
     /**
-     * 缺少示例和默认值时应按声明类型生成安全占位值。
+     * 缺少示例值时应按声明类型生成安全占位值。
      */
     @Test
     @DisplayName("缺少文档值时按参数类型生成安全占位值")
     void shouldGenerateSafePlaceholderByType() {
         List<InterfaceDocParamVO> params = Arrays.asList(
-                param("text", "string", null, null, 1),
-                param("count", "number", null, null, 2),
-                param("active", "boolean", null, null, 3),
-                param("metadata", "object", null, null, 4),
-                param("items", "array", null, null, 5));
+                param("text", "string", null, 1),
+                param("count", "number", null, 2),
+                param("active", "boolean", null, 3),
+                param("metadata", "object", null, 4),
+                param("items", "array", null, 5));
 
         String example = generator.generate(interfaceInfo("generateQrCode"), params);
 
@@ -107,7 +107,7 @@ class InterfaceDocJavaSdkExampleGeneratorTest {
     @Test
     @DisplayName("字符串参数正确转义为 Java 字符串字面量")
     void shouldEscapeJsonAsJavaStringLiteral() {
-        InterfaceDocParamVO param = param("content", "string", "引号\"、反斜杠\\和换行\n结束", null, 1);
+        InterfaceDocParamVO param = param("content", "string", "引号\"、反斜杠\\和换行\n结束", 1);
 
         String example = generator.generate(interfaceInfo("generateQrCode"), List.of(param));
 
@@ -124,7 +124,7 @@ class InterfaceDocJavaSdkExampleGeneratorTest {
     @Test
     @DisplayName("拒绝与声明类型不匹配的示例值")
     void shouldRejectInvalidTypedExampleValue() {
-        InterfaceDocParamVO param = param("age", "number", "not-number", null, 1);
+        InterfaceDocParamVO param = param("age", "number", "not-number", 1);
 
         assertThatThrownBy(() -> generator.generate(interfaceInfo("getUsernameByPost"), List.of(param)))
                 .isInstanceOf(BusinessException.class)
@@ -161,21 +161,18 @@ class InterfaceDocJavaSdkExampleGeneratorTest {
      * @param name         参数名称
      * @param type         参数类型
      * @param exampleValue 示例值
-     * @param defaultValue 默认值
      * @param sortOrder    排序值
      * @return 请求参数
      */
     private InterfaceDocParamVO param(String name,
                                       String type,
                                       String exampleValue,
-                                      String defaultValue,
                                       int sortOrder) {
         InterfaceDocParamVO param = new InterfaceDocParamVO();
         param.setParamScene("BODY");
         param.setName(name);
         param.setType(type);
         param.setExampleValue(exampleValue);
-        param.setDefaultValue(defaultValue);
         param.setSortOrder(sortOrder);
         return param;
     }

@@ -528,8 +528,7 @@ public class InterfaceDocFacadeServiceImpl extends ServiceImpl<InterfaceDocMappe
             existingParam.setRequired(runtimeParam.getRequired());
             existingParam.setNullable(0);
             if (typeChanged) {
-                // 参数类型变化后，旧默认值和校验规则可能失效，示例值必须重新采用运行时模板。
-                existingParam.setDefaultValue(null);
+                // 参数类型变化后，旧校验规则可能失效，示例值必须重新采用运行时模板。
                 existingParam.setValidationRule(null);
                 existingParam.setExampleValue(runtimeParam.getExampleValue());
                 typeChangedParamIds.add(existingParam.getId());
@@ -551,7 +550,6 @@ public class InterfaceDocFacadeServiceImpl extends ServiceImpl<InterfaceDocMappe
                 // MyBatis 默认跳过 null 字段，先显式清空类型变化参数的失效配置。
                 boolean clearResult = interfaceDocParamService.lambdaUpdate()
                         .in(InterfaceDocParam::getId, typeChangedParamIds)
-                        .set(InterfaceDocParam::getDefaultValue, null)
                         .set(InterfaceDocParam::getValidationRule, null)
                         .update();
                 if (!clearResult) {
@@ -623,7 +621,6 @@ public class InterfaceDocFacadeServiceImpl extends ServiceImpl<InterfaceDocMappe
         param.setType(runtimeParam.getType());
         param.setRequired(runtimeParam.getRequired());
         param.setNullable(0);
-        param.setDefaultValue("");
         param.setExampleValue(runtimeParam.getExampleValue());
         param.setDescription(GENERATED_PARAM_DESCRIPTION);
         param.setValidationRule("");
@@ -867,12 +864,16 @@ public class InterfaceDocFacadeServiceImpl extends ServiceImpl<InterfaceDocMappe
             if (request.getRequired() == null || request.getNullable() == null) {
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "响应参数必须明确 required 和 nullable");
             }
+            if (StringUtils.isNotBlank(request.getExampleValue())
+                    || StringUtils.isNotBlank(request.getValidationRule())) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "响应字段不支持示例值和校验规则");
+            }
         } else if (StringUtils.isNotBlank(request.getParentParamKey())) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "仅响应参数允许配置父级参数");
         } else if (Boolean.TRUE.equals(request.getNullable())) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数 nullable 固定为否");
         }
-        Stream.of(request.getDefaultValue(), request.getExampleValue(), request.getDescription())
+        Stream.of(request.getExampleValue(), request.getDescription())
                 .forEach(contentSecurityValidator::validateText);
         contentSecurityValidator.validateValidationRule(request.getValidationRule());
     }
@@ -892,7 +893,6 @@ public class InterfaceDocFacadeServiceImpl extends ServiceImpl<InterfaceDocMappe
         param.setType(trimToEmpty(request.getType()).toLowerCase(Locale.ROOT));
         param.setRequired(Boolean.TRUE.equals(request.getRequired()) ? 1 : 0);
         param.setNullable(Boolean.TRUE.equals(request.getNullable()) ? 1 : 0);
-        param.setDefaultValue(trimToNull(request.getDefaultValue()));
         param.setExampleValue(trimToNull(request.getExampleValue()));
         param.setDescription(trimToNull(request.getDescription()));
         param.setValidationRule(trimToNull(request.getValidationRule()));

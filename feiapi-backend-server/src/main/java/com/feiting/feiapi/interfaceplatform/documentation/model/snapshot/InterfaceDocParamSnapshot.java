@@ -53,11 +53,6 @@ public class InterfaceDocParamSnapshot {
     Integer nullable;
 
     /**
-     * 默认值。
-     */
-    String defaultValue;
-
-    /**
      * 示例值。
      */
     String exampleValue;

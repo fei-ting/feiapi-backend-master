@@ -639,6 +639,31 @@ class InterfaceDocControllerTest {
     }
 
     /**
+     * 测试响应字段不接受仅对请求参数有意义的示例值和校验规则。
+     */
+    @Test
+    @DisplayName("响应字段拒绝示例值和校验规则")
+    void shouldRejectRequestOnlyMetadataOnResponseParam() {
+        long id = createInterfaceInfo("responseMetadataApi", "/api/response_metadata_" + suffix(),
+                InterfaceInfoStatusEnum.OFFLINE.getValue(), "GET", null);
+        InterfaceDocSaveRequest request = baseSaveRequest(id);
+        InterfaceDocParamSaveRequest responseParam = param(
+                "responseData", null, "RESPONSE", "data", "string", false, true, 1);
+        responseParam.setExampleValue("demo");
+        request.setParams(List.of(responseParam));
+
+        assertThatThrownBy(() -> interfaceDocService.saveDoc(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("响应字段不支持示例值和校验规则");
+
+        responseParam.setExampleValue(null);
+        responseParam.setValidationRule("非空字符串");
+        assertThatThrownBy(() -> interfaceDocService.saveDoc(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("响应字段不支持示例值和校验规则");
+    }
+
+    /**
      * 测试 Service 直接调用时拒绝带首尾空白的请求参数场景，防止绕过运行时模板所有权校验。
      */
     @Test
@@ -1349,7 +1374,6 @@ class InterfaceDocControllerTest {
                 .one();
         usernameParam.setDescription("人工维护说明");
         usernameParam.setSortOrder(9);
-        usernameParam.setDefaultValue("默认用户名");
         usernameParam.setExampleValue("alice");
         usernameParam.setValidationRule("长度不超过 20");
         assertThat(interfaceDocParamService.updateById(usernameParam)).isTrue();
@@ -1363,7 +1387,6 @@ class InterfaceDocControllerTest {
         assertThat(migratedParam.getType()).isEqualTo("number");
         assertThat(migratedParam.getDescription()).isEqualTo("人工维护说明");
         assertThat(migratedParam.getSortOrder()).isEqualTo(9);
-        assertThat(migratedParam.getDefaultValue()).isNull();
         assertThat(migratedParam.getValidationRule()).isNull();
         assertThat(migratedParam.getExampleValue()).isEqualTo("18");
     }
@@ -1487,7 +1510,6 @@ class InterfaceDocControllerTest {
                 .eq(InterfaceDocParam::getName, "userId")
                 .one();
         requestParam.setDescription("用户标识说明");
-        requestParam.setDefaultValue("1");
         requestParam.setExampleValue("1001");
         requestParam.setValidationRule("大于零");
         requestParam.setSortOrder(7);
@@ -1501,7 +1523,6 @@ class InterfaceDocControllerTest {
         InterfaceDocParam migratedParam = interfaceDocParamService.getById(requestParam.getId());
         assertThat(migratedParam.getParamScene()).isEqualTo("QUERY");
         assertThat(migratedParam.getDescription()).isEqualTo("用户标识说明");
-        assertThat(migratedParam.getDefaultValue()).isEqualTo("1");
         assertThat(migratedParam.getExampleValue()).isEqualTo("1001");
         assertThat(migratedParam.getValidationRule()).isEqualTo("大于零");
         assertThat(migratedParam.getSortOrder()).isEqualTo(7);
@@ -1792,9 +1813,10 @@ class InterfaceDocControllerTest {
             request.setRequired(true);
             request.setNullable(false);
             request.setDescription(name + "说明");
-            request.setDefaultValue("");
-            request.setExampleValue(exampleValue(type, name));
-            request.setValidationRule("");
+            if (!"RESPONSE".equals(scene)) {
+                request.setExampleValue(exampleValue(type, name));
+                request.setValidationRule("");
+            }
         }
 
         static ParamBuilder create(String key, String scene, String name, String type, int sortOrder) {

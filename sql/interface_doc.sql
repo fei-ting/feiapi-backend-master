@@ -29,7 +29,6 @@ create table if not exists feiapi.`interface_doc_param`
     `type` varchar(64) not null comment '参数类型',
     `required` tinyint default 0 not null comment '是否必填 0-否 1-是',
     `nullable` tinyint default 0 not null comment '是否允许为空 0-否 1-是',
-    `default_value` varchar(512) null comment '默认值',
     `example_value` varchar(1024) null comment '示例值',
     `description` varchar(512) null comment '参数说明',
     `validation_rule` varchar(512) null comment '校验规则展示说明',
@@ -77,7 +76,7 @@ where interface_info.`path` = '/api/name/user'
 
 -- 初始化测试接口结构化请求参数
 insert into feiapi.interface_doc_param (`interface_info_id`, `param_scene`, `parent_id`, `name`, `type`, `required`,
-                                        `nullable`, `default_value`, `example_value`, `description`, `validation_rule`,
+                                        `nullable`, `example_value`, `description`, `validation_rule`,
                                         `sort_order`)
 select interface_info.id,
        'BODY',
@@ -86,7 +85,6 @@ select interface_info.id,
        'string',
        1,
        0,
-       '',
        '',
        '由接口运行时参数模板自动生成',
        '',
