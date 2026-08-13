@@ -74,7 +74,6 @@ class InterfaceDocPublishReaderImplTest {
         doc.setId(11L);
         doc.setInterfaceInfoId(1L);
         doc.setDocStatus("READY");
-        doc.setDocVersion("v1");
         doc.setRequestContentType("application/json");
         doc.setResponseContentType("application/json");
         return doc;

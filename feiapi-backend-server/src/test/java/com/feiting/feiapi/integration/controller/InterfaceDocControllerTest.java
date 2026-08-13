@@ -435,7 +435,7 @@ class InterfaceDocControllerTest {
         MockHttpSession adminSession = loginWithRole("idillegal" + suffix(), "admin");
         long id = createInterfaceInfo("illegalDocStatusApi", "/api/illegal_doc_status_" + suffix(),
                 InterfaceInfoStatusEnum.OFFLINE.getValue(), "GET", null);
-        InterfaceDoc doc = buildDoc(id, "v1");
+        InterfaceDoc doc = buildDoc(id);
         doc.setDocStatus("BROKEN");
         assertThat(interfaceDocService.save(doc)).isTrue();
 
@@ -1246,7 +1246,6 @@ class InterfaceDocControllerTest {
             saveDocByAdmin(adminSession, validRequest);
 
             InterfaceDocSaveRequest invalidRequest = buildBasicSaveRequest(interfaceInfoId);
-            invalidRequest.setDocVersion("v2");
             InterfaceDocErrorCodeSaveRequest tooLongError = errorCode("B001", "错误 B", 1);
             tooLongError.setErrorMessage(repeatText("错误", 200));
             invalidRequest.getErrorCodes().add(tooLongError);
@@ -1255,11 +1254,9 @@ class InterfaceDocControllerTest {
             assertThatThrownBy(() -> interfaceDocService.saveDoc(invalidRequest))
                     .isInstanceOf(RuntimeException.class);
 
-            InterfaceDoc doc = interfaceDocService.lambdaQuery().eq(InterfaceDoc::getInterfaceInfoId, finalInterfaceInfoId).one();
             List<InterfaceDocErrorCode> errorCodes = interfaceDocErrorCodeService.lambdaQuery()
                     .eq(InterfaceDocErrorCode::getInterfaceInfoId, finalInterfaceInfoId)
                     .list();
-            assertThat(doc.getDocVersion()).isEqualTo("v1");
             assertThat(errorCodes).hasSize(1);
             assertThat(errorCodes.get(0).getErrorCode()).isEqualTo("A001");
         } finally {
@@ -1575,10 +1572,10 @@ class InterfaceDocControllerTest {
     void shouldAllowLogicalDeleteAndRecreateRepeatedly() {
         long id = createInterfaceInfo("deleteRecreateApi", "/api/delete_recreate_" + suffix(),
                 InterfaceInfoStatusEnum.ONLINE.getValue(), "POST", "{\"username\":\"string\"}");
-        InterfaceDoc firstDoc = buildDoc(id, "v1");
+        InterfaceDoc firstDoc = buildDoc(id);
         assertThat(interfaceDocService.save(firstDoc)).isTrue();
         assertThat(interfaceDocService.removeById(firstDoc.getId())).isTrue();
-        InterfaceDoc secondDoc = buildDoc(id, "v2");
+        InterfaceDoc secondDoc = buildDoc(id);
         assertThat(interfaceDocService.save(secondDoc)).isTrue();
         assertThat(interfaceDocService.removeById(secondDoc.getId())).isTrue();
 
@@ -1757,7 +1754,6 @@ class InterfaceDocControllerTest {
         InterfaceDocSaveRequest request = new InterfaceDocSaveRequest();
         request.setInterfaceInfoId(interfaceInfoId);
         request.setDocStatus("DRAFT");
-        request.setDocVersion("v1");
         request.setRequestContentType("application/json");
         request.setResponseContentType("application/json");
         request.setSuccessExample("{\"ok\":true}");
@@ -1883,14 +1879,12 @@ class InterfaceDocControllerTest {
      * 构建文档主信息。
      *
      * @param interfaceInfoId 接口信息 ID
-     * @param version         文档版本
      * @return 文档主信息
      */
-    private InterfaceDoc buildDoc(long interfaceInfoId, String version) {
+    private InterfaceDoc buildDoc(long interfaceInfoId) {
         InterfaceDoc doc = new InterfaceDoc();
         doc.setInterfaceInfoId(interfaceInfoId);
         doc.setDocStatus("DRAFT");
-        doc.setDocVersion(version);
         doc.setRequestContentType("application/json");
         doc.setResponseContentType("application/json");
         return doc;

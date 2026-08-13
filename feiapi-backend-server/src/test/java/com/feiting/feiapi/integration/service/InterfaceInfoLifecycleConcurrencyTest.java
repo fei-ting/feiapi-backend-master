@@ -410,7 +410,6 @@ class InterfaceInfoLifecycleConcurrencyTest {
         InterfaceDoc interfaceDoc = new InterfaceDoc();
         interfaceDoc.setInterfaceInfoId(interfaceInfo.getId());
         interfaceDoc.setDocStatus("READY");
-        interfaceDoc.setDocVersion("v1");
         interfaceDoc.setRequestContentType("application/json");
         interfaceDoc.setResponseContentType("text/plain");
         assertThat(interfaceDocService.save(interfaceDoc)).isTrue();
@@ -427,7 +426,6 @@ class InterfaceInfoLifecycleConcurrencyTest {
         InterfaceDocSaveRequest request = new InterfaceDocSaveRequest();
         request.setInterfaceInfoId(interfaceInfoId);
         request.setDocStatus("DRAFT");
-        request.setDocVersion("v1");
         request.setRequestContentType("application/json");
         request.setResponseContentType("text/plain");
         request.setParams(new ArrayList<>());

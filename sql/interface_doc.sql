@@ -6,7 +6,6 @@ create table if not exists feiapi.`interface_doc`
     `id` bigint not null auto_increment comment '主键' primary key,
     `interface_info_id` bigint not null comment '接口信息 ID',
     `doc_status` varchar(16) default 'DRAFT' not null comment '文档状态 DRAFT-草稿 READY-已完成',
-    `doc_version` varchar(64) default 'v1' not null comment '文档版本号',
     `request_content_type` varchar(128) default 'application/json' not null comment '请求内容类型',
     `response_content_type` varchar(128) default 'application/json' not null comment '响应内容类型',
     `success_example` text null comment '成功响应 JSON 示例',
@@ -57,10 +56,9 @@ create table if not exists feiapi.`interface_doc_error_code`
 ) comment '接口文档错误码';
 
 -- 初始化测试接口草稿文档主信息
-insert into feiapi.interface_doc (`interface_info_id`, `doc_status`, `doc_version`, `request_content_type`, `response_content_type`)
+insert into feiapi.interface_doc (`interface_info_id`, `doc_status`, `request_content_type`, `response_content_type`)
 select interface_info.id,
        'DRAFT',
-       'v1',
        'application/json',
        'application/json'
 from feiapi.interface_info interface_info

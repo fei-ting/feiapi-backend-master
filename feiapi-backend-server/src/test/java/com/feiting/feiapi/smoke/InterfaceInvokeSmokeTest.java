@@ -207,7 +207,6 @@ class InterfaceInvokeSmokeTest {
         if (doc == null) {
             doc = new InterfaceDoc();
             doc.setInterfaceInfoId(interfaceInfoId);
-            doc.setDocVersion("v1");
             doc.setRequestContentType("application/json");
             doc.setResponseContentType("application/json");
         }
