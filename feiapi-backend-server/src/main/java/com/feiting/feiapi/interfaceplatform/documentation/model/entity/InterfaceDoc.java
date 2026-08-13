@@ -40,11 +40,6 @@ public class InterfaceDoc implements Serializable {
     private String docStatus;
 
     /**
-     * 文档版本号。
-     */
-    private String docVersion;
-
-    /**
      * 请求内容类型。
      */
     private String requestContentType;

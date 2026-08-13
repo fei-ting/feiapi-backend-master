@@ -13,7 +13,6 @@ import com.feiting.feiapi.interfaceplatform.documentation.model.snapshot.Interfa
 import com.feiting.feiapi.interfaceplatform.documentation.model.snapshot.InterfaceDocPublishSnapshot;
 import com.feiting.feiapi.interfaceplatform.documentation.model.snapshot.InterfaceDocValidationIssue;
 import com.feiting.feiapi.interfaceplatform.documentation.service.api.InterfaceDocPublicationValidator;
-import com.feiting.feiapi.utils.TextSizeUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
@@ -24,7 +23,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -56,11 +54,6 @@ public class InterfaceDocPublicationValidatorImpl implements InterfaceDocPublica
      * 支持的参数类型。
      */
     private static final Set<String> SUPPORTED_PARAM_TYPES = Set.of("string", "number", "boolean", "object", "array");
-
-    /**
-     * 文档版本白名单。
-     */
-    private static final Pattern DOC_VERSION_PATTERN = Pattern.compile("^[A-Za-z0-9._-]{1,64}$");
 
     /**
      * 文档边界校验器。
@@ -98,7 +91,6 @@ public class InterfaceDocPublicationValidatorImpl implements InterfaceDocPublica
             return issues;
         }
         validateDocStatus(snapshot, issues);
-        validateDocVersion(snapshot, issues);
         validateContentType(snapshot.getRequestContentType(), "doc.requestContentType",
                 "REQUEST_CONTENT_TYPE_INVALID", issues);
         validateContentType(snapshot.getResponseContentType(), "doc.responseContentType",
@@ -123,23 +115,6 @@ public class InterfaceDocPublicationValidatorImpl implements InterfaceDocPublica
     private void validateDocStatus(InterfaceDocPublishSnapshot snapshot, List<InterfaceDocValidationIssue> issues) {
         if (!InterfaceDocStatusEnum.READY.getValue().equals(snapshot.getDocStatus())) {
             addIssue(issues, "DOCUMENT_READY_REQUIRED", "doc.docStatus", "接口文档必须完成维护");
-        }
-    }
-
-    /**
-     * 校验文档版本。
-     *
-     * @param snapshot 文档快照
-     * @param issues   问题列表
-     */
-    private void validateDocVersion(InterfaceDocPublishSnapshot snapshot, List<InterfaceDocValidationIssue> issues) {
-        if (StringUtils.isBlank(snapshot.getDocVersion())) {
-            addIssue(issues, "DOC_VERSION_REQUIRED", "doc.docVersion", "文档版本不能为空");
-            return;
-        }
-        String docVersion = TextSizeUtils.stripUnicodeWhitespace(snapshot.getDocVersion());
-        if (!DOC_VERSION_PATTERN.matcher(docVersion).matches()) {
-            addIssue(issues, "DOC_VERSION_INVALID", "doc.docVersion", "文档版本号格式非法");
         }
     }
 
@@ -383,7 +358,6 @@ public class InterfaceDocPublicationValidatorImpl implements InterfaceDocPublica
         doc.setId(snapshot.getDocId());
         doc.setInterfaceInfoId(snapshot.getInterfaceInfoId());
         doc.setDocStatus(snapshot.getDocStatus());
-        doc.setDocVersion(snapshot.getDocVersion());
         doc.setRequestContentType(snapshot.getRequestContentType());
         doc.setResponseContentType(snapshot.getResponseContentType());
         doc.setSuccessExample(snapshot.getSuccessExample());

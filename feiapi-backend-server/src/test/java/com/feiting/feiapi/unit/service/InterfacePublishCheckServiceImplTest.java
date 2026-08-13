@@ -115,22 +115,6 @@ class InterfacePublishCheckServiceImplTest {
     }
 
     /**
-     * 发布检查必须重新校验文档版本格式。
-     */
-    @Test
-    @DisplayName("发布检查拒绝非法文档版本")
-    void shouldRejectInvalidDocVersionDuringPublishCheck() throws Exception {
-        InterfacePublishContext context = new InterfacePublishContext();
-        context.setInterfaceDoc(buildDoc("v 1"));
-        context.setDocParams(List.of());
-        context.setErrorCodes(List.of());
-
-        List<InterfacePublishIssueVO> issues = invokeRule("checkDocument", context, ruleCheckService);
-
-        assertThat(ruleCodes(issues)).contains("DOC_VERSION_INVALID");
-    }
-
-    /**
      * 发布检查必须重新校验 SDK 方法名持久化边界。
      */
     @Test
@@ -493,15 +477,13 @@ class InterfacePublishCheckServiceImplTest {
     /**
      * 构造文档主记录。
      *
-     * @param docVersion 文档版本
      * @return 文档主记录
      */
-    private InterfaceDocPublishSnapshot buildDoc(String docVersion) {
+    private InterfaceDocPublishSnapshot buildDoc() {
         return InterfaceDocPublishSnapshot.builder()
                 .docId(1L)
                 .interfaceInfoId(1L)
                 .docStatus(InterfaceDocStatusEnum.READY.getValue())
-                .docVersion(docVersion)
                 .requestContentType("application/json")
                 .responseContentType("application/json")
                 .successExample("{}")

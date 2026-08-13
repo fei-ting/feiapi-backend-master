@@ -61,7 +61,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -100,11 +99,6 @@ public class InterfaceDocFacadeServiceImpl extends ServiceImpl<InterfaceDocMappe
     private static final Set<String> SUPPORTED_CONTENT_TYPES = new HashSet<>(
             Arrays.asList("application/json", "application/xml", "text/plain", "text/html",
                     "application/x-www-form-urlencoded", "multipart/form-data", "application/octet-stream"));
-
-    /**
-     * 文档版本白名单。
-     */
-    private static final Pattern DOC_VERSION_PATTERN = Pattern.compile("^[A-Za-z0-9._-]{1,64}$");
 
     /**
      * 自动同步请求参数使用的待完善说明。
@@ -428,10 +422,6 @@ public class InterfaceDocFacadeServiceImpl extends ServiceImpl<InterfaceDocMappe
      * @param doc 文档主记录
      */
     private void validatePersistedDocMain(InterfaceDoc doc) {
-        String docVersion = TextSizeUtils.stripUnicodeWhitespace(doc.getDocVersion());
-        if (!DOC_VERSION_PATTERN.matcher(docVersion).matches()) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "文档版本号格式非法");
-        }
         assertSupportedContentType(doc.getRequestContentType(), "请求内容类型不支持");
         assertSupportedContentType(doc.getResponseContentType(), "响应内容类型不支持");
     }
@@ -469,7 +459,6 @@ public class InterfaceDocFacadeServiceImpl extends ServiceImpl<InterfaceDocMappe
         InterfaceDoc newDoc = new InterfaceDoc();
         newDoc.setInterfaceInfoId(interfaceInfo.getId());
         newDoc.setDocStatus(InterfaceDocStatusEnum.DRAFT.getValue());
-        newDoc.setDocVersion("v1");
         newDoc.setRequestContentType(DEFAULT_REQUEST_CONTENT_TYPE);
         newDoc.setResponseContentType(DEFAULT_RESPONSE_CONTENT_TYPE);
         boolean result = save(newDoc);
@@ -720,10 +709,6 @@ public class InterfaceDocFacadeServiceImpl extends ServiceImpl<InterfaceDocMappe
      * @param saveRequest 保存请求
      */
     private void validateDocMain(InterfaceDocSaveRequest saveRequest) {
-        String docVersion = trimToEmpty(saveRequest.getDocVersion());
-        if (!DOC_VERSION_PATTERN.matcher(docVersion).matches()) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "文档版本号格式非法");
-        }
         assertSupportedContentType(saveRequest.getRequestContentType(), "请求内容类型不支持");
         assertSupportedContentType(saveRequest.getResponseContentType(), "响应内容类型不支持");
         contentSecurityValidator.validateJsonExample(
@@ -1146,7 +1131,6 @@ public class InterfaceDocFacadeServiceImpl extends ServiceImpl<InterfaceDocMappe
             doc = new InterfaceDoc();
             doc.setInterfaceInfoId(saveRequest.getInterfaceInfoId());
         }
-        doc.setDocVersion(trimToEmpty(saveRequest.getDocVersion()));
         doc.setDocStatus(targetStatus.getValue());
         doc.setRequestContentType(trimToEmpty(saveRequest.getRequestContentType()).toLowerCase(Locale.ROOT));
         doc.setResponseContentType(trimToEmpty(saveRequest.getResponseContentType()).toLowerCase(Locale.ROOT));
@@ -1292,7 +1276,6 @@ public class InterfaceDocFacadeServiceImpl extends ServiceImpl<InterfaceDocMappe
         if (doc != null) {
             docVO.setId(doc.getId());
             docVO.setInterfaceInfoId(doc.getInterfaceInfoId());
-            docVO.setDocVersion(doc.getDocVersion());
             docVO.setRequestContentType(firstText(doc.getRequestContentType(), DEFAULT_REQUEST_CONTENT_TYPE));
             docVO.setResponseContentType(firstText(doc.getResponseContentType(), DEFAULT_RESPONSE_CONTENT_TYPE));
             docVO.setSuccessExample(doc.getSuccessExample());
@@ -1303,7 +1286,6 @@ public class InterfaceDocFacadeServiceImpl extends ServiceImpl<InterfaceDocMappe
             return docVO;
         }
         docVO.setInterfaceInfoId(interfaceInfo.getId());
-        docVO.setDocVersion("v1");
         docVO.setRequestContentType(DEFAULT_REQUEST_CONTENT_TYPE);
         docVO.setResponseContentType(DEFAULT_RESPONSE_CONTENT_TYPE);
         return docVO;
