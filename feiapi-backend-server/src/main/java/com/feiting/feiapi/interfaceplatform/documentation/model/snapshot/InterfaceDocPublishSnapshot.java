@@ -31,11 +31,6 @@ public class InterfaceDocPublishSnapshot {
     String docStatus;
 
     /**
-     * 文档版本号。
-     */
-    String docVersion;
-
-    /**
      * 请求内容类型。
      */
     String requestContentType;

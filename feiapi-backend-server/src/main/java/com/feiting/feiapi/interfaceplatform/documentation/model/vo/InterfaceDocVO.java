@@ -25,11 +25,6 @@ public class InterfaceDocVO implements Serializable {
     private Long interfaceInfoId;
 
     /**
-     * 文档版本号。
-     */
-    private String docVersion;
-
-    /**
      * 请求内容类型。
      */
     private String requestContentType;

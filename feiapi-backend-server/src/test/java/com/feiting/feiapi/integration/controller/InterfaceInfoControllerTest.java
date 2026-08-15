@@ -241,7 +241,6 @@ class InterfaceInfoControllerTest {
         InterfaceDoc doc = new InterfaceDoc();
         doc.setInterfaceInfoId(interfaceInfoId);
         doc.setDocStatus(docStatus);
-        doc.setDocVersion("v1");
         doc.setRequestContentType("application/json");
         doc.setResponseContentType("application/json");
         doc.setSuccessExample("{\"content\":\"ok\"}");

@@ -29,11 +29,6 @@ public class InterfaceDocSaveRequest implements Serializable {
     @Pattern(regexp = "DRAFT|READY", message = "文档状态只允许 DRAFT 或 READY")
     private String docStatus;
 
-    /** 文档版本号。 */
-    @NotBlank(message = "文档版本号不能为空")
-    @Size(max = 64, message = "文档版本号长度不能超过 64")
-    private String docVersion;
-
     /** 请求内容类型。 */
     @NotBlank(message = "请求内容类型不能为空")
     @Size(max = 128, message = "请求内容类型长度不能超过 128")

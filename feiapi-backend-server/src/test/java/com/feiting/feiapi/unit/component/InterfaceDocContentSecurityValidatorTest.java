@@ -177,7 +177,6 @@ class InterfaceDocContentSecurityValidatorTest {
         InterfaceDocSaveRequest request = new InterfaceDocSaveRequest();
         request.setInterfaceInfoId(1L);
         request.setDocStatus("DRAFT");
-        request.setDocVersion("v1.0");
         request.setRequestContentType("application/json");
         request.setResponseContentType("application/json");
         request.setSuccessExample("a".repeat(65536));

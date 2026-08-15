@@ -75,7 +75,6 @@ public class InterfaceDocPublishReaderImpl implements InterfaceDocPublishReader 
                 .interfaceInfoId(interfaceInfoId)
                 .docId(doc == null ? null : doc.getId())
                 .docStatus(doc == null ? null : doc.getDocStatus())
-                .docVersion(doc == null ? null : doc.getDocVersion())
                 .requestContentType(doc == null ? null : doc.getRequestContentType())
                 .responseContentType(doc == null ? null : doc.getResponseContentType())
                 .successExample(doc == null ? null : doc.getSuccessExample())
