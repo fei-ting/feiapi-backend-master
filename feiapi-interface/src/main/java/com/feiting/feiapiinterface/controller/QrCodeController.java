@@ -3,7 +3,6 @@ package com.feiting.feiapiinterface.controller;
 import com.feiting.feiapiinterface.model.dto.QrCodeGenerateRequest;
 import com.feiting.feiapiinterface.model.vo.QrCodeGenerateVO;
 import com.feiting.feiapiinterface.service.QrCodeService;
-import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -24,8 +23,19 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/qrcode")
 public class QrCodeController {
 
-    @Resource
-    private QrCodeService qrCodeService;
+    /**
+     * 二维码生成服务。
+     */
+    private final QrCodeService qrCodeService;
+
+    /**
+     * 创建二维码生成接口控制器。
+     *
+     * @param qrCodeService 二维码生成服务
+     */
+    public QrCodeController(QrCodeService qrCodeService) {
+        this.qrCodeService = qrCodeService;
+    }
 
     /**
      * 生成二维码
