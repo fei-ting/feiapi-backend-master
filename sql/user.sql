@@ -24,15 +24,3 @@ create table if not exists user
     constraint uni_userAccount
         unique (user_account)
 ) comment '用户';
-
--- 初始化管理员账号
-insert into user (user_name, user_account, user_role, user_password, access_key, secret_key)
-select '管理员',
-       'admin',
-       'admin',
-       '$2a$10$ZQ4BuFtcYf9963e/GSGrmu1BcFDKM0cZKg5G0UEaioME2jF8ORZbS',
-       'test-admin-access-key',
-       'test-admin-secret-key'
-where not exists (
-    select 1 from user where user_account = 'admin'
-);

@@ -58,6 +58,21 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     private static final int SECRET_KEY_RANDOM_BYTE_LENGTH = 48;
 
     /**
+     * 管理员初始化 AccessKey 最小长度。
+     */
+    private static final int BOOTSTRAP_ACCESS_KEY_MIN_LENGTH = 16;
+
+    /**
+     * 管理员初始化 SecretKey 最小长度。
+     */
+    private static final int BOOTSTRAP_SECRET_KEY_MIN_LENGTH = 32;
+
+    /**
+     * 数据库密钥字段最大长度。
+     */
+    private static final int API_KEY_MAX_LENGTH = 512;
+
+    /**
      * 用户账号格式：4-10 位，以字母开头，只能包含大小写字母和数字
      */
     private static final String USER_ACCOUNT_PATTERN = "^[a-zA-Z][a-zA-Z0-9]{3,9}$";
@@ -159,6 +174,51 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     }
 
     /**
+     * 创建系统首个管理员账号。
+     *
+     * @param userAccount     管理员账号
+     * @param initialPassword 管理员初始密码
+     * @param userName        管理员昵称
+     * @param accessKey       管理员 AccessKey
+     * @param secretKey       管理员 SecretKey
+     * @return 已创建的管理员用户
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public User createBootstrapAdmin(String userAccount, String initialPassword, String userName,
+                                     String accessKey, String secretKey) {
+        if (StringUtils.isAnyBlank(userAccount, initialPassword, userName, accessKey, secretKey)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "管理员初始化配置不完整");
+        }
+        validateUserAccount(userAccount);
+        validateUserPassword(initialPassword);
+        String normalizedUserName = validateBootstrapUserName(userName);
+        validateBootstrapApiKeys(accessKey, secretKey);
+
+        QueryWrapper<User> accountQuery = new QueryWrapper<>();
+        accountQuery.eq("user_account", userAccount);
+        if (userMapper.selectCount(accountQuery) > 0) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "管理员初始化账号已存在");
+        }
+
+        User admin = new User();
+        admin.setUserName(normalizedUserName);
+        admin.setUserAccount(userAccount);
+        admin.setUserRole(UserRoleEnum.ADMIN.getCode());
+        admin.setUserPassword(passwordEncoder.encode(initialPassword));
+        admin.setAccessKey(accessKey.trim());
+        admin.setSecretKey(secretKey.trim());
+        try {
+            if (!this.save(admin)) {
+                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "管理员初始化失败，数据库写入异常");
+            }
+        } catch (DuplicateKeyException exception) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "管理员初始化账号或密钥已存在", exception);
+        }
+        return admin;
+    }
+
+    /**
      * 生成 URL 安全的随机密钥
      *
      * @param byteLength 随机字节长度
@@ -178,6 +238,44 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     private String generateDefaultUserName() {
         return DEFAULT_USER_NAME_PREFIX + String.format(Locale.ROOT, "%06d",
                 SECURE_RANDOM.nextInt(DEFAULT_USER_NAME_RANDOM_BOUND));
+    }
+
+    /**
+     * 校验管理员初始化昵称。
+     *
+     * <p>初始化管理员允许使用“管理员”等保留名称，但仍需满足统一字符和长度约束。</p>
+     *
+     * @param userName 管理员昵称
+     * @return 规范化后的管理员昵称
+     */
+    private String validateBootstrapUserName(String userName) {
+        String normalizedUserName = StringUtils.trimToEmpty(userName);
+        if (normalizedUserName.length() < 2 || normalizedUserName.length() > 16
+                || !normalizedUserName.matches(USER_NAME_PATTERN)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "管理员昵称需为 2-16 位中文、英文或数字");
+        }
+        return normalizedUserName;
+    }
+
+    /**
+     * 校验管理员初始化 API 密钥。
+     *
+     * @param accessKey 管理员 AccessKey
+     * @param secretKey 管理员 SecretKey
+     */
+    private void validateBootstrapApiKeys(String accessKey, String secretKey) {
+        String normalizedAccessKey = accessKey.trim();
+        String normalizedSecretKey = secretKey.trim();
+        if (normalizedAccessKey.length() < BOOTSTRAP_ACCESS_KEY_MIN_LENGTH
+                || normalizedAccessKey.length() > API_KEY_MAX_LENGTH) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,
+                    "管理员 AccessKey 长度需为 16-512 位");
+        }
+        if (normalizedSecretKey.length() < BOOTSTRAP_SECRET_KEY_MIN_LENGTH
+                || normalizedSecretKey.length() > API_KEY_MAX_LENGTH) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,
+                    "管理员 SecretKey 长度需为 32-512 位");
+        }
     }
 
     @Override
