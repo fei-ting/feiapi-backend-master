@@ -22,22 +22,3 @@ create table if not exists feiapi.`interface_info`
     `is_delete` bigint default 0 not null comment '逻辑删除标识 0-未删除 其他值-已删除记录 ID',
     unique key `uk_interface_info_path_method_delete` (`path`(191), `method`, `is_delete`)
     ) comment '接口信息';
-
--- 初始化用户名称查询接口
-insert into feiapi.interface_info (`name`, `sdk_method_name`, `description`, `url`, `path`, `target_host`, `request_params`, `request_header`, `response_header`, `status`, `method`, `quota_type`, `user_id`)
-select '测试接口',
-       'getUsernameByPost',
-       '根据用户对象获取用户名（测试接口）',
-       'http://feiapi-interface:8123/api/name/user',
-       '/api/name/user',
-       'http://feiapi-interface:8123',
-       '{\"username\":\"string\"}',
-       'Content-Type: application/json',
-       '',
-       1,
-       'POST',
-       'FREE_UNLIMITED',
-       (select id from feiapi.user where user_account = 'admin' limit 1)
-where not exists (
-    select 1 from feiapi.interface_info where `path` = '/api/name/user' and `method` = 'POST' and `is_delete` = 0
-);
