@@ -46,7 +46,33 @@ public class InterfaceInfoPublishingServiceImpl implements InterfaceInfoPublishi
      */
     @Override
     public boolean publish(Long interfaceInfoId) {
-        InterfacePublishContext publishContext = publishingLifecycleService.startPublishingWithContext(interfaceInfoId);
+        InterfacePublishContext publishContext = publishingLifecycleService
+                .startPublishingWithContext(interfaceInfoId);
+        return publishStarted(interfaceInfoId, publishContext);
+    }
+
+    /**
+     * 使用当前管理员凭证执行接口发布。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     * @param operatorId      当前登录管理员 ID
+     * @return 是否发布成功
+     */
+    @Override
+    public boolean publish(Long interfaceInfoId, Long operatorId) {
+        InterfacePublishContext publishContext = publishingLifecycleService
+                .startPublishingWithContext(interfaceInfoId, operatorId);
+        return publishStarted(interfaceInfoId, publishContext);
+    }
+
+    /**
+     * 执行已经完成发布准备的探测和状态收尾。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     * @param publishContext 发布上下文
+     * @return 是否发布成功
+     */
+    private boolean publishStarted(Long interfaceInfoId, InterfacePublishContext publishContext) {
         try {
             interfacePublishProbeService.probe(publishContext);
             publishingLifecycleService.completePublishing(interfaceInfoId);

@@ -236,8 +236,6 @@ class InterfacePublishCheckServiceImplTest {
 
         assertThat(ruleCodes(issues)).contains(
                 "SDK_METHOD_NOT_FOUND",
-                "PROBE_ACCESS_KEY_REQUIRED",
-                "PROBE_SECRET_KEY_REQUIRED",
                 "PROBE_SECRET_REQUIRED");
     }
 
@@ -255,8 +253,6 @@ class InterfacePublishCheckServiceImplTest {
 
         assertThat(ruleCodes(issues)).contains(
                 "SDK_INVOKE_ANNOTATION_REQUIRED",
-                "PROBE_ACCESS_KEY_REQUIRED",
-                "PROBE_SECRET_KEY_REQUIRED",
                 "PROBE_SECRET_REQUIRED");
     }
 
@@ -288,9 +284,7 @@ class InterfacePublishCheckServiceImplTest {
         method.setAccessible(true);
         method.invoke(service, issues);
 
-        assertThat(ruleCodes(issues)).containsExactlyInAnyOrder(
-                "PROBE_ADMIN_ACCESS_KEY_INVALID",
-                "PROBE_ADMIN_SECRET_KEY_MISMATCH");
+        assertThat(issues).isEmpty();
     }
 
     /**

@@ -39,9 +39,12 @@ mybatis-plus:
       logic-not-delete-value: 0
 
 feiapi:
+  admin-bootstrap:
+    enabled: ${FEIAPI_ADMIN_BOOTSTRAP_ENABLED:false}
+    account: ${FEIAPI_ADMIN_ACCOUNT:}
+    initial-password: ${FEIAPI_ADMIN_INITIAL_PASSWORD:}
+    display-name: ${FEIAPI_ADMIN_DISPLAY_NAME:管理员}
   client:
-    access-key: ${FEIAPI_CLIENT_ACCESS_KEY:}
-    secret-key: ${FEIAPI_CLIENT_SECRET_KEY:}
     gateway-host: ${FEIAPI_CLIENT_GATEWAY_HOST:http://localhost:8090}
     sign-salt: ${FEIAPI_SIGN_SALT:feiting}
     probe-secret: ${FEIAPI_PROBE_SECRET:}

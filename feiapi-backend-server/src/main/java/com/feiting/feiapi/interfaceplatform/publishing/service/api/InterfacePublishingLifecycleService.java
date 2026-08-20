@@ -18,6 +18,15 @@ public interface InterfacePublishingLifecycleService {
     InterfacePublishContext startPublishingWithContext(Long interfaceInfoId);
 
     /**
+     * 校验发布条件并绑定当前管理员后切换为发布中状态。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     * @param operatorId      当前登录管理员 ID
+     * @return 发布上下文
+     */
+    InterfacePublishContext startPublishingWithContext(Long interfaceInfoId, Long operatorId);
+
+    /**
      * 将发布中的接口切换为上线状态。
      *
      * @param interfaceInfoId 接口信息 ID

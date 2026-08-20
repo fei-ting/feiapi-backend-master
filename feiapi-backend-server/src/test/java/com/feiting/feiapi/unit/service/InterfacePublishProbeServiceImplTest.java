@@ -1,12 +1,12 @@
 package com.feiting.feiapi.unit.service;
 
 import com.feiting.feiapi.interfaceplatform.publishing.component.InterfaceProbeResponseValidator;
+import com.feiting.feiapi.interfaceplatform.publishing.component.InterfaceProbeClientFactory;
 import com.feiting.feiapi.interfaceplatform.definition.component.SdkMethodRegistry;
 import com.feiting.feiapi.exception.BusinessException;
 import com.feiting.feiapi.interfaceplatform.publishing.exception.InterfacePublishProbeException;
 import com.feiting.feiapi.interfaceplatform.publishing.model.enums.PublishProbeFailureStageEnum;
 import com.feiting.feiapi.interfaceplatform.publishing.service.impl.InterfacePublishProbeServiceImpl;
-import com.feiting.feiapiclientsdk.client.FeiApiClient;
 import com.feiting.feiapiclientsdk.exception.ProbeResponseTooLargeException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -105,7 +105,7 @@ class InterfacePublishProbeServiceImplTest {
     private InterfacePublishProbeException classify(Throwable cause) throws Exception {
         InterfacePublishProbeServiceImpl service = new InterfacePublishProbeServiceImpl(
                 mock(SdkMethodRegistry.class),
-                mock(FeiApiClient.class),
+                mock(InterfaceProbeClientFactory.class),
                 mock(InterfaceProbeResponseValidator.class));
         Method method = InterfacePublishProbeServiceImpl.class.getDeclaredMethod(
                 "classifyExecutionException", Throwable.class);

@@ -23,6 +23,18 @@ public interface UserService extends IService<User> {
     long userRegister(String userAccount, String userPassword, String checkPassword);
 
     /**
+     * 创建系统首个管理员账号。
+     *
+     * <p>该方法只供受控的一次性初始化任务调用，不对外提供 HTTP 接口。</p>
+     *
+     * @param userAccount    管理员账号
+     * @param initialPassword 管理员初始密码
+     * @param userName       管理员昵称
+     * @return 已创建的管理员用户
+     */
+    User createBootstrapAdmin(String userAccount, String initialPassword, String userName);
+
+    /**
      * 用户登录
      *
      * @param userAccount  用户账户
