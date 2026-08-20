@@ -22,5 +22,7 @@ create table if not exists user
     update_time   datetime     default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
     is_delete     tinyint      default 0                 not null comment '是否删除',
     constraint uni_userAccount
-        unique (user_account)
+        unique (user_account),
+    constraint uni_user_access_key
+        unique (access_key)
 ) comment '用户';

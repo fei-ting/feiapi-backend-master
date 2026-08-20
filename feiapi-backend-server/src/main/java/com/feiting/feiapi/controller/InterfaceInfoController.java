@@ -284,18 +284,21 @@ public class InterfaceInfoController {
 
     /**
      * 发布接口
-     * @param idRequest
+     * @param idRequest 请求参数
+     * @param request   HTTP 请求
      * @return
      */
     @PostMapping("/online")
     @AuthCheck(mustRole = UserRoleEnum.ADMIN)
-    public BaseResponse<Boolean> onlineInterfaceInfo(@Valid @RequestBody IdRequest idRequest) {
+    public BaseResponse<Boolean> onlineInterfaceInfo(@Valid @RequestBody IdRequest idRequest,
+                                                     HttpServletRequest request) {
         //参数校验
         if(idRequest == null || idRequest.getId() <= 0){
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
 
-        return ResultUtils.success(interfaceInfoPublishingService.publish(idRequest.getId()));
+        User loginUser = getCurrentLoginUser(request);
+        return ResultUtils.success(interfaceInfoPublishingService.publish(idRequest.getId(), loginUser.getId()));
     }
 
     /**

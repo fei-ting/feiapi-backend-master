@@ -30,12 +30,9 @@ public interface UserService extends IService<User> {
      * @param userAccount    管理员账号
      * @param initialPassword 管理员初始密码
      * @param userName       管理员昵称
-     * @param accessKey      管理员 AccessKey
-     * @param secretKey      管理员 SecretKey
      * @return 已创建的管理员用户
      */
-    User createBootstrapAdmin(String userAccount, String initialPassword, String userName,
-                              String accessKey, String secretKey);
+    User createBootstrapAdmin(String userAccount, String initialPassword, String userName);
 
     /**
      * 用户登录

@@ -1,6 +1,7 @@
 package com.feiting.feiapi.interfaceplatform.publishing.service.impl;
 
 import com.feiting.feiapi.interfaceplatform.publishing.component.InterfaceProbeResponseValidator;
+import com.feiting.feiapi.interfaceplatform.publishing.component.InterfaceProbeClientFactory;
 import com.feiting.feiapi.interfaceplatform.publishing.exception.InterfacePublishProbeException;
 import com.feiting.feiapi.interfaceplatform.publishing.model.enums.PublishProbeFailureStageEnum;
 import com.feiting.feiapi.interfaceplatform.publishing.model.context.InterfacePublishContext;
@@ -52,9 +53,9 @@ public class InterfacePublishProbeServiceImpl implements InterfacePublishProbeSe
     private final SdkMethodRegistry sdkMethodRegistry;
 
     /**
-     * 平台 SDK 客户端。
+     * 发布探测客户端工厂。
      */
-    private final FeiApiClient feiApiClient;
+    private final InterfaceProbeClientFactory probeClientFactory;
 
     /**
      * 探测响应契约校验器。
@@ -82,14 +83,14 @@ public class InterfacePublishProbeServiceImpl implements InterfacePublishProbeSe
      * 创建接口发布探测服务实现。
      *
      * @param sdkMethodRegistry SDK 方法注册器
-     * @param feiApiClient      平台 SDK 客户端
+     * @param probeClientFactory 发布探测客户端工厂
      * @param responseValidator 探测响应契约校验器
      */
     public InterfacePublishProbeServiceImpl(SdkMethodRegistry sdkMethodRegistry,
-                                            FeiApiClient feiApiClient,
+                                            InterfaceProbeClientFactory probeClientFactory,
                                             InterfaceProbeResponseValidator responseValidator) {
         this.sdkMethodRegistry = sdkMethodRegistry;
-        this.feiApiClient = feiApiClient;
+        this.probeClientFactory = probeClientFactory;
         this.responseValidator = responseValidator;
     }
 
@@ -128,14 +129,15 @@ public class InterfacePublishProbeServiceImpl implements InterfacePublishProbeSe
      * @return 探测响应元数据
      */
     private ProbeInvocationResult doProbe(InterfacePublishContext publishContext) {
+        FeiApiClient probeClient = probeClientFactory.create(publishContext.getOperatorId());
         try {
-            feiApiClient.enableProbeMode();
-            sdkMethodRegistry.invoke(feiApiClient,
+            probeClient.enableProbeMode();
+            sdkMethodRegistry.invoke(probeClient,
                     publishContext.getInterfaceInfo().getSdkMethodName(),
                     publishContext.getProbeRequestParams());
-            return feiApiClient.getProbeInvocationResult();
+            return probeClient.getProbeInvocationResult();
         } finally {
-            feiApiClient.disableProbeMode();
+            probeClient.disableProbeMode();
         }
     }
 

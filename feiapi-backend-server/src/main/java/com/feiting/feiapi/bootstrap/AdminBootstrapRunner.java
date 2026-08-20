@@ -65,9 +65,7 @@ public class AdminBootstrapRunner implements ApplicationListener<ApplicationRead
             boolean created = adminBootstrapService.initialize(
                     properties.getAccount(),
                     properties.getInitialPassword(),
-                    properties.getDisplayName(),
-                    properties.getAccessKey(),
-                    properties.getSecretKey());
+                    properties.getDisplayName());
             log.info("管理员一次性初始化任务执行成功，created={}", created);
         } catch (RuntimeException exception) {
             exitCode = 1;
