@@ -7,12 +7,10 @@ import com.feiting.feiapiclientsdk.FeiapiClientProperties;
 import com.feiting.feiapiclientsdk.annotation.SdkInvoke;
 import com.feiting.feiapiclientsdk.model.ProbeStrategy;
 import com.feiting.feiapicommon.model.entity.InterfaceInfo;
-import com.feiting.feiapicommon.model.entity.User;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
 import java.lang.reflect.Method;
-import java.util.Objects;
 
 /**
  * SDK 契约发布规则。
@@ -26,19 +24,13 @@ public class SdkContractPublishRule implements InterfacePublishRule {
     private final FeiapiClientProperties clientProperties;
 
     /**
-     * 用户服务。
-     */
-    private final UserService userService;
-
-    /**
      * 创建 SDK 契约发布规则。
      *
      * @param clientProperties SDK 客户端配置
-     * @param userService      用户服务
+     * @param userService      保留兼容旧构造调用的用户服务参数
      */
     public SdkContractPublishRule(FeiapiClientProperties clientProperties, UserService userService) {
         this.clientProperties = clientProperties;
-        this.userService = userService;
     }
 
     /**
@@ -92,36 +84,9 @@ public class SdkContractPublishRule implements InterfacePublishRule {
      * @param collector 问题收集器
      */
     public void validateProbeCredentials(InterfacePublishIssueCollector collector) {
-        boolean accessKeyBlank = StringUtils.isBlank(clientProperties.getAccessKey());
-        boolean secretKeyBlank = StringUtils.isBlank(clientProperties.getSecretKey());
-        if (accessKeyBlank) {
-            collector.addIssue(InterfacePublishIssueCategoryEnum.SDK, "PROBE_ACCESS_KEY_REQUIRED",
-                    "config.feiapi.client.accessKey", "服务端管理员 AccessKey 未配置");
-        }
-        if (secretKeyBlank) {
-            collector.addIssue(InterfacePublishIssueCategoryEnum.SDK, "PROBE_SECRET_KEY_REQUIRED",
-                    "config.feiapi.client.secretKey", "服务端管理员 SecretKey 未配置");
-        }
         if (StringUtils.isBlank(clientProperties.getProbeSecret())) {
             collector.addIssue(InterfacePublishIssueCategoryEnum.SDK, "PROBE_SECRET_REQUIRED",
                     "config.feiapi.client.probeSecret", "内部发布探测密钥未配置");
-        }
-        if (accessKeyBlank || secretKeyBlank) {
-            return;
-        }
-        User user = userService.lambdaQuery()
-                .eq(User::getAccessKey, clientProperties.getAccessKey())
-                .one();
-        if (user == null || !userService.isAdmin(user)) {
-            collector.addIssue(InterfacePublishIssueCategoryEnum.SDK, "PROBE_ADMIN_ACCESS_KEY_INVALID",
-                    "config.feiapi.client.accessKey", "配置的发布探测 AccessKey 未绑定有效管理员");
-        }
-        if (user == null) {
-            return;
-        }
-        if (!Objects.equals(user.getSecretKey(), clientProperties.getSecretKey())) {
-            collector.addIssue(InterfacePublishIssueCategoryEnum.SDK, "PROBE_ADMIN_SECRET_KEY_MISMATCH",
-                    "config.feiapi.client.secretKey", "配置的发布探测 SecretKey 与管理员记录不匹配");
         }
     }
 }

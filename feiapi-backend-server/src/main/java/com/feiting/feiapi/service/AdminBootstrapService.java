@@ -13,10 +13,7 @@ public interface AdminBootstrapService {
      * @param account         管理员账号
      * @param initialPassword 管理员初始密码
      * @param displayName     管理员显示名称
-     * @param accessKey       管理员 AccessKey
-     * @param secretKey       管理员 SecretKey
      * @return 是否创建了新的管理员
      */
-    boolean initialize(String account, String initialPassword, String displayName,
-                       String accessKey, String secretKey);
+    boolean initialize(String account, String initialPassword, String displayName);
 }

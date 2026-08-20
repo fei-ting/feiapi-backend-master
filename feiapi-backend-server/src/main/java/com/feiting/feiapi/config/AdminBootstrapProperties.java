@@ -32,13 +32,4 @@ public class AdminBootstrapProperties {
      */
     private String displayName = "管理员";
 
-    /**
-     * 管理员 AccessKey。
-     */
-    private String accessKey;
-
-    /**
-     * 管理员 SecretKey。
-     */
-    private String secretKey;
 }

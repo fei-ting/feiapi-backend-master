@@ -66,10 +66,24 @@ public class InterfacePublishingLifecycleServiceImpl implements InterfacePublish
     @Override
     @Transactional(rollbackFor = Exception.class)
     public InterfacePublishContext startPublishingWithContext(Long interfaceInfoId) {
+        return startPublishingWithContext(interfaceInfoId, null);
+    }
+
+    /**
+     * 校验发布条件并绑定当前管理员后切换为发布中状态。
+     *
+     * @param interfaceInfoId 接口信息 ID
+     * @param operatorId      当前登录管理员 ID
+     * @return 发布上下文
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public InterfacePublishContext startPublishingWithContext(Long interfaceInfoId, Long operatorId) {
         LockedInterfaceSnapshot lockedInterface = stateManager.lockForUpdate(interfaceInfoId);
         LockedInterfaceSnapshot recoveredInterface = stateManager.recoverExpiredPublishingStatus(lockedInterface);
         assertReadyToPublish(recoveredInterface);
         InterfacePublishContext publishContext = publishCheckService.buildContextForPublish(interfaceInfoId);
+        publishContext.setOperatorId(operatorId);
         stateManager.markPublishing(interfaceInfoId);
         InterfaceInfo interfaceInfo = publishContext.getInterfaceInfo();
         if (interfaceInfo != null) {

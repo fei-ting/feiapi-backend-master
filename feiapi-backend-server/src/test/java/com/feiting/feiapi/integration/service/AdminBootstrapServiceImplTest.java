@@ -43,16 +43,6 @@ class AdminBootstrapServiceImplTest {
     private static final String ADMIN_PASSWORD = "admin1234";
 
     /**
-     * 测试管理员 AccessKey。
-     */
-    private static final String ADMIN_ACCESS_KEY = "bootstrap-access-key-2026";
-
-    /**
-     * 测试管理员 SecretKey。
-     */
-    private static final String ADMIN_SECRET_KEY = "bootstrap-secret-key-for-integration-test-2026";
-
-    /**
      * 管理员初始化服务。
      */
     @Resource
@@ -87,17 +77,15 @@ class AdminBootstrapServiceImplTest {
         boolean created = adminBootstrapService.initialize(
                 ADMIN_ACCOUNT,
                 ADMIN_PASSWORD,
-                "管理员",
-                ADMIN_ACCESS_KEY,
-                ADMIN_SECRET_KEY);
+                "管理员");
 
         User admin = getUserByAccount(ADMIN_ACCOUNT);
         assertThat(created).isTrue();
         assertThat(admin).isNotNull();
         assertThat(admin.getUserRole()).isEqualTo(UserRoleEnum.ADMIN.getCode());
         assertThat(admin.getUserName()).isEqualTo("管理员");
-        assertThat(admin.getAccessKey()).isEqualTo(ADMIN_ACCESS_KEY);
-        assertThat(admin.getSecretKey()).isEqualTo(ADMIN_SECRET_KEY);
+        assertThat(admin.getAccessKey()).hasSize(43).matches("[A-Za-z0-9_-]+");
+        assertThat(admin.getSecretKey()).hasSize(64).matches("[A-Za-z0-9_-]+");
         assertThat(new BCryptPasswordEncoder().matches(ADMIN_PASSWORD, admin.getUserPassword())).isTrue();
 
         InterfaceInfo demoInterface = getDemoInterface();
@@ -119,21 +107,19 @@ class AdminBootstrapServiceImplTest {
         User existingAdmin = userService.createBootstrapAdmin(
                 "admin001",
                 ADMIN_PASSWORD,
-                "原管理员",
-                "existing-access-key-2026",
-                "existing-secret-key-for-bootstrap-test-2026");
+                "原管理员");
+        String accessKey = existingAdmin.getAccessKey();
+        String secretKey = existingAdmin.getSecretKey();
 
         boolean created = adminBootstrapService.initialize(
                 "admin002",
                 "password5678",
-                "新管理员",
-                ADMIN_ACCESS_KEY,
-                ADMIN_SECRET_KEY);
+                "新管理员");
 
         User unchangedAdmin = userService.getById(existingAdmin.getId());
         assertThat(created).isFalse();
-        assertThat(unchangedAdmin.getAccessKey()).isEqualTo("existing-access-key-2026");
-        assertThat(unchangedAdmin.getSecretKey()).isEqualTo("existing-secret-key-for-bootstrap-test-2026");
+        assertThat(unchangedAdmin.getAccessKey()).isEqualTo(accessKey);
+        assertThat(unchangedAdmin.getSecretKey()).isEqualTo(secretKey);
         assertThat(getUserByAccount("admin002")).isNull();
         assertThat(getDemoInterface().getUserId()).isEqualTo(existingAdmin.getId());
     }
@@ -149,9 +135,7 @@ class AdminBootstrapServiceImplTest {
         assertThatThrownBy(() -> adminBootstrapService.initialize(
                 ADMIN_ACCOUNT,
                 ADMIN_PASSWORD,
-                "管理员",
-                ADMIN_ACCESS_KEY,
-                ADMIN_SECRET_KEY))
+                "管理员"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("拒绝自动提权");
 
@@ -159,22 +143,18 @@ class AdminBootstrapServiceImplTest {
     }
 
     /**
-     * 弱 SecretKey 配置应在写入数据库前失败。
+     * 已存在管理员时，即使初始化配置为空也应安全跳过。
      */
     @Test
-    @DisplayName("弱密钥配置导致初始化失败")
-    void shouldRejectWeakSecretKey() {
-        assertThatThrownBy(() -> adminBootstrapService.initialize(
-                ADMIN_ACCOUNT,
-                ADMIN_PASSWORD,
-                "管理员",
-                ADMIN_ACCESS_KEY,
-                "short-secret"))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("SecretKey");
+    @DisplayName("已有管理员时允许缺少初始化配置")
+    void shouldSkipWhenBootstrapCredentialsAreMissingForExistingAdmin() {
+        User existingAdmin = userService.createBootstrapAdmin(
+                ADMIN_ACCOUNT, ADMIN_PASSWORD, "管理员");
 
-        assertThat(getUserByAccount(ADMIN_ACCOUNT)).isNull();
-        assertThat(getDemoInterface()).isNull();
+        boolean created = adminBootstrapService.initialize(null, null, null);
+
+        assertThat(created).isFalse();
+        assertThat(getUserByAccount(ADMIN_ACCOUNT).getId()).isEqualTo(existingAdmin.getId());
     }
 
     /**

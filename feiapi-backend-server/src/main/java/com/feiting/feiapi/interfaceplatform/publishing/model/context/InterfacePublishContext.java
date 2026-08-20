@@ -19,6 +19,11 @@ import java.util.List;
 public class InterfacePublishContext {
 
     /**
+     * 发起本次发布操作的管理员用户 ID。
+     */
+    private Long operatorId;
+
+    /**
      * 接口主记录快照。
      */
     private InterfaceInfo interfaceInfo;
